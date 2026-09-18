@@ -60,26 +60,26 @@ python app.py
 
 ### MI-GAN（可选）
 
-AI 修复使用的 `migan_pipeline_v2.onnx` **不随公开版仓库再分发**。原因是上游代码仓库采用 MIT License，但公开权重的再分发授权目前没有足够明确的独立说明。
+AI 修复使用的 `migan_pipeline_v2.onnx` **不随公开仓库直接分发**。
 
-如果你自行从上游获取该模型，并同意其上游条款，可将文件放到：
+首次使用 **AI 修复（MI-GAN）** 时，如果本地没有该模型，程序会自动从上游下载约 28 MB 的模型文件到：
 
 ```text
 models/migan_pipeline_v2.onnx
 ```
 
-上游 ONNX 页面：
+下载完成后会校验文件大小与 SHA-256，校验通过后才会加载。下载失败时仍可继续使用 **TELEA** 或 **Navier-Stokes** 修复。
+
+上游模型页面：
 
 https://huggingface.co/andraniksargsyan/migan/blob/main/migan_pipeline_v2.onnx
-
-没有 MI-GAN 时，仍可使用 **TELEA** 和 **Navier-Stokes** 修复。当前 v0.1.0 的下拉框仍会显示 MI-GAN；如果没有安装该模型，请手动选择 TELEA 或 Navier-Stokes。
 
 ## 数据与缓存
 
 - 原始图片不会被覆盖。
 - LoRA 推荐导出只会复制当前“推荐”状态的图片。
 - 文字修复批处理只写入用户指定的新目录。
-- 分析缓存与缩略图位于本地 `cache/`，该目录不会提交到 Git。
+- 程序会在项目目录创建 `cache/` 保存分析结果和缩略图，以减少重复分析。删除该目录不会影响原图，只会让相关内容在下次使用时重新分析。
 
 ## 许可证
 
@@ -91,4 +91,6 @@ https://huggingface.co/andraniksargsyan/migan/blob/main/migan_pipeline_v2.onnx
 
 ## 当前状态
 
-`v0.1.0` 是首次公开发布基线，重点是稳定保存当前已验证的人脸 LoRA 数据筛选与文字处理工作流。后续版面拆分 / 杂志页裁取等功能会在独立开发流程中继续推进。
+当前版本适合在 Windows 本地完成 **单人真人 Face LoRA 数据集** 的质量筛选、重复检测、姿态覆盖检查、人工复核、导出，以及文字 / 水印区域处理。
+
+目前尚未内置多宫格自动拆分和杂志页主体裁取；这类素材建议先完成拆分或裁取，再导入筛选流程。
