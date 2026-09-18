@@ -17,7 +17,12 @@ try:
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 except ImportError as exc:
-    print("缺少依赖：", exc); print("请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"); sys.exit(1)
+    msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
+    print(msg)
+    if getattr(sys,'frozen',False):
+        try:Path(sys.executable).with_name('startup-error.txt').write_text(msg,encoding='utf-8')
+        except Exception:pass
+    sys.exit(1)
 
 APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'; CACHE=APP_DIR/'cache'
 THUMB_CACHE=CACHE/'thumbnails'
