@@ -665,5 +665,25 @@ class Window(QMainWindow):
             QMessageBox.information(self,'导出完成',f'已复制 {n} 张推荐图片。\n源图片未被修改。')
         except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
 
+def self_test():
+    """Portable / CI smoke test: load the core models without opening the GUI."""
+    required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
+    QualityModels()
+    TextDetector(det_config())
+    options=vision.PoseLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),
+        running_mode=vision.RunningMode.IMAGE,
+        num_poses=1,
+        min_pose_detection_confidence=.5,
+        min_pose_presence_confidence=.5,
+    )
+    landmarker=vision.PoseLandmarker.create_from_options(options)
+    landmarker.close()
+    return 0
+
 if __name__=='__main__':
+    if '--self-test' in sys.argv:
+        try:sys.exit(self_test())
+        except Exception as e:
+            print('SELF-TEST FAILED:',e);traceback.print_exc();sys.exit(1)
     a=QApplication(sys.argv);a.setApplicationName('LoRA 数据集筛选与字幕清理');w=Window();w.show();sys.exit(a.exec())
