@@ -683,7 +683,14 @@ class Window(QMainWindow):
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
-    QualityModels()
+    qm=QualityModels()
+    gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
+    test_bgr=cv2.merge((gradient,gradient,gradient))
+    score=qm.brisque(test_bgr)
+    if not math.isfinite(score):raise RuntimeError('BRISQUE self-test returned a non-finite score')
+    phash_int(Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB)))
+    ok,encoded=cv2.imencode('.jpg',test_bgr)
+    if not ok or encoded.size==0:raise RuntimeError('OpenCV image codec self-test failed')
     detector=TextDetector(det_config())
     TextScan.detected(detector,np.zeros((640,640,3),dtype=np.uint8))
     options=PoseLandmarkerOptions(
