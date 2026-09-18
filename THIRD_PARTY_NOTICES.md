@@ -46,6 +46,15 @@ This project uses or redistributes third-party libraries, model files, and resou
 - License: Apache License 2.0 (OpenCV Contrib repository)
 - Source: https://github.com/opencv/opencv_contrib/tree/4.x/modules/quality/samples
 
+### DB text detection post-processing code
+
+- File: `text_detector.py`
+- Adapted from: RapidOCR / PaddleOCR DB text detection preprocessing and post-processing
+- License: Apache License 2.0
+- Sources: https://github.com/RapidAI/RapidOCR and https://github.com/PaddlePaddle/PaddleOCR
+
+Only the detection-side preprocessing / DB post-processing needed by this application is retained locally. Model inference continues to use this project's bundled PP-OCRv5 ONNX detector through ONNX Runtime.
+
 ## Optional model not redistributed in the public release
 
 ### MI-GAN
@@ -62,7 +71,7 @@ Users may also place the same upstream model manually at `models/migan_pipeline_
 
 ## Python dependencies
 
-Python packages installed through `requirements.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, ImageHash, Pillow, ONNX Runtime, and RapidOCR ONNX Runtime. Their licenses are not relicensed by this repository.
+Python packages installed through `requirements.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
 
 ## Project license
 
