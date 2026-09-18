@@ -118,33 +118,37 @@
 
 暂不建议 Python 3.13+。
 
-### 安装依赖
+### 最简单的安装方式
 
-下载或克隆仓库后，在项目目录打开 PowerShell：
+1. 安装 **Python 3.12 x64**
+2. 下载或克隆本仓库
+3. 双击：
 
-```powershell
-py -3.12 -m pip install -r requirements.txt
+```text
+安装.bat
 ```
 
-如果你已经确认默认 `python` 是 3.9–3.12，也可以：
+安装脚本会在项目目录创建独立的 `.venv` 环境并安装所需依赖，不会把这些包直接装进你的其他 Python 项目。
 
-```powershell
-python -m pip install -r requirements.txt
-```
-
-### 启动
-
-最简单的方式是直接双击：
+安装完成后，双击：
 
 ```text
 启动.bat
 ```
 
-也可以手动运行：
+即可运行。
+
+### 手动安装
+
+如果你更习惯命令行，也可以在项目目录执行：
 
 ```powershell
-python app.py
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py
 ```
+
+`启动.bat` 会优先使用项目自己的 `.venv`；没有 `.venv` 时才会尝试系统里的 Python 3.9–3.12。
 
 ---
 
@@ -270,13 +274,13 @@ models/migan_pipeline_v2.onnx
 
 ### 提示缺少依赖怎么办？
 
-在项目目录重新执行：
+最简单的处理方式是重新双击：
 
-```powershell
-py -3.12 -m pip install -r requirements.txt
+```text
+安装.bat
 ```
 
-然后重新启动。
+它会继续使用项目自己的 `.venv` 并补齐缺少的依赖，然后再重新运行 `启动.bat`。
 
 ---
 
