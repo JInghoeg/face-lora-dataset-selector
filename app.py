@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import cv2, imagehash, mediapipe as mp, numpy as np, onnxruntime as ort
+    import cv2, mediapipe as mp, numpy as np, onnxruntime as ort
     from PIL import Image
     from rapidocr_onnxruntime.ch_ppocr_det.text_detect import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
@@ -45,6 +45,15 @@ class TextPhoto:
     path:Path; file_size:int; mtime_ns:int; boxes:list=field(default_factory=list); selected:list=field(default_factory=list); manual:list=field(default_factory=list); scores:list=field(default_factory=list); suggested:list=field(default_factory=list); width:int=0; height:int=0
 
 def key(path): return str(path.resolve()).casefold()
+
+def phash_int(image):
+    """64-bit perceptual hash compatible with the previous ImageHash-style pHash."""
+    gray=image.convert('L').resize((32,32),Image.Resampling.LANCZOS)
+    low=cv2.dct(np.asarray(gray,dtype=np.float32))[:8,:8]
+    bits=(low>np.median(low)).reshape(-1)
+    value=0
+    for bit in bits:value=(value<<1)|int(bit)
+    return value
 def cache_path(folder): return CACHE/(hashlib.sha256(key(folder).encode()).hexdigest()[:24]+'.json')
 def load_data(folder):
     try:
@@ -154,7 +163,7 @@ class Analyzer(QObject):
     def one(path,qm,pl,size,mtime):
         r=Photo(path,size,mtime)
         try:
-            with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=int(str(imagehash.phash(im)),16);rgb=np.asarray(im)
+            with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
             bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean()); fs=qm.faces(bgr);r.faces=0 if fs is None else len(fs);po=pl.detect(mp.Image(image_format=mp.ImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
             if r.faces==1:
                 f=fs[0];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=w*h/max(1,r.width*r.height);r.face_px=int(min(w,h));crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.;r.face_quality=qm.quality(bgr,f);r.brisque=qm.brisque(bgr);r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
