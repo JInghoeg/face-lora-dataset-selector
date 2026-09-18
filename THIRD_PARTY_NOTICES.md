@@ -56,9 +56,9 @@ This project uses or redistributes third-party libraries, model files, and resou
 - Repository: https://github.com/Picsart-AI-Research/MI-GAN
 - ONNX mirror used during development: https://huggingface.co/andraniksargsyan/migan
 
-The public release intentionally does **not** redistribute the MI-GAN ONNX weight. The upstream repository code is MIT-licensed, but the licensing / redistribution status of the released model weights has been explicitly questioned upstream and is not sufficiently clear for this project to bundle the weight by default.
+The public repository intentionally does **not** redistribute the MI-GAN ONNX weight. When the optional MI-GAN repair path is used and the file is missing, the application can download the model directly from the upstream Hugging Face location and verify the expected file size and SHA-256 before loading it.
 
-Users who independently obtain the model under terms acceptable to them may place it at `models/migan_pipeline_v2.onnx` to enable the optional MI-GAN repair path.
+Users may also place the same upstream model manually at `models/migan_pipeline_v2.onnx`.
 
 ## Python dependencies
 
