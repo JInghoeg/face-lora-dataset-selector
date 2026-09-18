@@ -13,3 +13,4 @@ cache/
 # Optional third-party model downloaded by the user.
 # It is intentionally not redistributed in the public release.
 models/migan_pipeline_v2.onnx
+.venv/
