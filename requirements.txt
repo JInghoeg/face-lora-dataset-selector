@@ -1,7 +1,7 @@
 PySide6>=6.6,<6.9
 mediapipe>=0.10.14,<0.11
-# MediaPipe 本身依赖 contrib 发行版；只保留它可避免重复安装两个 cv2 包。
-opencv-contrib-python>=4.8,<6
+# 只使用 OpenCV 的计算/推理能力；GUI 由 PySide6 提供，headless 可减少无关 HighGUI 组件。
+opencv-contrib-python-headless==4.12.0.88
 Pillow>=10,<12
 onnxruntime>=1.17,<2
 pyclipper>=1.3,<2
