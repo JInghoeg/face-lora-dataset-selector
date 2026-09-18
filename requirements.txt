@@ -4,5 +4,4 @@ mediapipe>=0.10.14,<0.11
 opencv-contrib-python>=4.8,<6
 Pillow>=10,<12
 onnxruntime>=1.17,<2
-# 仅复用其成熟的 DB 文本检测后处理；模型仍由本项目的 PP-OCRv5 ONNX 直接运行。
-rapidocr-onnxruntime==1.4.4
+pyclipper>=1.3,<2
