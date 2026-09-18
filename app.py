@@ -9,7 +9,7 @@ from typing import Optional
 try:
     import cv2, mediapipe as mp, numpy as np, onnxruntime as ort
     from PIL import Image
-    from rapidocr_onnxruntime.ch_ppocr_det.text_detect import TextDetector
+    from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
@@ -684,7 +684,8 @@ def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     QualityModels()
-    TextDetector(det_config())
+    detector=TextDetector(det_config())
+    TextScan.detected(detector,np.zeros((640,640,3),dtype=np.uint8))
     options=PoseLandmarkerOptions(
         base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),
         running_mode=VisionTaskRunningMode.IMAGE,
