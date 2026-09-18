@@ -45,6 +45,22 @@ jobs:
         run: |
           .\build_portable.ps1
 
+      - name: Portable size report
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $files = Get-ChildItem $root -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+          "Uncompressed portable: $totalMB MB" | Tee-Object -FilePath "portable-size-report.txt"
+          $files |
+            Sort-Object Length -Descending |
+            Select-Object -First 25 @{N='MB';E={[math]::Round($_.Length/1MB,1)}}, FullName |
+            Format-Table -AutoSize |
+            Out-String |
+            Tee-Object -FilePath "portable-size-report.txt" -Append |
+            Write-Host
+
       - name: Portable smoke test
         shell: pwsh
         run: |
@@ -54,6 +70,11 @@ jobs:
           }
           $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) {
+              Write-Host "---- startup-error.txt ----"
+              Get-Content $err
+            }
             throw "Portable self-test failed with exit code $($p.ExitCode)"
           }
 
@@ -74,6 +95,7 @@ jobs:
           path: |
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256
+            portable-size-report.txt
           if-no-files-found: error
 
       - name: Attach portable build to GitHub Release
