@@ -1,0 +1,85 @@
+name: Build Windows Portable
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-portable:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Build portable folder
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable smoke test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Portable executable not found: $exe"
+          }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Create ZIP and checksum
+        shell: pwsh
+        run: |
+          $name = "Face-LoRA-Dataset-Selector-Windows-x64-Portable"
+          $zip = Join-Path $PWD ($name + ".zip")
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "dist\Face-LoRA-Dataset-Selector\*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Set-Content ($zip + ".sha256") -Encoding ascii
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Face-LoRA-Dataset-Selector-Windows-x64-Portable
+          path: |
+            Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip
+            Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256
+          if-no-files-found: error
+
+      - name: Attach portable build to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
+          $sum = "$zip.sha256"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip $sum --clobber
+          } else {
+            gh release create $tag $zip $sum --title "Face LoRA Dataset Selector $tag" --generate-notes
+          }
