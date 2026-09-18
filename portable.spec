@@ -13,8 +13,6 @@ binaries = collect_dynamic_libs('mediapipe')
 hiddenimports = [
     'mediapipe.tasks.python.vision.pose_landmarker',
     'mediapipe.tasks.python.vision.core.vision_task_running_mode',
-    'rapidocr_onnxruntime.ch_ppocr_det.text_detect',
-    'rapidocr_onnxruntime.ch_ppocr_det.utils',
 ]
 
 a = Analysis(
