@@ -35,6 +35,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-build.txt
 
+      - name: Source runtime self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
       - name: Build portable folder
         shell: pwsh
         run: |
@@ -58,7 +63,7 @@ jobs:
           $name = "Face-LoRA-Dataset-Selector-Windows-x64-Portable"
           $zip = Join-Path $PWD ($name + ".zip")
           if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path "dist\Face-LoRA-Dataset-Selector\*" -DestinationPath $zip -CompressionLevel Optimal
+          Compress-Archive -Path "dist\Face-LoRA-Dataset-Selector" -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Set-Content ($zip + ".sha256") -Encoding ascii
 
