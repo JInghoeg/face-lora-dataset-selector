@@ -53,13 +53,12 @@ jobs:
           $total = ($files | Measure-Object Length -Sum).Sum
           $totalMB = [math]::Round($total / 1MB, 1)
           "Uncompressed portable: $totalMB MB" | Tee-Object -FilePath "portable-size-report.txt"
-          $files |
-            Sort-Object Length -Descending |
-            Select-Object -First 25 @{N='MB';E={[math]::Round($_.Length/1MB,1)}}, FullName |
-            Format-Table -AutoSize |
-            Out-String |
-            Tee-Object -FilePath "portable-size-report.txt" -Append |
-            Write-Host
+          $top = $files | Sort-Object Length -Descending | Select-Object -First 40
+          foreach ($file in $top) {
+            $relative = $file.FullName.Substring($root.Length + 1)
+            $line = ("{0,7:N1} MB  {1}" -f ($file.Length / 1MB), $relative)
+            $line | Tee-Object -FilePath "portable-size-report.txt" -Append | Write-Host
+          }
 
       - name: Portable smoke test
         shell: pwsh
