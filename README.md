@@ -107,6 +107,32 @@
 
 ---
 
+## 下载方式
+
+### Windows Portable（推荐普通用户）
+
+正式 Release 会提供：
+
+```text
+Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip
+```
+
+解压整个 ZIP 后，直接双击：
+
+```text
+Face LoRA Dataset Selector.exe
+```
+
+即可运行。
+
+Portable 版已经包含 Python 和运行依赖，**不需要另外安装 Python，也不需要 CUDA**。请保留解压后的完整目录，不要只单独复制 exe。
+
+### Source / main（适合测试和开发）
+
+如果你想测试最新代码，可以直接下载仓库的 `main`，然后按下面的源码安装方式运行。
+
+---
+
 ## 快速开始
 
 ### 环境
