@@ -1,1 +1,2 @@
 Portable CI validation trigger for v0.2.0 release engineering.
+Second validation run after portable workflow hardening.
