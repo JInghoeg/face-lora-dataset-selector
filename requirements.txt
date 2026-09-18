@@ -2,7 +2,6 @@ PySide6>=6.6,<6.9
 mediapipe>=0.10.14,<0.11
 # MediaPipe 本身依赖 contrib 发行版；只保留它可避免重复安装两个 cv2 包。
 opencv-contrib-python>=4.8,<6
-ImageHash>=4.3,<5
 Pillow>=10,<12
 onnxruntime>=1.17,<2
 # 仅复用其成熟的 DB 文本检测后处理；模型仍由本项目的 PP-OCRv5 ONNX 直接运行。
