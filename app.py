@@ -14,7 +14,8 @@ try:
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     from mediapipe.tasks import python
-    from mediapipe.tasks.python import vision
+    from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
+    from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 except ImportError as exc:
     print("缺少依赖：", exc); print("请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"); sys.exit(1)
 
@@ -137,8 +138,8 @@ class Analyzer(QObject):
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:result.append(photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns))
                 else:result.append(None);todo.append((i,path,stat.st_size,stat.st_mtime_ns))
             if todo:
-                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=vision.PoseLandmarkerOptions(base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),running_mode=vision.RunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
-                with vision.PoseLandmarker.create_from_options(opt) as pl:
+                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
+                with PoseLandmarker.create_from_options(opt) as pl:
                     for n,(i,p,s,m) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m);self.progress.emit(n,len(todo),p.name)
             rec=[x for x in result if x]
             for r in rec:r.manual_status=manual.get(key(r.path),r.manual_status)
@@ -670,14 +671,14 @@ def self_test():
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     QualityModels()
     TextDetector(det_config())
-    options=vision.PoseLandmarkerOptions(
+    options=PoseLandmarkerOptions(
         base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),
-        running_mode=vision.RunningMode.IMAGE,
+        running_mode=VisionTaskRunningMode.IMAGE,
         num_poses=1,
         min_pose_detection_confidence=.5,
         min_pose_presence_confidence=.5,
     )
-    landmarker=vision.PoseLandmarker.create_from_options(options)
+    landmarker=PoseLandmarker.create_from_options(options)
     landmarker.close()
     return 0
 
