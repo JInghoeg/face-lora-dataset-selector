@@ -16,7 +16,7 @@ try:
     from mediapipe.tasks import python
     from mediapipe.tasks.python import vision
 except ImportError as exc:
-    print("缺少依赖：", exc); print("请在本目录运行：python -m pip install -r requirements.txt"); sys.exit(1)
+    print("缺少依赖：", exc); print("请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"); sys.exit(1)
 
 APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'; CACHE=APP_DIR/'cache'
 THUMB_CACHE=CACHE/'thumbnails'
