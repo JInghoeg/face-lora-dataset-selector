@@ -22,6 +22,9 @@ APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'; CACHE=APP_DIR/
 THUMB_CACHE=CACHE/'thumbnails'
 POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; TEXT=MODELS/'ppocrv5_mobile_det'/'inference.onnx'; MIGAN=MODELS/'migan_pipeline_v2.onnx'
 POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
+MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
+MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
+MIGAN_SIZE=28079181
 EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
 
 @dataclass
@@ -60,6 +63,31 @@ def ensure_pose():
     run=Path(tempfile.gettempdir())/'face_lora_selector'/POSE.name; run.parent.mkdir(exist_ok=True)
     if not run.exists() or run.stat().st_size!=POSE.stat().st_size:shutil.copy2(POSE,run)
     return run
+
+def ensure_migan():
+    """首次使用时从上游下载 MI-GAN，并在落盘前校验大小与 SHA-256。"""
+    if MIGAN.exists() and MIGAN.stat().st_size==MIGAN_SIZE:
+        return MIGAN
+    MIGAN.parent.mkdir(parents=True,exist_ok=True)
+    tmp=MIGAN.with_suffix(MIGAN.suffix+'.part')
+    try:
+        if tmp.exists():tmp.unlink()
+        req=urllib.request.Request(MIGAN_URL,headers={'User-Agent':'Face-LoRA-Dataset-Selector/0.1'})
+        h=hashlib.sha256();size=0
+        with urllib.request.urlopen(req,timeout=60) as src,tmp.open('wb') as dst:
+            while True:
+                chunk=src.read(1024*1024)
+                if not chunk:break
+                dst.write(chunk);h.update(chunk);size+=len(chunk)
+        if size!=MIGAN_SIZE or h.hexdigest().lower()!=MIGAN_SHA256:
+            raise RuntimeError(f'MI-GAN 下载校验失败：{size} bytes / {h.hexdigest()}')
+        tmp.replace(MIGAN)
+    except Exception:
+        try:
+            if tmp.exists():tmp.unlink()
+        except Exception:pass
+        raise
+    return MIGAN
 def native_model(path):
     """OpenCV Windows 原生层不能稳定打开中文路径，给它 ASCII 运行时副本。"""
     run=Path(tempfile.gettempdir())/'face_lora_selector'/path.name;run.parent.mkdir(exist_ok=True)
@@ -285,7 +313,7 @@ class ImagePreview(QLabel):
 
 class MIRepair:
     """官方 MI-GAN ONNX pipeline；每个连通字幕区域独立取上下文后修复。"""
-    def __init__(self): required([MIGAN]);self.session=ort.InferenceSession(str(MIGAN),providers=['CPUExecutionProvider'])
+    def __init__(self): self.session=ort.InferenceSession(str(ensure_migan()),providers=['CPUExecutionProvider'])
     def run(self,image,mask):
         joined=cv2.dilate(mask,cv2.getStructuringElement(cv2.MORPH_RECT,(25,13)))
         contours,_=cv2.findContours(joined,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE);result=image.copy();h,w=mask.shape
@@ -435,7 +463,11 @@ class SubtitleTab(QWidget):
         im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR);return None if im is None else self.repaired_image(r,im)
     def preview_repair(self):
         if self.current>=0:
-            im=self.repaired(self.records[self.current]);self.preview.set_data(im,[],[],[])
+            try:
+                if self.method.currentText()=='AI 修复（MI-GAN）' and not MIGAN.exists():
+                    QMessageBox.information(self,'首次使用 MI-GAN','首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。下载完成后会自动校验文件。')
+                im=self.repaired(self.records[self.current]);self.preview.set_data(im,[],[],[])
+            except Exception as e:QMessageBox.critical(self,'预览修复失败',str(e))
     def batch(self):
         if not self.folder or not self.output or not self.records:QMessageBox.information(self,'缺少内容','请先选择输入、输出目录并扫描文字。');return
         if self.output.resolve()==self.folder.resolve() or self.folder.resolve() in self.output.resolve().parents:QMessageBox.warning(self,'输出目录无效','输出目录必须是源目录以外的新目录。');return
