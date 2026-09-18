@@ -2,6 +2,11 @@
 setlocal
 cd /d "%~dp0"
 
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" app.py
+    goto :done
+)
+
 for %%V in (3.12 3.11 3.10 3.9) do (
     py -%%V -c "import sys" >nul 2>nul
     if not errorlevel 1 (
@@ -17,8 +22,7 @@ if not errorlevel 1 (
 )
 
 echo No supported Python found.
-echo Please install Python 3.12 x64, then run:
-echo   py -3.12 -m pip install -r requirements.txt
+echo Please install Python 3.12 x64, then double-click 安装.bat
 pause
 exit /b 1
 
