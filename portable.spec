@@ -1,18 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
+# Bundle only this project's runtime models. MI-GAN remains on-demand.
 datas = [('models', 'models')]
-binaries = []
-hiddenimports = []
 
-# These packages contain internal modules / native assets that are imported
-# dynamically at runtime. Collect them explicitly so the portable build does
-# not depend on PyInstaller guessing every submodule.
-for package in ('mediapipe', 'rapidocr_onnxruntime'):
-    d, b, h = collect_all(package)
-    datas += d
-    binaries += b
-    hiddenimports += h
+# MediaPipe uses native extension modules. Keep its native binaries, but do
+# not collect the whole Python package: the application only uses PoseLandmarker.
+binaries = collect_dynamic_libs('mediapipe')
+
+# The imports below are deliberately narrow. In particular, do not use
+# collect_all('mediapipe') or collect_all('rapidocr_onnxruntime'): those pull
+# unrelated vision/audio/OCR features and bundled OCR weights into Portable.
+hiddenimports = [
+    'mediapipe.tasks.python.vision.pose_landmarker',
+    'mediapipe.tasks.python.vision.core.vision_task_running_mode',
+    'rapidocr_onnxruntime.ch_ppocr_det.text_detect',
+    'rapidocr_onnxruntime.ch_ppocr_det.utils',
+]
 
 a = Analysis(
     ['app.py'],
@@ -23,9 +27,21 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Optional MediaPipe ecosystems not used by this application.
+        'jax',
+        'jaxlib',
+        'matplotlib',
+        'sounddevice',
+        'mediapipe.tasks.python.audio',
+        'mediapipe.tasks.python.text',
+        # Avoid accidental inclusion of unrelated GUI stacks.
+        'PyQt5',
+        'PyQt6',
+        'PySide2',
+    ],
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 
 pyz = PYZ(a.pure)
