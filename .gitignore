@@ -14,3 +14,7 @@ cache/
 # It is intentionally not redistributed in the public release.
 models/migan_pipeline_v2.onnx
 .venv/
+build/
+dist/
+*.zip
+*.sha256
