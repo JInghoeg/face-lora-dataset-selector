@@ -619,9 +619,11 @@ class Window(QMainWindow):
         self.scale_combo=QComboBox();self.scale_combo.addItems(['全部',*SCALES]);self.scale_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('景别'));c.addWidget(self.scale_combo)
         self.yaw_combo=QComboBox();self.yaw_combo.addItems(['全部',*YAWS]);self.yaw_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('Yaw'));c.addWidget(self.yaw_combo)
         self.pitch_combo=QComboBox();self.pitch_combo.addItems(['全部',*PITCHES]);self.pitch_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('Pitch'));c.addWidget(self.pitch_combo)
+        self.eligibility_combo=QComboBox();self.eligibility_combo.addItems(['全部','PASS','REVIEW','REJECT']);self.eligibility_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('Eligibility'));c.addWidget(self.eligibility_combo)
         clear_filters=QPushButton('清除全部筛选');clear_filters.clicked.connect(self.clear_filters);c.addWidget(clear_filters)
         self.sort_combo=QComboBox();self.sort_combo.addItems(['默认顺序','Face Quality 高 → 低','Face Quality 低 → 高','BRISQUE 低 → 高','BRISQUE 高 → 低','Sharpness 高 → 低','Sharpness 低 → 高','状态','Duplicate Group','来源目录 / 源视频','景别','Yaw','Pitch']);self.sort_combo.currentTextChanged.connect(self.sort_changed);c.addWidget(QLabel('排序'));c.addWidget(self.sort_combo)
         self.best_only=QCheckBox('仅显示每个 Duplicate Group 的最佳图');self.best_only.toggled.connect(self.filters_changed);c.addWidget(self.best_only)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());c.addWidget(self.show_face_boxes)
         top_view=QPushButton('本视图质量 Top 10');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('本视图质量 Bottom 10');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));c.addWidget(top_view);c.addWidget(bottom_view);c.addWidget(clear_top);c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
         self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:4px; background:#eef3f8;');l.addWidget(self.current_view_label)
         s=QSplitter(Qt.Horizontal);self.grid=QListWidget();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
@@ -643,11 +645,11 @@ class Window(QMainWindow):
     def filters_changed(self,*_):self.quick_mode='';self.page=0;self.refresh()
     def sort_changed(self,*_):self.refresh()
     def clear_filters(self):
-        for combo in (self.view_combo,self.scale_combo,self.yaw_combo,self.pitch_combo):combo.blockSignals(True);combo.setCurrentIndex(0);combo.blockSignals(False)
+        for combo in (self.view_combo,self.scale_combo,self.yaw_combo,self.pitch_combo,self.eligibility_combo):combo.blockSignals(True);combo.setCurrentIndex(0);combo.blockSignals(False)
         self.best_only.blockSignals(True);self.best_only.setChecked(False);self.best_only.blockSignals(False);self.quick_mode='';self.page=0;self.refresh()
     def quick(self,mode):self.quick_mode=mode;self.page=0;self.refresh()
     def set_category_filter(self,kind,value):
-        combo={'status':self.view_combo,'scale':self.scale_combo,'yaw':self.yaw_combo,'pitch':self.pitch_combo}[kind]
+        combo={'status':self.view_combo,'scale':self.scale_combo,'yaw':self.yaw_combo,'pitch':self.pitch_combo,'eligibility':self.eligibility_combo}[kind]
         combo.setCurrentText(value);self.quick_mode='';self.page=0;self.refresh()
     def group_rank(self,r):
         if not r.duplicate_group:return 1,1
@@ -657,7 +659,7 @@ class Window(QMainWindow):
         entries=group_entries(self.records,r.duplicate_group,True)
         return (entries.index(r)+1,len(entries)) if r in entries else (0,len(entries))
     def indices(self,with_quick=True):
-        base=[i for i,r in enumerate(self.records) if (self.view_combo.currentText()=='全部' or r.status==self.view_combo.currentText()) and (self.scale_combo.currentText()=='全部' or r.person_scale==self.scale_combo.currentText()) and (self.yaw_combo.currentText()=='全部' or r.angle_class==self.yaw_combo.currentText()) and (self.pitch_combo.currentText()=='全部' or r.pitch_class==self.pitch_combo.currentText())]
+        base=[i for i,r in enumerate(self.records) if (self.view_combo.currentText()=='全部' or r.status==self.view_combo.currentText()) and (self.scale_combo.currentText()=='全部' or r.person_scale==self.scale_combo.currentText()) and (self.yaw_combo.currentText()=='全部' or r.angle_class==self.yaw_combo.currentText()) and (self.pitch_combo.currentText()=='全部' or r.pitch_class==self.pitch_combo.currentText()) and (self.eligibility_combo.currentText()=='全部' or r.eligibility==self.eligibility_combo.currentText())]
         if self.best_only.isChecked():base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
         sort=self.sort_combo.currentText()
         key_func={'Face Quality 高 → 低':lambda r:r.face_quality,'Face Quality 低 → 高':lambda r:r.face_quality,'BRISQUE 低 → 高':lambda r:r.brisque,'BRISQUE 高 → 低':lambda r:r.brisque,'Sharpness 高 → 低':lambda r:r.blur,'Sharpness 低 → 高':lambda r:r.blur,'状态':lambda r:r.status,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
@@ -672,6 +674,7 @@ class Window(QMainWindow):
         if self.scale_combo.currentText()!='全部':parts.append('景别：'+self.scale_combo.currentText())
         if self.yaw_combo.currentText()!='全部':parts.append('Yaw：'+self.yaw_combo.currentText())
         if self.pitch_combo.currentText()!='全部':parts.append('Pitch：'+self.pitch_combo.currentText())
+        if self.eligibility_combo.currentText()!='全部':parts.append('Eligibility：'+self.eligibility_combo.currentText())
         if self.best_only.isChecked():parts.append('每组最佳图')
         if self.quick_mode=='view_top':parts.append('Top 10')
         if self.quick_mode=='view_bottom':parts.append('Bottom 10')
@@ -682,6 +685,12 @@ class Window(QMainWindow):
         value=self.thumb_memory.get(key(photo.path))
         if value is not None:self.thumb_memory.move_to_end(key(photo.path))
         return value
+    def decorated_thumbnail(self,photo,pix):
+        if not self.show_face_boxes.isChecked() or not photo.face_detections or pix.isNull():return pix
+        out=pix.copy();p=QPainter(out);scale=min(150/max(1,photo.width),150/max(1,photo.height),1.0);draw_w=photo.width*scale;draw_h=photo.height*scale;ox=(150-draw_w)/2;oy=(150-draw_h)/2
+        for d in photo.face_detections:
+            pen=QPen(QColor('#1b8f3a' if d.is_primary else '#c43a31'));pen.setWidth(3 if d.is_primary else 2);p.setPen(pen);x,y,w,h=d.bbox_xywh;p.drawRect(int(ox+x*scale),int(oy+y*scale),max(1,int(w*scale)),max(1,int(h*scale)))
+        p.end();return out
     def start_thumbnails(self,indices):
         missing=[(i,self.records[i]) for i in indices if self.cached_thumbnail(self.records[i]) is None]
         if not missing:return
@@ -694,7 +703,7 @@ class Window(QMainWindow):
         pix=QPixmap.fromImage(image);self.thumb_memory[key(self.records[index].path)]=pix;self.thumb_memory.move_to_end(key(self.records[index].path))
         while len(self.thumb_memory)>600:self.thumb_memory.popitem(last=False)
         item=self.visible_item_map.get(index)
-        if item is not None:item.setIcon(QIcon(pix))
+        if item is not None:item.setIcon(QIcon(self.decorated_thumbnail(self.records[index],pix)))
     def stat_button(self,text,kind,value,row,column):
         button=QPushButton(text);button.setFlat(True);button.setStyleSheet('text-align:left; color:#175ea8;');button.clicked.connect(lambda _=False,k=kind,v=value:self.set_category_filter(k,v));self.stat_layout.addWidget(button,row,column)
     def refresh_stats(self):
@@ -714,7 +723,7 @@ class Window(QMainWindow):
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);self.grid.clear();self.visible_item_map={};self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
         pages=max(1,math.ceil(len(visible)/PAGE));self.page=min(self.page,pages-1);self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图：{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
     def change(self,d):
         n=self.page+d
