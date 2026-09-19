@@ -14,7 +14,7 @@ The next public release focuses on making the project usable by people who did n
 ### Models and runtime
 
 - Remove the ImageHash/SciPy runtime dependency by using an OpenCV DCT perceptual hash.
-- Pin the headless OpenCV contrib build used by the app to keep the Windows runtime reproducible and avoid unused HighGUI components.
+- Pin a single OpenCV contrib build to avoid duplicate OpenCV runtimes in Portable.
 - Keep MI-GAN out of the repository itself.
 - Download MI-GAN automatically on first use when AI repair is selected.
 - Verify the downloaded MI-GAN file before loading it.
@@ -22,6 +22,8 @@ The next public release focuses on making the project usable by people who did n
 
 ### Release engineering
 
+- Slim the Portable dependency graph by using PySide6 Essentials, avoiding eager MediaPipe task-family imports, excluding unused Pillow AVIF support, and dropping OpenCV's unused FFmpeg video codec.
+- Reduce the current Windows Portable candidate from about 487 MB unpacked to about 307 MB while keeping the packaged runtime smoke test green.
 - Add a reproducible PyInstaller Windows build specification.
 - Add GitHub Actions packaging for the Portable ZIP and SHA-256 checksum.
 - Attach Portable artifacts automatically to tagged GitHub Releases.
