@@ -7,7 +7,37 @@ $dist = Join-Path $PSScriptRoot "dist"
 if (Test-Path $build) { Remove-Item $build -Recurse -Force }
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 
-python -m PyInstaller --noconfirm --clean portable.spec
+# MediaPipe's package __init__ files eagerly import every task family
+# (audio/text/all vision tools), even though this app only uses PoseLandmarker.
+# For packaging only, temporarily make those two initializers lazy/empty so
+# PyInstaller follows the actual imports instead of bundling unrelated modules.
+$mpRoot = python -c "import pathlib, mediapipe; print(pathlib.Path(mediapipe.__file__).parent)"
+$mpRoot = $mpRoot.Trim()
+$mpInitFiles = @(
+    (Join-Path $mpRoot "tasks\python\__init__.py"),
+    (Join-Path $mpRoot "tasks\python\vision\__init__.py")
+)
+$mpBackups = @{}
+
+try {
+    foreach ($file in $mpInitFiles) {
+        if (-not (Test-Path $file)) {
+            throw "MediaPipe package initializer not found: $file"
+        }
+        $mpBackups[$file] = Get-Content $file -Raw
+        "# Portable build: intentionally minimal package initializer." | Set-Content $file -Encoding UTF8
+    }
+
+    python -m PyInstaller --noconfirm --clean portable.spec
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller failed with exit code $LASTEXITCODE"
+    }
+}
+finally {
+    foreach ($file in $mpBackups.Keys) {
+        $mpBackups[$file] | Set-Content $file -Encoding UTF8 -NoNewline
+    }
+}
 
 $portable = Join-Path $dist "Face-LoRA-Dataset-Selector"
 if (-not (Test-Path $portable)) {
