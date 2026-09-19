@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.2.0 — in progress
+## v0.2.0 — 2026-09-19
 
-The next public release focuses on making the project usable by people who did not build the original development environment.
+This release focuses on making the project usable by people who did not build the original development environment.
 
 ### Distribution and setup
 
