@@ -29,6 +29,9 @@ a = Analysis(
         'PyQt5',
         'PyQt6',
         'PySide2',
+        # AVIF is not an accepted input format in this application; the Pillow
+        # AVIF extension alone adds several MB to the Portable folder.
+        'PIL.AvifImagePlugin',
     ],
     noarchive=False,
     optimize=1,
