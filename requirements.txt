@@ -1,7 +1,7 @@
 PySide6>=6.6,<6.9
 mediapipe>=0.10.14,<0.11
-# 只使用 OpenCV 的计算/推理能力；GUI 由 PySide6 提供，headless 可减少无关 HighGUI 组件。
-opencv-contrib-python-headless==4.12.0.88
+# BRISQUE 位于 OpenCV contrib；固定版本避免 Portable 中同时出现多套 OpenCV 二进制。
+opencv-contrib-python==4.12.0.88
 Pillow>=10,<12
 onnxruntime>=1.17,<2
 pyclipper>=1.3,<2
