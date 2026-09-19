@@ -490,7 +490,7 @@ class Analyzer(QObject):
             if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
 def rank(r):return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'secondary_faces_detected','probable_multi_person','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
+AUTO_RECOMMEND_BLOCKING_FLAGS={'secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
 def recommendation_qualified(r):
     """自动推荐门槛与 REVIEW 分离：非阻断型 warning（如 low_face_ratio）不应变相淘汰可用图片。"""
     blocked=bool(r.hard_rejects) or any(x.code in AUTO_RECOMMEND_BLOCKING_FLAGS for x in r.review_flags)
