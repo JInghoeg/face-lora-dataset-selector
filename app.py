@@ -265,7 +265,7 @@ class TextScan(QObject):
     def __init__(self,folder,cached):super().__init__();self.folder=folder;self.cached=cached
     @staticmethod
     def detected(det, image):
-        """使用 RapidOCR 自带 DB 后处理，同时取回检测置信度。"""
+        """使用本项目保留的 PP-OCR DB 后处理，同时取回检测置信度。"""
         shape=image.shape[:2];det.preprocess_op=det.get_preprocess(max(shape));x=det.preprocess_op(image)
         if x is None:return [],[]
         boxes,scores=det.postprocess_op(det.infer(x)[0],shape);boxes=det.filter_tag_det_res(boxes,shape)
@@ -700,7 +700,10 @@ def self_test():
     ok,encoded=cv2.imencode('.jpg',test_bgr)
     if not ok or encoded.size==0:raise RuntimeError('OpenCV image codec self-test failed')
     detector=TextDetector(det_config())
-    TextScan.detected(detector,np.zeros((640,640,3),dtype=np.uint8))
+    ocr_test=np.full((640,640,3),255,dtype=np.uint8)
+    cv2.putText(ocr_test,'TEST 123',(70,350),cv2.FONT_HERSHEY_SIMPLEX,3.0,(0,0,0),8,cv2.LINE_AA)
+    ocr_boxes,_=TextScan.detected(detector,ocr_test)
+    if not ocr_boxes:raise RuntimeError('PP-OCR text detector self-test found no text')
     options=PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=str(ensure_pose())),
         running_mode=VisionTaskRunningMode.IMAGE,
