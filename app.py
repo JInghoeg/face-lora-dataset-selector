@@ -247,6 +247,30 @@ def dataset_summary(records,view_description=''):
         'view_description':view_description,
     }
 
+def prepare_review_patch(data,records,patch_id='review_patch'):
+    if not isinstance(data,dict):raise ValueError('review patch 必须是 JSON object')
+    if data.get('schema_version')!=AI_BUNDLE_SCHEMA:raise ValueError(f'不支持的 schema_version：{data.get("schema_version")}')
+    bundle_id=str(data.get('bundle_id','')).strip()
+    if not bundle_id:raise ValueError('缺少 bundle_id')
+    suggestions=data.get('suggestions')
+    if not isinstance(suggestions,list):raise ValueError('suggestions 必须是数组')
+    ids=[x.get('sample_id') for x in suggestions if isinstance(x,dict)]
+    if len(ids)!=len(suggestions) or any(not isinstance(x,str) or not x for x in ids):raise ValueError('每条 suggestion 都必须有有效 sample_id')
+    if len(set(ids))!=len(ids):raise ValueError('同一 patch 中存在重复 sample_id')
+    by_id={r.sample_id:r for r in records};pending=[];unknown=[];stale=[];allowed_e={None,'PASS','REVIEW','REJECT'};allowed_s={None,'推荐','备选','淘汰'}
+    for item in suggestions:
+        sid=item['sample_id'];target=by_id.get(sid)
+        if target is None:unknown.append(sid);continue
+        supplied=item.get('content_sha256')
+        if supplied and supplied!=target.content_sha256:stale.append(sid);continue
+        se=item.get('suggested_eligibility');ss=item.get('suggested_status');flags=item.get('flags',[]);note=item.get('note','');full=item.get('request_full_resolution',False)
+        if se not in allowed_e:raise ValueError(f'{sid}: suggested_eligibility 无效')
+        if ss not in allowed_s:raise ValueError(f'{sid}: suggested_status 无效')
+        if not isinstance(flags,list) or any(not isinstance(x,str) for x in flags):raise ValueError(f'{sid}: flags 必须是字符串数组')
+        if not isinstance(note,str) or not isinstance(full,bool):raise ValueError(f'{sid}: note/request_full_resolution 类型无效')
+        pending.append((target,AISuggestion(patch_id,bundle_id,se,ss,list(flags),note,full,'pending')))
+    return bundle_id,pending,unknown,stale
+
 def write_contact_sheets(records,out_dir,prefix):
     out_dir.mkdir(parents=True,exist_ok=True)
     cols,rows=4,4;tile_w,tile_h=250,220;img_w,img_h=220,150;per_page=cols*rows
@@ -1083,31 +1107,10 @@ class Window(QMainWindow):
         filename,_=QFileDialog.getOpenFileName(self,'选择 review_patch.json',str(self.folder or APP_DIR),'JSON (*.json)')
         if not filename:return
         try:
-            data=json.loads(Path(filename).read_text(encoding='utf-8'))
-            if data.get('schema_version')!=AI_BUNDLE_SCHEMA:raise ValueError(f'不支持的 schema_version：{data.get("schema_version")}')
-            bundle_id=str(data.get('bundle_id','')).strip()
-            if not bundle_id:raise ValueError('缺少 bundle_id')
-            suggestions=data.get('suggestions')
-            if not isinstance(suggestions,list):raise ValueError('suggestions 必须是数组')
-            ids=[x.get('sample_id') for x in suggestions if isinstance(x,dict)]
-            if len(ids)!=len(suggestions) or any(not isinstance(x,str) or not x for x in ids):raise ValueError('每条 suggestion 都必须有有效 sample_id')
-            if len(set(ids))!=len(ids):raise ValueError('同一 patch 中存在重复 sample_id')
+            data=json.loads(Path(filename).read_text(encoding='utf-8'));bundle_id,pending,unknown,stale=prepare_review_patch(data,self.records,Path(filename).stem)
             if bundle_id not in self.exported_bundle_ids:
                 ans=QMessageBox.question(self,'外部或历史审核包',f'本地记录中找不到 bundle_id：\n{bundle_id}\n\n如果这是历史导出的审核包，仍可按 sample_id + 内容哈希安全匹配。是否继续？',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)
                 if ans!=QMessageBox.Yes:return
-            by_id={r.sample_id:r for r in self.records};pending=[];unknown=[];stale=[]
-            allowed_e={None,'PASS','REVIEW','REJECT'};allowed_s={None,'推荐','备选','淘汰'}
-            for item in suggestions:
-                sid=item['sample_id'];target=by_id.get(sid)
-                if target is None:unknown.append(sid);continue
-                supplied=item.get('content_sha256')
-                if supplied and supplied!=target.content_sha256:stale.append(sid);continue
-                se=item.get('suggested_eligibility');ss=item.get('suggested_status');flags=item.get('flags',[]);note=item.get('note','');full=item.get('request_full_resolution',False)
-                if se not in allowed_e:raise ValueError(f'{sid}: suggested_eligibility 无效')
-                if ss not in allowed_s:raise ValueError(f'{sid}: suggested_status 无效')
-                if not isinstance(flags,list) or any(not isinstance(x,str) for x in flags):raise ValueError(f'{sid}: flags 必须是字符串数组')
-                if not isinstance(note,str) or not isinstance(full,bool):raise ValueError(f'{sid}: note/request_full_resolution 类型无效')
-                pending.append((target,AISuggestion(Path(filename).stem,bundle_id,se,ss,list(flags),note,full,'pending')))
             for target,suggestion in pending:target.ai_suggestion=suggestion
             self.save();self.refresh();self.update_ai_panel()
             msg=f'已导入 AI 建议：{len(pending)} 条'
@@ -1172,6 +1175,12 @@ def self_test():
     if not restored.ai_suggestion or restored.ai_suggestion.bundle_id!='bundle_1' or restored.ai_suggestion.decision!='pending':raise RuntimeError('AI suggestion round-trip self-test failed')
     entry=manifest_entry(probe,Path('.'));flat=flat_manifest_entry(probe,Path('.'));summary=dataset_summary([probe],'test view')
     if entry['sample_id']!='img_probe' or flat['eligibility']!='REVIEW' or summary['total_samples']!=1:raise RuntimeError('AI bundle serialization self-test failed')
+    patch={'schema_version':AI_BUNDLE_SCHEMA,'bundle_id':'bundle_test','suggestions':[{'sample_id':'img_probe','content_sha256':'a'*64,'suggested_eligibility':'REVIEW','suggested_status':'备选','flags':['possible_redundancy'],'note':'test','request_full_resolution':True}]}
+    bid,pending,unknown,stale=prepare_review_patch(patch,[probe],'patch_test')
+    if bid!='bundle_test' or len(pending)!=1 or unknown or stale or pending[0][1].note!='test':raise RuntimeError('AI review patch validation self-test failed')
+    try:prepare_review_patch({'schema_version':AI_BUNDLE_SCHEMA,'bundle_id':'x','suggestions':[{'sample_id':'img_probe'},{'sample_id':'img_probe'}]},[probe])
+    except ValueError:pass
+    else:raise RuntimeError('duplicate AI patch ID self-test failed')
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','降序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
