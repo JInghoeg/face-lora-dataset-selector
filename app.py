@@ -50,6 +50,28 @@ class AISuggestion:
 class ViewSpec:
     name:str=''; filters:dict=field(default_factory=dict); sort_field:str='默认顺序'; sort_direction:str='降序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
 
+def view_field_value(photo,field_name):
+    aliases={
+        'status':lambda r:r.status,
+        'person_scale':lambda r:r.person_scale,
+        'angle_class':lambda r:r.angle_class,
+        'pitch_class':lambda r:r.pitch_class,
+        'eligibility':lambda r:r.eligibility,
+        'duplicate_group':lambda r:r.duplicate_group,
+        'source':lambda r:r.source,
+        'face_quality':lambda r:r.face_quality,
+        'brisque':lambda r:r.brisque,
+        'blur':lambda r:r.blur,
+        'face_px':lambda r:r.face_px,
+    }
+    fn=aliases.get(field_name)
+    return fn(photo) if fn else getattr(photo,field_name,None)
+
+def photo_matches_filters(photo,filters):
+    for field_name,expected in filters.items():
+        if view_field_value(photo,field_name)!=expected:return False
+    return True
+
 @dataclass
 class Photo:
     path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0
@@ -965,14 +987,12 @@ class Window(QMainWindow):
         entries=group_entries(self.records,r.duplicate_group,True)
         return (entries.index(r)+1,len(entries)) if r in entries else (0,len(entries))
     def indices(self,with_quick=True):
-        base=[i for i,r in enumerate(self.records) if (self.view_combo.currentText()=='全部' or r.status==self.view_combo.currentText()) and (self.scale_combo.currentText()=='全部' or r.person_scale==self.scale_combo.currentText()) and (self.yaw_combo.currentText()=='全部' or r.angle_class==self.yaw_combo.currentText()) and (self.pitch_combo.currentText()=='全部' or r.pitch_class==self.pitch_combo.currentText()) and (self.eligibility_combo.currentText()=='全部' or r.eligibility==self.eligibility_combo.currentText())]
-        if self.best_only.isChecked():base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
-        sort=self.sort_field_combo.currentText()
-        key_func={'Face Quality':lambda r:r.face_quality,'BRISQUE':lambda r:r.brisque,'Sharpness':lambda r:r.blur,'Face Pixels':lambda r:r.face_px,'状态':lambda r:r.status,'Eligibility':lambda r:r.eligibility,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
-        if sort in key_func:base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=self.sort_dir_combo.currentText()=='降序')
-        n=self.quick_n.value()
-        if with_quick and self.quick_mode=='view_top':base=sorted(base,key=lambda i:self.quick_key(self.records[i]),reverse=True)[:n]
-        if with_quick and self.quick_mode=='view_bottom':base=sorted(base,key=lambda i:self.quick_key(self.records[i]))[:n]
+        spec=self.current_view_spec();base=[i for i,r in enumerate(self.records) if photo_matches_filters(r,spec.filters)]
+        if spec.best_only:base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
+        sort=spec.sort_field;key_func={'Face Quality':lambda r:r.face_quality,'BRISQUE':lambda r:r.brisque,'Sharpness':lambda r:r.blur,'Face Pixels':lambda r:r.face_px,'状态':lambda r:r.status,'Eligibility':lambda r:r.eligibility,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
+        if sort in key_func:base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=spec.sort_direction=='降序')
+        if with_quick and spec.quick_mode=='view_top':base=sorted(base,key=lambda i:self.quick_key(self.records[i]),reverse=True)[:spec.limit_n]
+        if with_quick and spec.quick_mode=='view_bottom':base=sorted(base,key=lambda i:self.quick_key(self.records[i]))[:spec.limit_n]
         return base
     def view_description(self):
         parts=[]
@@ -1183,6 +1203,7 @@ def self_test():
     else:raise RuntimeError('duplicate AI patch ID self-test failed')
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','降序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
+    if not photo_matches_filters(probe,{'eligibility':'REVIEW'}) or photo_matches_filters(probe,{'eligibility':'PASS'}):raise RuntimeError('field-driven View filter self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='升序':raise RuntimeError('legacy ViewSpec migration self-test failed')
     d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
