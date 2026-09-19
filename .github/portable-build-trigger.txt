@@ -2,3 +2,4 @@ Portable CI validation trigger for v0.2.0 release engineering.
 Second validation run after portable workflow hardening.
 Slim portable validation run.
 Headless OpenCV portable size validation.
+MediaPipe import graph slimming validation.
