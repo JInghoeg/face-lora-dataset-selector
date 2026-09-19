@@ -48,9 +48,15 @@ class TextPhoto:
 def key(path): return str(path.resolve()).casefold()
 
 def phash_int(image):
-    """64-bit perceptual hash compatible with the previous ImageHash-style pHash."""
+    """64-bit pHash compatible with ImageHash's historical scipy DCT implementation."""
     gray=image.convert('L').resize((32,32),Image.Resampling.LANCZOS)
-    low=cv2.dct(np.asarray(gray,dtype=np.float32))[:8,:8]
+    dct=cv2.dct(np.asarray(gray,dtype=np.float32))
+    # scipy.fftpack.dct(..., norm=None), used by ImageHash, differs from
+    # OpenCV's orthonormal DCT only by positive per-frequency scale factors.
+    # Apply those factors so old cached hashes and newly analysed hashes remain
+    # comparable instead of silently creating two incompatible hash spaces.
+    scale=np.full(32,math.sqrt(64.0),dtype=np.float32);scale[0]=2.0*math.sqrt(32.0)
+    low=(dct*scale[:,None]*scale[None,:])[:8,:8]
     bits=(low>np.median(low)).reshape(-1)
     value=0
     for bit in bits:value=(value<<1)|int(bit)
@@ -689,7 +695,8 @@ def self_test():
     test_bgr=cv2.merge((gradient,gradient,gradient))
     score=qm.brisque(test_bgr)
     if not math.isfinite(score):raise RuntimeError('BRISQUE self-test returned a non-finite score')
-    phash_int(Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB)))
+    test_image=Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB))
+    if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
     ok,encoded=cv2.imencode('.jpg',test_bgr)
     if not ok or encoded.size==0:raise RuntimeError('OpenCV image codec self-test failed')
     detector=TextDetector(det_config())
