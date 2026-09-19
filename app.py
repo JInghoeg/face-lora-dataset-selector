@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import cv2, mediapipe as mp, numpy as np, onnxruntime as ort
+    import cv2, numpy as np, onnxruntime as ort
     from PIL import Image
     from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
-    from mediapipe.tasks import python
+    from mediapipe.tasks.python.core.base_options import BaseOptions
+    from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 except ImportError as exc:
@@ -152,7 +153,7 @@ class Analyzer(QObject):
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:result.append(photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns))
                 else:result.append(None);todo.append((i,path,stat.st_size,stat.st_mtime_ns))
             if todo:
-                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
+                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
                 with PoseLandmarker.create_from_options(opt) as pl:
                     for n,(i,p,s,m) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m);self.progress.emit(n,len(todo),p.name)
             rec=[x for x in result if x]
@@ -164,7 +165,7 @@ class Analyzer(QObject):
         r=Photo(path,size,mtime)
         try:
             with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean()); fs=qm.faces(bgr);r.faces=0 if fs is None else len(fs);po=pl.detect(mp.Image(image_format=mp.ImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
+            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean()); fs=qm.faces(bgr);r.faces=0 if fs is None else len(fs);po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
             if r.faces==1:
                 f=fs[0];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=w*h/max(1,r.width*r.height);r.face_px=int(min(w,h));crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.;r.face_quality=qm.quality(bgr,f);r.brisque=qm.brisque(bgr);r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
             else:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var());r.brisque=qm.brisque(bgr)
@@ -694,7 +695,7 @@ def self_test():
     detector=TextDetector(det_config())
     TextScan.detected(detector,np.zeros((640,640,3),dtype=np.uint8))
     options=PoseLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path=str(ensure_pose())),
+        base_options=BaseOptions(model_asset_path=str(ensure_pose())),
         running_mode=VisionTaskRunningMode.IMAGE,
         num_poses=1,
         min_pose_detection_confidence=.5,
