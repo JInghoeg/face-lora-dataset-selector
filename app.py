@@ -683,7 +683,7 @@ class DuplicateReviewDialog(QDialog):
         gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.clear();self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张')
         self.toggle_grouping.setText('勾选项恢复自动分组' if gid==-1 else '勾选项移出重复组')
         for rank_no,r in enumerate(members,1):
-            index=self.records.index(r);prefix='★ ' if gid!=-1 and rank_no==1 else '';text=f'{prefix}{r.path.name}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
+            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';text=f'{prefix}{r.path.name}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
             it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if r.manual_status=='推荐' else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n状态：{r.status} · Eligibility：{r.eligibility}');self.members.addItem(it)
     def checked_records(self):
         out=[]
@@ -947,6 +947,8 @@ def self_test():
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='升序':raise RuntimeError('legacy ViewSpec migration self-test failed')
+    d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
+    if not d1.duplicate_group or d1.duplicate_group!=d2.duplicate_group or d3.duplicate_group!=0:raise RuntimeError('duplicate exclusion self-test failed')
     restored.hard_rejects=[AnalysisFinding('read_error','test',detail='fatal')];derive_eligibility(restored)
     if restored.eligibility!='REJECT':raise RuntimeError('eligibility REJECT self-test failed')
     ok,encoded=cv2.imencode('.jpg',test_bgr)
