@@ -1,5 +1,7 @@
 # Face LoRA Dataset Selector v0.2.0
 
+发布日期：2026-09-19
+
 这是第一次面向普通 Windows 用户完整整理的公开发行版。
 
 ## 推荐下载
