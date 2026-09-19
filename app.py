@@ -1,6 +1,6 @@
 """本地 LoRA 数据集筛选与批量字幕清理。"""
 from __future__ import annotations
-import hashlib, json, math, os, pickle, shutil, sys, tempfile, traceback, urllib.request
+import hashlib, json, math, os, pickle, shutil, sys, tempfile, traceback, urllib.request, uuid
 from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -92,7 +92,7 @@ def sha256_file(path):
             if not chunk:break
             h.update(chunk)
     return h.hexdigest()
-def sample_id_for(content_sha256): return 'img_'+content_sha256[:16]
+def new_sample_id(): return 'img_'+uuid.uuid4().hex[:20]
 def cache_path(folder): return CACHE/(hashlib.sha256(key(folder).encode()).hexdigest()[:24]+'.json')
 def load_data(folder):
     try:
@@ -103,7 +103,10 @@ def load_cached(folder):
 def load_cached_by_hash(folder):
     d=load_data(folder)
     if d.get('version',d.get('schema_version'))!=3:return {}
-    return {x.get('content_sha256'):x for x in d.get('records',[]) if x.get('content_sha256')}
+    out=defaultdict(list)
+    for x in d.get('records',[]):
+        if x.get('content_sha256'):out[x['content_sha256']].append(x)
+    return out
 def legacy_manual_states(folder):
     d=load_data(folder)
     if d.get('version',d.get('schema_version')) not in (1,2):return {}
@@ -221,16 +224,26 @@ class Analyzer(QObject):
         try:
             files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
             if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder); result=[]; todo=[]
+            old=load_cached(self.folder);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
             for i,path in enumerate(files):
-                stat=path.stat(); cache=old.get(key(path))
+                stat=path.stat();cache=old.get(key(path))
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
-                    result.append(photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns));continue
-                content_sha=sha256_file(path);same=old_by_hash.get(content_sha)
-                if same:
-                    restored=photo_from_dict(same,path,stat.st_size,stat.st_mtime_ns);restored.content_sha256=content_sha;restored.sample_id=sample_id_for(content_sha);result.append(restored)
+                    restored=photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns)
+                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
+                    used_sample_ids.add(restored.sample_id);result[i]=restored
+                else:pending.append((i,path,stat.st_size,stat.st_mtime_ns,cache))
+            todo=[]
+            for i,path,size,mtime,path_cache in pending:
+                content_sha=sha256_file(path);same=None
+                if path_cache and path_cache.get('content_sha256')==content_sha and path_cache.get('sample_id') not in used_sample_ids:same=path_cache
                 else:
-                    result.append(None);todo.append((i,path,stat.st_size,stat.st_mtime_ns,content_sha))
+                    candidates=[x for x in old_by_hash.get(content_sha,[]) if x.get('sample_id') and x.get('sample_id') not in used_sample_ids]
+                    if len(candidates)==1:same=candidates[0]
+                if same:
+                    restored=photo_from_dict(same,path,size,mtime);restored.content_sha256=content_sha
+                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
+                    used_sample_ids.add(restored.sample_id);result[i]=restored
+                else:todo.append((i,path,size,mtime,content_sha))
             if todo:
                 self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
                 with PoseLandmarker.create_from_options(opt) as pl:
@@ -243,7 +256,7 @@ class Analyzer(QObject):
         except Exception:self.failed.emit(traceback.format_exc())
     @staticmethod
     def one(path,qm,pl,size,mtime,content_sha=None):
-        r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=sample_id_for(r.content_sha256)
+        r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=new_sample_id()
         try:
             with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
             bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean())
@@ -937,8 +950,8 @@ def self_test():
     if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
     with tempfile.TemporaryDirectory() as td:
         test_path=Path(td)/'sample.bin';test_path.write_bytes(b'face-lora-selector-v3')
-        content_hash=sha256_file(test_path);sid=sample_id_for(content_hash)
-        if sid!=sample_id_for(content_hash) or not sid.startswith('img_'):raise RuntimeError('stable sample_id self-test failed')
+        content_hash=sha256_file(test_path);sid1=new_sample_id();sid2=new_sample_id()
+        if len(content_hash)!=64 or sid1==sid2 or not sid1.startswith('img_') or not sid2.startswith('img_'):raise RuntimeError('stable sample_id/content hash self-test failed')
     probe=Photo(Path('probe.jpg'),123,456);probe.sample_id='img_probe';probe.content_sha256='a'*64;probe.face_detections=[FaceDetection('face_1',[1.,2.,30.,40.],.9,.1,30,True)];probe.primary_face_id='face_1';probe.review_flags=[AnalysisFinding('low_face_ratio','primary_face',.01,.018,'test flag')];derive_eligibility(probe)
     if probe.eligibility!='REVIEW':raise RuntimeError('eligibility REVIEW self-test failed')
     restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
