@@ -12,7 +12,7 @@ try:
     from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
-    from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     from mediapipe.tasks.python.core.base_options import BaseOptions
     from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
@@ -45,6 +45,10 @@ class FaceDetection:
 @dataclass
 class AISuggestion:
     patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False
+
+@dataclass
+class ViewSpec:
+    name:str=''; filters:dict=field(default_factory=dict); sort_mode:str='默认顺序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
 
 @dataclass
 class Photo:
@@ -126,8 +130,14 @@ def photo_from_dict(d,path,size,mtime):
     p.reasons=list(d.get('reasons',[]))
     p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
     return p
-def save_data(folder,records,target):
-    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+def view_spec_from_dict(x):
+    if isinstance(x,ViewSpec):return x
+    if not isinstance(x,dict):return ViewSpec()
+    return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),str(x.get('sort_mode','默认顺序')),bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
+def saved_views_from_data(folder):
+    return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
+def save_data(folder,records,target,saved_views=None):
+    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
 def derive_eligibility(r):
@@ -637,7 +647,7 @@ class ThumbnailWorker(QObject):
         finally:self.finished.emit(self.token)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('重新分析当前文件夹');self.rescan.clicked.connect(self.start);self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t);c=QHBoxLayout();c.addWidget(QLabel('自动推荐数量：'));self.group=QButtonGroup(self)
         for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);c.addWidget(b)
@@ -651,14 +661,16 @@ class Window(QMainWindow):
         self.sort_combo=QComboBox();self.sort_combo.addItems(['默认顺序','Face Quality 高 → 低','Face Quality 低 → 高','BRISQUE 低 → 高','BRISQUE 高 → 低','Sharpness 高 → 低','Sharpness 低 → 高','状态','Duplicate Group','来源目录 / 源视频','景别','Yaw','Pitch']);self.sort_combo.currentTextChanged.connect(self.sort_changed);c.addWidget(QLabel('排序'));c.addWidget(self.sort_combo)
         self.best_only=QCheckBox('仅显示每个 Duplicate Group 的最佳图');self.best_only.toggled.connect(self.filters_changed);c.addWidget(self.best_only)
         self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());c.addWidget(self.show_face_boxes)
-        top_view=QPushButton('本视图质量 Top 10');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('本视图质量 Bottom 10');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));c.addWidget(top_view);c.addWidget(bottom_view);c.addWidget(clear_top);c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
+        c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
+        v=QHBoxLayout();v.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');v.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);v.addWidget(save_view);v.addWidget(load_view);v.addWidget(delete_view)
+        v.addSpacing(18);v.addWidget(QLabel('Top/Bottom 依据'));self.rank_basis_combo=QComboBox();self.rank_basis_combo.addItems(['综合质量','Face Quality','BRISQUE','Sharpness','Face Pixels']);self.rank_basis_combo.currentTextChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.rank_basis_combo);self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.quick_n);top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));v.addWidget(top_view);v.addWidget(bottom_view);v.addWidget(clear_top);v.addStretch(1);l.addLayout(v)
         self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:4px; background:#eef3f8;');l.addWidget(self.current_view_label)
         s=QSplitter(Qt.Horizontal);self.grid=QListWidget();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
         for i,x in enumerate(('推荐','备选','淘汰')):b=QPushButton(x);b.clicked.connect(lambda _,v=x:self.manual(v));ml.addWidget(b,0,i)
         restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
-        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
+        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
@@ -670,11 +682,53 @@ class Window(QMainWindow):
         if z.isValid():z.scale(150,150,Qt.KeepAspectRatio);r.setScaledSize(z)
         i=r.read();return QPixmap.fromImage(i) if not i.isNull() else QPixmap()
     def filters_changed(self,*_):self.quick_mode='';self.page=0;self.refresh()
-    def sort_changed(self,*_):self.refresh()
+    def sort_changed(self,*_):self.page=0;self.refresh()
+    def quick_changed(self):
+        if self.quick_mode:self.page=0;self.refresh()
+    def current_view_spec(self,name=''):
+        filters={}
+        if self.view_combo.currentText()!='全部':filters['status']=self.view_combo.currentText()
+        if self.scale_combo.currentText()!='全部':filters['person_scale']=self.scale_combo.currentText()
+        if self.yaw_combo.currentText()!='全部':filters['angle_class']=self.yaw_combo.currentText()
+        if self.pitch_combo.currentText()!='全部':filters['pitch_class']=self.pitch_combo.currentText()
+        if self.eligibility_combo.currentText()!='全部':filters['eligibility']=self.eligibility_combo.currentText()
+        return ViewSpec(name,filters,self.sort_combo.currentText(),self.best_only.isChecked(),self.quick_mode,self.quick_n.value(),self.rank_basis_combo.currentText())
+    def update_saved_view_combo(self):
+        self.saved_view_combo.blockSignals(True);self.saved_view_combo.clear();self.saved_view_combo.addItem('未选择')
+        for v in self.saved_views:self.saved_view_combo.addItem(v.name)
+        self.saved_view_combo.blockSignals(False)
+    def save_current_view(self):
+        if not self.folder:return
+        name,ok=QInputDialog.getText(self,'保存当前视图','视图名称：')
+        name=name.strip()
+        if not ok or not name:return
+        spec=self.current_view_spec(name);existing=next((i for i,v in enumerate(self.saved_views) if v.name==name),None)
+        if existing is None:self.saved_views.append(spec)
+        else:self.saved_views[existing]=spec
+        self.update_saved_view_combo();self.saved_view_combo.setCurrentText(name);self.save()
+    def apply_view_spec(self,spec):
+        mapping=((self.view_combo,spec.filters.get('status','全部')),(self.scale_combo,spec.filters.get('person_scale','全部')),(self.yaw_combo,spec.filters.get('angle_class','全部')),(self.pitch_combo,spec.filters.get('pitch_class','全部')),(self.eligibility_combo,spec.filters.get('eligibility','全部')),(self.sort_combo,spec.sort_mode),(self.rank_basis_combo,spec.ranking_basis))
+        for combo,value in mapping:combo.blockSignals(True);combo.setCurrentText(value);combo.blockSignals(False)
+        self.best_only.blockSignals(True);self.best_only.setChecked(spec.best_only);self.best_only.blockSignals(False);self.quick_n.blockSignals(True);self.quick_n.setValue(max(1,spec.limit_n));self.quick_n.blockSignals(False);self.quick_mode=spec.quick_mode if spec.quick_mode in ('','view_top','view_bottom') else '';self.page=0;self.refresh()
+    def load_selected_view(self):
+        name=self.saved_view_combo.currentText()
+        spec=next((v for v in self.saved_views if v.name==name),None)
+        if spec:self.apply_view_spec(spec)
+    def delete_selected_view(self):
+        name=self.saved_view_combo.currentText()
+        if name=='未选择':return
+        self.saved_views=[v for v in self.saved_views if v.name!=name];self.update_saved_view_combo();self.save()
     def clear_filters(self):
         for combo in (self.view_combo,self.scale_combo,self.yaw_combo,self.pitch_combo,self.eligibility_combo):combo.blockSignals(True);combo.setCurrentIndex(0);combo.blockSignals(False)
         self.best_only.blockSignals(True);self.best_only.setChecked(False);self.best_only.blockSignals(False);self.quick_mode='';self.page=0;self.refresh()
     def quick(self,mode):self.quick_mode=mode;self.page=0;self.refresh()
+    def quick_key(self,r):
+        basis=self.rank_basis_combo.currentText()
+        if basis=='Face Quality':return r.face_quality
+        if basis=='BRISQUE':return -r.brisque
+        if basis=='Sharpness':return r.blur
+        if basis=='Face Pixels':return r.face_px
+        return rank(r)
     def set_category_filter(self,kind,value):
         combo={'status':self.view_combo,'scale':self.scale_combo,'yaw':self.yaw_combo,'pitch':self.pitch_combo,'eligibility':self.eligibility_combo}[kind]
         combo.setCurrentText(value);self.quick_mode='';self.page=0;self.refresh()
@@ -692,8 +746,9 @@ class Window(QMainWindow):
         key_func={'Face Quality 高 → 低':lambda r:r.face_quality,'Face Quality 低 → 高':lambda r:r.face_quality,'BRISQUE 低 → 高':lambda r:r.brisque,'BRISQUE 高 → 低':lambda r:r.brisque,'Sharpness 高 → 低':lambda r:r.blur,'Sharpness 低 → 高':lambda r:r.blur,'状态':lambda r:r.status,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
         reverse=sort in ('Face Quality 高 → 低','BRISQUE 高 → 低','Sharpness 高 → 低')
         if sort in key_func:base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=reverse)
-        if with_quick and self.quick_mode=='view_top':base=sorted(base,key=lambda i:rank(self.records[i]),reverse=True)[:10]
-        if with_quick and self.quick_mode=='view_bottom':base=sorted(base,key=lambda i:rank(self.records[i]))[:10]
+        n=self.quick_n.value()
+        if with_quick and self.quick_mode=='view_top':base=sorted(base,key=lambda i:self.quick_key(self.records[i]),reverse=True)[:n]
+        if with_quick and self.quick_mode=='view_bottom':base=sorted(base,key=lambda i:self.quick_key(self.records[i]))[:n]
         return base
     def view_description(self):
         parts=[]
@@ -703,8 +758,8 @@ class Window(QMainWindow):
         if self.pitch_combo.currentText()!='全部':parts.append('Pitch：'+self.pitch_combo.currentText())
         if self.eligibility_combo.currentText()!='全部':parts.append('Eligibility：'+self.eligibility_combo.currentText())
         if self.best_only.isChecked():parts.append('每组最佳图')
-        if self.quick_mode=='view_top':parts.append('Top 10')
-        if self.quick_mode=='view_bottom':parts.append('Bottom 10')
+        if self.quick_mode=='view_top':parts.append(f'Top {self.quick_n.value()} · {self.rank_basis_combo.currentText()}')
+        if self.quick_mode=='view_bottom':parts.append(f'Bottom {self.quick_n.value()} · {self.rank_basis_combo.currentText()}')
         return ' > '.join(parts) if parts else '全部图片'
     def placeholder(self):
         pix=QPixmap(150,150);pix.fill(QColor('#e8edf2'));return pix
@@ -771,7 +826,7 @@ class Window(QMainWindow):
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def save(self):
         if self.folder and self.records:
-            try:save_data(self.folder,self.records,self.target)
+            try:save_data(self.folder,self.records,self.target,self.saved_views)
             except Exception:self.progress.setText('缓存保存失败')
     def closeEvent(self,e):self.save();self.sub.save();e.accept()
     def exported(self):
