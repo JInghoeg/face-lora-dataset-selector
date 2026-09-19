@@ -232,27 +232,54 @@ class Analyzer(QObject):
         r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=sample_id_for(r.content_sha256)
         try:
             with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean());fs=qm.faces(bgr);rows=[] if fs is None else list(fs);po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
-            for n,f in enumerate(rows):
-                x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
-                r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet'))
-            r.faces=len(r.face_detections)
-            if rows:
-                primary_index=max(range(len(rows)),key=lambda i:r.face_detections[i].area_ratio*max(.01,r.face_detections[i].confidence))
-                r.face_detections[primary_index].is_primary=True;r.primary_face_id=r.face_detections[primary_index].detection_id
-                f=rows[primary_index];d=r.face_detections[primary_index];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=d.area_ratio;r.face_px=d.face_px;crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.;r.face_quality=qm.quality(bgr,f);r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
-            else:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var())
-            r.brisque=qm.brisque(bgr);dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces}
-            if r.faces==0:r.review_flags.append(AnalysisFinding('no_face_detected','yunet',detail='YuNet 未检测到人脸'))
-            elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'YuNet 检测到 {r.faces} 张人脸，需确认次要检测框'))
-            if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
-            if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
-            if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
-            if rows and r.blur<25:r.review_flags.append(AnalysisFinding('severe_face_blur','primary_face',r.blur,25.,'主脸明显模糊'))
-            if rows and r.face_quality<.25:r.review_flags.append(AnalysisFinding('low_face_quality','ediffiqa',r.face_quality,.25,'eDifFIQA 人脸质量偏低'))
-            if r.brisque>80:r.review_flags.append(AnalysisFinding('high_brisque','brisque',r.brisque,80.,'BRISQUE 整图质量偏低'))
-            if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.review_flags.append(AnalysisFinding('extreme_exposure','image',r.brightness,None,'图像疑似严重欠曝或过曝'))
-        except Exception as e:r.hard_rejects.append(AnalysisFinding('read_or_analysis_error','analyzer',detail=f'无法读取或分析图片：{e}'))
+            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean())
+        except Exception as e:
+            r.hard_rejects.append(AnalysisFinding('read_error','image',detail=f'无法读取图片：{e}'));derive_eligibility(r);return r
+
+        rows=[]
+        try:
+            fs=qm.faces(bgr);rows=[] if fs is None else list(fs)
+        except Exception as e:
+            r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
+
+        try:
+            po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
+        except Exception as e:
+            r.review_flags.append(AnalysisFinding('pose_analysis_error','mediapipe',detail=f'景别/姿态分析失败：{e}'))
+
+        for n,f in enumerate(rows):
+            x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
+            r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet'))
+        r.faces=len(r.face_detections)
+
+        if rows:
+            primary_index=max(range(len(rows)),key=lambda i:r.face_detections[i].area_ratio*max(.01,r.face_detections[i].confidence))
+            r.face_detections[primary_index].is_primary=True;r.primary_face_id=r.face_detections[primary_index].detection_id
+            f=rows[primary_index];d=r.face_detections[primary_index];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=d.area_ratio;r.face_px=d.face_px
+            try:
+                crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.
+            except Exception as e:r.review_flags.append(AnalysisFinding('face_sharpness_error','opencv',detail=f'主脸清晰度分析失败：{e}'))
+            try:r.face_quality=qm.quality(bgr,f)
+            except Exception as e:r.review_flags.append(AnalysisFinding('face_quality_error','ediffiqa',detail=f'eDifFIQA 分析失败：{e}'))
+            try:r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
+            except Exception as e:r.review_flags.append(AnalysisFinding('head_pose_error','3ddfa',detail=f'头部姿态分析失败：{e}'))
+        else:
+            try:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var())
+            except Exception:pass
+
+        try:r.brisque=qm.brisque(bgr)
+        except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
+
+        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces}
+        if r.faces==0:r.review_flags.append(AnalysisFinding('no_face_detected','yunet',detail='YuNet 未检测到人脸'))
+        elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'YuNet 检测到 {r.faces} 张人脸，需确认次要检测框'))
+        if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
+        if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
+        if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
+        if rows and r.blur<25:r.review_flags.append(AnalysisFinding('severe_face_blur','primary_face',r.blur,25.,'主脸明显模糊'))
+        if rows and r.face_quality<.25:r.review_flags.append(AnalysisFinding('low_face_quality','ediffiqa',r.face_quality,.25,'eDifFIQA 人脸质量偏低'))
+        if r.brisque>80:r.review_flags.append(AnalysisFinding('high_brisque','brisque',r.brisque,80.,'BRISQUE 整图质量偏低'))
+        if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.review_flags.append(AnalysisFinding('extreme_exposure','image',r.brightness,None,'图像疑似严重欠曝或过曝'))
         derive_eligibility(r);return r
     @staticmethod
     def groups(rs,threshold=8,adjacent=16):
