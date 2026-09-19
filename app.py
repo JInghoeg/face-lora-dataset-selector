@@ -1,6 +1,6 @@
 """本地 LoRA 数据集筛选与批量字幕清理。"""
 from __future__ import annotations
-import hashlib, json, math, os, pickle, shutil, sys, tempfile, traceback, urllib.request
+import csv, hashlib, json, math, os, pickle, shutil, sys, tempfile, time, traceback, urllib.request, uuid
 from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -44,7 +44,7 @@ class FaceDetection:
 
 @dataclass
 class AISuggestion:
-    patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False
+    patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False; decision:str='pending'
 
 @dataclass
 class ViewSpec:
@@ -147,6 +147,119 @@ def finding_text(f):
 def derive_eligibility(r):
     r.eligibility='REJECT' if r.hard_rejects else ('REVIEW' if r.review_flags else 'PASS')
     return r.eligibility
+AI_BUNDLE_SCHEMA=1
+
+def relative_export_path(path,root):
+    try:return str(path.resolve().relative_to(root.resolve()))
+    except Exception:return path.name
+
+def export_source_label(photo,root):
+    if '_frame_' in photo.path.stem:return photo.path.stem.split('_frame_',1)[0]
+    try:
+        rel=photo.path.parent.resolve().relative_to(root.resolve())
+        return str(rel) if str(rel)!='.' else root.name
+    except Exception:return photo.path.parent.name
+
+def manifest_entry(photo,root):
+    return {
+        'sample_id':photo.sample_id,
+        'content_sha256':photo.content_sha256,
+        'relative_path':relative_export_path(photo.path,root),
+        'filename':photo.path.name,
+        'source':export_source_label(photo,root),
+        'width':photo.width,
+        'height':photo.height,
+        'selection':{
+            'auto_status':photo.auto_status,
+            'manual_status':photo.manual_status,
+            'effective_status':photo.status,
+            'eligibility':photo.eligibility,
+        },
+        'analysis':{
+            'face_count':photo.faces,
+            'primary_face_id':photo.primary_face_id,
+            'face_ratio':photo.face_ratio,
+            'face_px':photo.face_px,
+            'face_quality':photo.face_quality,
+            'brisque':photo.brisque,
+            'sharpness':photo.blur,
+            'brightness':photo.brightness,
+            'yaw':photo.yaw,
+            'pitch':photo.pitch,
+            'roll':photo.roll,
+            'angle_class':photo.angle_class,
+            'pitch_class':photo.pitch_class,
+            'person_scale':photo.person_scale,
+            'duplicate_group':photo.duplicate_group,
+            'duplicate_ignore':photo.duplicate_ignore,
+        },
+        'face_detections':[asdict(x) for x in photo.face_detections],
+        'review_flags':[asdict(x) for x in photo.review_flags],
+        'hard_rejects':[asdict(x) for x in photo.hard_rejects],
+        'ai_suggestion':asdict(photo.ai_suggestion) if photo.ai_suggestion else None,
+    }
+
+def flat_manifest_entry(photo,root):
+    return {
+        'sample_id':photo.sample_id,
+        'filename':photo.path.name,
+        'relative_path':relative_export_path(photo.path,root),
+        'width':photo.width,
+        'height':photo.height,
+        'effective_status':photo.status,
+        'manual_status':photo.manual_status or '',
+        'eligibility':photo.eligibility,
+        'face_count':photo.faces,
+        'face_ratio':photo.face_ratio,
+        'face_px':photo.face_px,
+        'face_quality':photo.face_quality,
+        'brisque':photo.brisque,
+        'sharpness':photo.blur,
+        'brightness':photo.brightness,
+        'yaw':photo.yaw,
+        'pitch':photo.pitch,
+        'roll':photo.roll,
+        'angle_class':photo.angle_class,
+        'pitch_class':photo.pitch_class,
+        'person_scale':photo.person_scale,
+        'duplicate_group':photo.duplicate_group,
+        'review_flag_codes':'|'.join(x.code for x in photo.review_flags),
+        'hard_reject_codes':'|'.join(x.code for x in photo.hard_rejects),
+    }
+
+def dataset_summary(records,view_description=''):
+    return {
+        'total_samples':len(records),
+        'status_counts':dict(Counter(r.status for r in records)),
+        'eligibility_counts':dict(Counter(r.eligibility for r in records)),
+        'shot_size_distribution':dict(Counter(r.person_scale for r in records)),
+        'yaw_distribution':dict(Counter(r.angle_class for r in records)),
+        'pitch_distribution':dict(Counter(r.pitch_class for r in records)),
+        'duplicate_group_count':len({r.duplicate_group for r in records if r.duplicate_group}),
+        'duplicate_member_count':sum(bool(r.duplicate_group) for r in records),
+        'duplicate_ignored_count':sum(r.duplicate_ignore for r in records),
+        'secondary_face_flag_count':sum(any(x.code=='secondary_faces_detected' for x in r.review_flags) for r in records),
+        'no_face_count':sum(any(x.code=='no_face_detected' for x in r.review_flags) for r in records),
+        'hard_reject_count':sum(bool(r.hard_rejects) for r in records),
+        'view_description':view_description,
+    }
+
+def write_contact_sheets(records,out_dir,prefix):
+    out_dir.mkdir(parents=True,exist_ok=True)
+    cols,rows=4,4;tile_w,tile_h=250,220;img_w,img_h=220,150;per_page=cols*rows
+    written=[]
+    for page_no,start in enumerate(range(0,len(records),per_page),1):
+        page=QImage(cols*tile_w,rows*tile_h,QImage.Format_RGB32);page.fill(QColor('#ffffff'));p=QPainter(page)
+        for slot,r in enumerate(records[start:start+per_page]):
+            row,col=divmod(slot,cols);x=col*tile_w;y=row*tile_h
+            p.setPen(QPen(QColor('#c8c8c8')));p.drawRect(x+4,y+4,tile_w-8,tile_h-8)
+            reader=QImageReader(str(r.path));reader.setAutoTransform(True);im=reader.read()
+            if not im.isNull():
+                scaled=im.scaled(img_w,img_h,Qt.KeepAspectRatio,Qt.SmoothTransformation);px=x+(tile_w-scaled.width())//2;py=y+8+(img_h-scaled.height())//2;p.drawImage(px,py,scaled)
+            p.setPen(QPen(QColor('#111111')));p.drawText(x+10,y+170,r.sample_id);p.drawText(x+10,y+188,r.path.name[:30]);p.drawText(x+10,y+206,f'{r.status} / {r.eligibility}')
+        p.end();path=out_dir/f'{prefix}_{page_no:03d}.jpg';page.save(str(path),'JPG',88);written.append(path.name)
+    return written
+
 def ensure_pose():
     if not POSE.exists():
         POSE.parent.mkdir(exist_ok=True); urllib.request.urlretrieve(POSE_URL,POSE)
