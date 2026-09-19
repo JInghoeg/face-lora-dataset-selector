@@ -140,8 +140,8 @@ def view_spec_from_dict(x):
     return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),field_name,direction,bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
 def saved_views_from_data(folder):
     return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
-def save_data(folder,records,target,saved_views=None):
-    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+def save_data(folder,records,target,saved_views=None,bundle_ids=None):
+    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
 def derive_eligibility(r):
@@ -835,7 +835,7 @@ class DuplicateReviewDialog(QDialog):
         self.changed(-1 if not restore else None)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('重新分析当前文件夹');self.rescan.clicked.connect(self.start);self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t);c=QHBoxLayout();c.addWidget(QLabel('自动推荐数量：'));self.group=QButtonGroup(self)
         for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);c.addWidget(b)
@@ -851,14 +851,14 @@ class Window(QMainWindow):
         self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());c.addWidget(self.show_face_boxes)
         dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);c.addWidget(dup_review);c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
         v=QHBoxLayout();v.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');v.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);v.addWidget(save_view);v.addWidget(load_view);v.addWidget(delete_view)
-        v.addSpacing(18);v.addWidget(QLabel('Top/Bottom 依据'));self.rank_basis_combo=QComboBox();self.rank_basis_combo.addItems(['综合质量','Face Quality','BRISQUE','Sharpness','Face Pixels']);self.rank_basis_combo.currentTextChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.rank_basis_combo);self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.quick_n);top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));v.addWidget(top_view);v.addWidget(bottom_view);v.addWidget(clear_top);v.addStretch(1);l.addLayout(v)
+        v.addSpacing(18);v.addWidget(QLabel('Top/Bottom 依据'));self.rank_basis_combo=QComboBox();self.rank_basis_combo.addItems(['综合质量','Face Quality','BRISQUE','Sharpness','Face Pixels']);self.rank_basis_combo.currentTextChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.rank_basis_combo);self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.quick_n);top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));v.addWidget(top_view);v.addWidget(bottom_view);v.addWidget(clear_top);v.addStretch(1);export_view_ai=QPushButton('导出当前视图 AI 包…');export_view_ai.clicked.connect(lambda:self.export_ai_bundle('current_view'));export_all_ai=QPushButton('导出全部 AI 包…');export_all_ai.clicked.connect(lambda:self.export_ai_bundle('dataset'));import_ai=QPushButton('导入 AI 建议…');import_ai.clicked.connect(self.import_ai_patch);v.addWidget(export_view_ai);v.addWidget(export_all_ai);v.addWidget(import_ai);l.addLayout(v)
         self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:4px; background:#eef3f8;');l.addWidget(self.current_view_label)
         s=QSplitter(Qt.Horizontal);self.grid=QListWidget();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
         for i,x in enumerate(('推荐','备选','淘汰')):b=QPushButton(x);b.clicked.connect(lambda _,v=x:self.manual(v));ml.addWidget(b,0,i)
-        restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
+        restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);ai_box=QGroupBox('AI 审核建议');ail=QVBoxLayout(ai_box);self.ai_label=QLabel('当前图片没有 AI 建议');self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout();accept_ai=QPushButton('接受');accept_ai.clicked.connect(self.accept_ai_suggestion);reject_ai=QPushButton('拒绝');reject_ai.clicked.connect(self.reject_ai_suggestion);clear_ai=QPushButton('清除');clear_ai.clicked.connect(self.clear_ai_suggestion);aib.addWidget(accept_ai);aib.addWidget(reject_ai);aib.addWidget(clear_ai);ail.addLayout(aib);sl.addWidget(ai_box);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
-        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
+        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
@@ -993,7 +993,7 @@ class Window(QMainWindow):
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);self.grid.clear();self.visible_item_map={};self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · AI {r.ai_suggestion.decision if r.ai_suggestion else "无"} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
         pages=max(1,math.ceil(len(visible)/PAGE));self.page=min(self.page,pages-1);self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图：{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
     def change(self,d):
         n=self.page+d
@@ -1001,7 +1001,107 @@ class Window(QMainWindow):
     def selected(self):
         x=self.grid.currentItem();return self.records[x.data(Qt.UserRole)] if x else None
     def details(self,it):
-        r=self.records[it.data(Qt.UserRole)];flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';self.detail.setText(f'文件：{r.path.name}\nSample ID：{r.sample_id}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\nEligibility：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n需复核：{flags}\n硬淘汰：{rejects}')
+        r=self.records[it.data(Qt.UserRole)];flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';self.detail.setText(f'文件：{r.path.name}\nSample ID：{r.sample_id}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\nEligibility：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n需复核：{flags}\n硬淘汰：{rejects}');self.update_ai_panel(r)
+    def update_ai_panel(self,r=None):
+        r=r or self.selected()
+        if not r or not r.ai_suggestion:self.ai_label.setText('当前图片没有 AI 建议');return
+        a=r.ai_suggestion;parts=[f'状态：{a.decision}']
+        if a.suggested_eligibility:parts.append(f'建议 Eligibility：{a.suggested_eligibility}')
+        if a.suggested_status:parts.append(f'建议状态：{a.suggested_status}')
+        if a.flags:parts.append('Flags：'+'、'.join(a.flags))
+        if a.note:parts.append('备注：'+a.note)
+        if a.request_full_resolution:parts.append('请求：需要原图复核')
+        self.ai_label.setText('\n'.join(parts))
+    def accept_ai_suggestion(self):
+        r=self.selected()
+        if not r or not r.ai_suggestion:return
+        a=r.ai_suggestion
+        if a.suggested_status in ('推荐','备选','淘汰'):r.manual_status=a.suggested_status
+        elif a.suggested_eligibility=='REJECT':r.manual_status='淘汰'
+        elif a.suggested_eligibility=='REVIEW':r.manual_status='备选'
+        a.decision='accepted';self.refresh();self.save();self.update_ai_panel(r)
+    def reject_ai_suggestion(self):
+        r=self.selected()
+        if not r or not r.ai_suggestion:return
+        r.ai_suggestion.decision='rejected';self.save();self.update_ai_panel(r)
+    def clear_ai_suggestion(self):
+        r=self.selected()
+        if not r or not r.ai_suggestion:return
+        r.ai_suggestion=None;self.save();self.update_ai_panel(r)
+    def ai_export_records(self,scope):
+        return list(self.records) if scope=='dataset' else [self.records[i] for i in self.indices(True)]
+    def export_ai_bundle(self,scope):
+        if not self.folder or not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        records=self.ai_export_records(scope)
+        if not records:QMessageBox.information(self,'当前视图为空','当前视图没有可导出的图片。');return
+        out=QFileDialog.getExistingDirectory(self,'选择 AI 审核包保存目录',str(self.folder.parent))
+        if not out:return
+        include_originals=QMessageBox.question(self,'是否包含原图','是否把当前导出范围的原图一起放进 AI 审核包？\n\n不包含时仍会生成 Contact Sheets、完整指标和统计。',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        bundle_id='bundle_'+time.strftime('%Y%m%d_%H%M%S',time.gmtime())+'_'+uuid.uuid4().hex[:8];created=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime());dest=Path(out);stage=dest/f'.{bundle_id}.building';zip_path=dest/f'{bundle_id}.zip'
+        try:
+            if stage.exists():shutil.rmtree(stage)
+            stage.mkdir(parents=True);contact=stage/'contact_sheets';dups=contact/'duplicate_groups';manifest=[manifest_entry(r,self.folder) for r in records];flat=[flat_manifest_entry(r,self.folder) for r in records];view_spec=self.current_view_spec('current') if scope=='current_view' else None
+            bundle={'schema_version':AI_BUNDLE_SCHEMA,'bundle_id':bundle_id,'created_at':created,'app_version':'0.3-dev','dataset_root_label':self.folder.name,'source_scope':scope,'source_view':asdict(view_spec) if view_spec else None,'sample_count':len(records),'includes_originals':include_originals}
+            (stage/'bundle.json').write_text(json.dumps(bundle,ensure_ascii=False,indent=2),encoding='utf-8');(stage/'manifest.json').write_text(json.dumps({'schema_version':AI_BUNDLE_SCHEMA,'bundle_id':bundle_id,'samples':manifest},ensure_ascii=False,indent=2),encoding='utf-8');(stage/'summary.json').write_text(json.dumps(dataset_summary(records,self.view_description() if scope=='current_view' else '全部图片'),ensure_ascii=False,indent=2),encoding='utf-8');(stage/'views.json').write_text(json.dumps({'current':asdict(self.current_view_spec('current')),'saved':[asdict(v) for v in self.saved_views]},ensure_ascii=False,indent=2),encoding='utf-8')
+            if flat:
+                with (stage/'manifest.csv').open('w',encoding='utf-8-sig',newline='') as fh:
+                    writer=csv.DictWriter(fh,fieldnames=list(flat[0].keys()));writer.writeheader();writer.writerows(flat)
+            write_contact_sheets(records,contact,'current_view' if scope=='current_view' else 'all')
+            for gid in sorted({r.duplicate_group for r in records if r.duplicate_group}):
+                members=[r for r in records if r.duplicate_group==gid]
+                if len(members)>1:write_contact_sheets(members,dups,f'group_{gid:04d}')
+            if include_originals:
+                originals=stage/'originals';originals.mkdir()
+                for r in records:
+                    name=f'{r.sample_id}__{r.path.name}';target=originals/name;n=1
+                    while target.exists():target=originals/f'{r.sample_id}_{n}__{r.path.name}';n+=1
+                    shutil.copy2(r.path,target)
+            if zip_path.exists():zip_path.unlink()
+            made=Path(shutil.make_archive(str(zip_path.with_suffix('')),'zip',stage))
+            self.exported_bundle_ids.append(bundle_id);self.exported_bundle_ids=self.exported_bundle_ids[-100:];self.save()
+            QMessageBox.information(self,'AI 审核包导出完成',f'已导出 {len(records)} 张图片的审核信息。\n\n{made}')
+        except Exception as e:QMessageBox.critical(self,'AI 审核包导出失败',str(e))
+        finally:
+            try:
+                if stage.exists():shutil.rmtree(stage)
+            except Exception:pass
+    def import_ai_patch(self):
+        if not self.records:QMessageBox.information(self,'没有数据','请先加载并分析数据集。');return
+        filename,_=QFileDialog.getOpenFileName(self,'选择 review_patch.json',str(self.folder or APP_DIR),'JSON (*.json)')
+        if not filename:return
+        try:
+            data=json.loads(Path(filename).read_text(encoding='utf-8'))
+            if data.get('schema_version')!=AI_BUNDLE_SCHEMA:raise ValueError(f'不支持的 schema_version：{data.get("schema_version")}')
+            bundle_id=str(data.get('bundle_id','')).strip()
+            if not bundle_id:raise ValueError('缺少 bundle_id')
+            suggestions=data.get('suggestions')
+            if not isinstance(suggestions,list):raise ValueError('suggestions 必须是数组')
+            ids=[x.get('sample_id') for x in suggestions if isinstance(x,dict)]
+            if len(ids)!=len(suggestions) or any(not isinstance(x,str) or not x for x in ids):raise ValueError('每条 suggestion 都必须有有效 sample_id')
+            if len(set(ids))!=len(ids):raise ValueError('同一 patch 中存在重复 sample_id')
+            if bundle_id not in self.exported_bundle_ids:
+                ans=QMessageBox.question(self,'外部或历史审核包',f'本地记录中找不到 bundle_id：\n{bundle_id}\n\n如果这是历史导出的审核包，仍可按 sample_id + 内容哈希安全匹配。是否继续？',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)
+                if ans!=QMessageBox.Yes:return
+            by_id={r.sample_id:r for r in self.records};pending=[];unknown=[];stale=[]
+            allowed_e={None,'PASS','REVIEW','REJECT'};allowed_s={None,'推荐','备选','淘汰'}
+            for item in suggestions:
+                sid=item['sample_id'];target=by_id.get(sid)
+                if target is None:unknown.append(sid);continue
+                supplied=item.get('content_sha256')
+                if supplied and supplied!=target.content_sha256:stale.append(sid);continue
+                se=item.get('suggested_eligibility');ss=item.get('suggested_status');flags=item.get('flags',[]);note=item.get('note','');full=item.get('request_full_resolution',False)
+                if se not in allowed_e:raise ValueError(f'{sid}: suggested_eligibility 无效')
+                if ss not in allowed_s:raise ValueError(f'{sid}: suggested_status 无效')
+                if not isinstance(flags,list) or any(not isinstance(x,str) for x in flags):raise ValueError(f'{sid}: flags 必须是字符串数组')
+                if not isinstance(note,str) or not isinstance(full,bool):raise ValueError(f'{sid}: note/request_full_resolution 类型无效')
+                pending.append((target,AISuggestion(Path(filename).stem,bundle_id,se,ss,list(flags),note,full,'pending')))
+            for target,suggestion in pending:target.ai_suggestion=suggestion
+            self.save();self.refresh();self.update_ai_panel()
+            msg=f'已导入 AI 建议：{len(pending)} 条'
+            if unknown:msg+=f'\n未知 sample_id：{len(unknown)} 条（已跳过）'
+            if stale:msg+=f'\n内容已变化：{len(stale)} 条（已跳过）'
+            QMessageBox.information(self,'AI 建议导入完成',msg)
+        except Exception as e:QMessageBox.critical(self,'AI 建议导入失败',str(e))
     def manual(self,v):
         r=self.selected()
         if r:r.manual_status=v;self.refresh();self.save()
@@ -1019,7 +1119,7 @@ class Window(QMainWindow):
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def save(self):
         if self.folder and self.records:
-            try:save_data(self.folder,self.records,self.target,self.saved_views)
+            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids)
             except Exception:self.progress.setText('缓存保存失败')
     def closeEvent(self,e):self.save();self.sub.save();e.accept()
     def exported(self):
