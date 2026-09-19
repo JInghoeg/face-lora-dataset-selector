@@ -98,7 +98,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attach portable build to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: v0.2.0')
+        if: "${{ startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: v0.2.0') }}"
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
