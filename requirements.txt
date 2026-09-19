@@ -3,5 +3,5 @@ mediapipe>=0.10.14,<0.11
 # BRISQUE 位于 OpenCV contrib；固定版本避免 Portable 中同时出现多套 OpenCV 二进制。
 opencv-contrib-python==4.12.0.88
 Pillow>=10,<12
-onnxruntime>=1.17,<2
+onnxruntime>=1.19,<2
 pyclipper>=1.3,<2
