@@ -12,7 +12,7 @@ try:
     from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
-    from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     from mediapipe.tasks.python.core.base_options import BaseOptions
     from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
@@ -55,7 +55,7 @@ class Photo:
     path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0
     sample_id:str=''; content_sha256:str=''
     faces:int=0; face_detections:list[FaceDetection]=field(default_factory=list); primary_face_id:Optional[str]=None
-    face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0
+    face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False
     analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'
     reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
     auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None
@@ -121,7 +121,7 @@ def photo_to_dict(p):
     d=asdict(p); d['path']=str(p.path.resolve()); return d
 def photo_from_dict(d,path,size,mtime):
     p=Photo(path,size,mtime)
-    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','analysis_metrics','eligibility','auto_status','manual_status')
+    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','duplicate_ignore','analysis_metrics','eligibility','auto_status','manual_status')
     for name in simple:
         if name in d:setattr(p,name,d[name])
     p.face_detections=[x for x in (face_detection_from_dict(v) for v in d.get('face_detections',[])) if x is not None]
@@ -299,7 +299,7 @@ class Analyzer(QObject):
     def groups(rs,threshold=8,adjacent=16):
         """以组内质量最佳图为锚点分组，避免 A≈B≈C 的无限传递合并。"""
         for r in rs:r.duplicate_group=0
-        remaining=set(i for i,r in enumerate(rs) if r.phash)
+        remaining=set(i for i,r in enumerate(rs) if r.phash and not r.duplicate_ignore)
         group_no=1
         while remaining:
             anchor=max(remaining,key=lambda i:rank(rs[i]));remaining.remove(anchor);members=[anchor]
@@ -650,6 +650,77 @@ class ThumbnailWorker(QObject):
                 except Exception:pass
         finally:self.finished.emit(self.token)
 
+class DuplicateReviewDialog(QDialog):
+    def __init__(self,records,on_changed,parent=None):
+        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.setWindowTitle('Duplicate Group 人工复核');self.resize(1080,760)
+        root=QVBoxLayout(self);split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(210);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(150,150));self.members.setGridSize(QSize(220,235));rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,820]);root.addWidget(split,1)
+        actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('保留勾选');selected.clicked.connect(self.keep_checked);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
+        for b in (best,selected,all_keep,restore,self.toggle_grouping):actions.addWidget(b)
+        actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);root.addLayout(actions);self.reload_groups()
+    @staticmethod
+    def thumb(path):
+        reader=QImageReader(str(path));reader.setAutoTransform(True);size=reader.size()
+        if size.isValid():size.scale(150,150,Qt.KeepAspectRatio);reader.setScaledSize(size)
+        image=reader.read();return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
+    def grouped(self,gid):
+        if gid==-1:return [r for r in self.records if r.duplicate_ignore]
+        return group_entries(self.records,gid)
+    def reload_groups(self,prefer=None):
+        self.group_list.clear();groups=sorted({r.duplicate_group for r in self.records if r.duplicate_group})
+        for gid in groups:
+            members=self.grouped(gid);item=QListWidgetItem(f'Group {gid} · {len(members)} 张');item.setData(Qt.UserRole,gid);self.group_list.addItem(item)
+        ignored=[r for r in self.records if r.duplicate_ignore]
+        if ignored:
+            item=QListWidgetItem(f'已人工移出 · {len(ignored)} 张');item.setData(Qt.UserRole,-1);self.group_list.addItem(item)
+        if not self.group_list.count():self.group_label.setText('当前没有 Duplicate Group');self.members.clear();self.current_group=None;return
+        row=0
+        if prefer is not None:
+            for i in range(self.group_list.count()):
+                if self.group_list.item(i).data(Qt.UserRole)==prefer:row=i;break
+        self.group_list.setCurrentRow(row);self.show_group(self.group_list.item(row))
+    def show_group(self,item):
+        if item is None:return
+        gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.clear();self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张')
+        self.toggle_grouping.setText('勾选项恢复自动分组' if gid==-1 else '勾选项移出重复组')
+        for rank_no,r in enumerate(members,1):
+            index=self.records.index(r);prefix='★ ' if gid!=-1 and rank_no==1 else '';text=f'{prefix}{r.path.name}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
+            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if r.manual_status=='推荐' else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n状态：{r.status} · Eligibility：{r.eligibility}');self.members.addItem(it)
+    def checked_records(self):
+        out=[]
+        for i in range(self.members.count()):
+            it=self.members.item(i)
+            if it.checkState()==Qt.Checked:out.append(self.records[it.data(Qt.UserRole)])
+        return out
+    def current_records(self):return self.grouped(self.current_group) if self.current_group is not None else []
+    def changed(self,prefer=None):
+        self.on_changed();self.reload_groups(prefer)
+    def keep_best(self):
+        if self.current_group in (None,-1):return
+        members=self.current_records()
+        if not members:return
+        best=members[0]
+        for r in members:r.manual_status='推荐' if r is best else '备选'
+        self.changed(self.current_group)
+    def keep_checked(self):
+        members=self.current_records();checked=set(id(r) for r in self.checked_records())
+        if not members or not checked:QMessageBox.information(self,'未勾选图片','请先勾选希望保留的图片。');return
+        for r in members:r.manual_status='推荐' if id(r) in checked else '备选'
+        self.changed(self.current_group)
+    def keep_all(self):
+        members=self.current_records()
+        for r in members:r.manual_status='推荐'
+        if members:self.changed(self.current_group)
+    def restore_auto(self):
+        members=self.current_records()
+        for r in members:r.manual_status=None
+        if members:self.changed(self.current_group)
+    def toggle_ignore(self):
+        checked=self.checked_records()
+        if not checked:QMessageBox.information(self,'未勾选图片','请先勾选需要调整重复分组的图片。');return
+        restore=self.current_group==-1
+        for r in checked:r.duplicate_ignore=not restore
+        self.changed(-1 if not restore else None)
+
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
@@ -665,7 +736,7 @@ class Window(QMainWindow):
         self.sort_field_combo=QComboBox();self.sort_field_combo.addItems(['默认顺序','Face Quality','BRISQUE','Sharpness','Face Pixels','状态','Eligibility','Duplicate Group','来源目录 / 源视频','景别','Yaw','Pitch']);self.sort_field_combo.currentTextChanged.connect(self.sort_changed);self.sort_dir_combo=QComboBox();self.sort_dir_combo.addItems(['降序','升序']);self.sort_dir_combo.currentTextChanged.connect(self.sort_changed);c.addWidget(QLabel('排序'));c.addWidget(self.sort_field_combo);c.addWidget(self.sort_dir_combo)
         self.best_only=QCheckBox('仅显示每个 Duplicate Group 的最佳图');self.best_only.toggled.connect(self.filters_changed);c.addWidget(self.best_only)
         self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());c.addWidget(self.show_face_boxes)
-        c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
+        dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);c.addWidget(dup_review);c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
         v=QHBoxLayout();v.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');v.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);v.addWidget(save_view);v.addWidget(load_view);v.addWidget(delete_view)
         v.addSpacing(18);v.addWidget(QLabel('Top/Bottom 依据'));self.rank_basis_combo=QComboBox();self.rank_basis_combo.addItems(['综合质量','Face Quality','BRISQUE','Sharpness','Face Pixels']);self.rank_basis_combo.currentTextChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.rank_basis_combo);self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.quick_n);top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));v.addWidget(top_view);v.addWidget(bottom_view);v.addWidget(clear_top);v.addStretch(1);l.addLayout(v)
         self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:4px; background:#eef3f8;');l.addWidget(self.current_view_label)
@@ -825,6 +896,11 @@ class Window(QMainWindow):
         r=self.selected()
         if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
     def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.quick_mode='';self.view_combo.setCurrentText('推荐');self.refresh() if self.records else None;self.save()
+    def open_duplicate_review(self):
+        if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        DuplicateReviewDialog(self.records,self.duplicate_review_changed,self).exec()
+    def duplicate_review_changed(self):
+        Analyzer.groups(self.records);recommend(self.records,self.target);self.page=0;self.refresh();self.save()
     def open(self,it):
         try:os.startfile(str(self.records[it.data(Qt.UserRole)].path))
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
