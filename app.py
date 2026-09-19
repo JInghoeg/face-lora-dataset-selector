@@ -48,7 +48,7 @@ class AISuggestion:
 
 @dataclass
 class ViewSpec:
-    name:str=''; filters:dict=field(default_factory=dict); sort_mode:str='默认顺序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
+    name:str=''; filters:dict=field(default_factory=dict); sort_field:str='默认顺序'; sort_direction:str='降序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
 
 @dataclass
 class Photo:
@@ -133,7 +133,11 @@ def photo_from_dict(d,path,size,mtime):
 def view_spec_from_dict(x):
     if isinstance(x,ViewSpec):return x
     if not isinstance(x,dict):return ViewSpec()
-    return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),str(x.get('sort_mode','默认顺序')),bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
+    field_name=str(x.get('sort_field','默认顺序'));direction=str(x.get('sort_direction','降序'))
+    legacy=str(x.get('sort_mode',''))
+    legacy_map={'Face Quality 高 → 低':('Face Quality','降序'),'Face Quality 低 → 高':('Face Quality','升序'),'BRISQUE 低 → 高':('BRISQUE','升序'),'BRISQUE 高 → 低':('BRISQUE','降序'),'Sharpness 高 → 低':('Sharpness','降序'),'Sharpness 低 → 高':('Sharpness','升序'),'状态':('状态','升序'),'Duplicate Group':('Duplicate Group','升序'),'来源目录 / 源视频':('来源目录 / 源视频','升序'),'景别':('景别','升序'),'Yaw':('Yaw','升序'),'Pitch':('Pitch','升序')}
+    if legacy and 'sort_field' not in x:field_name,direction=legacy_map.get(legacy,('默认顺序','降序'))
+    return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),field_name,direction,bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
 def saved_views_from_data(folder):
     return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
 def save_data(folder,records,target,saved_views=None):
@@ -658,7 +662,7 @@ class Window(QMainWindow):
         self.pitch_combo=QComboBox();self.pitch_combo.addItems(['全部',*PITCHES]);self.pitch_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('Pitch'));c.addWidget(self.pitch_combo)
         self.eligibility_combo=QComboBox();self.eligibility_combo.addItems(['全部','PASS','REVIEW','REJECT']);self.eligibility_combo.currentTextChanged.connect(self.filters_changed);c.addWidget(QLabel('Eligibility'));c.addWidget(self.eligibility_combo)
         clear_filters=QPushButton('清除全部筛选');clear_filters.clicked.connect(self.clear_filters);c.addWidget(clear_filters)
-        self.sort_combo=QComboBox();self.sort_combo.addItems(['默认顺序','Face Quality 高 → 低','Face Quality 低 → 高','BRISQUE 低 → 高','BRISQUE 高 → 低','Sharpness 高 → 低','Sharpness 低 → 高','状态','Duplicate Group','来源目录 / 源视频','景别','Yaw','Pitch']);self.sort_combo.currentTextChanged.connect(self.sort_changed);c.addWidget(QLabel('排序'));c.addWidget(self.sort_combo)
+        self.sort_field_combo=QComboBox();self.sort_field_combo.addItems(['默认顺序','Face Quality','BRISQUE','Sharpness','Face Pixels','状态','Eligibility','Duplicate Group','来源目录 / 源视频','景别','Yaw','Pitch']);self.sort_field_combo.currentTextChanged.connect(self.sort_changed);self.sort_dir_combo=QComboBox();self.sort_dir_combo.addItems(['降序','升序']);self.sort_dir_combo.currentTextChanged.connect(self.sort_changed);c.addWidget(QLabel('排序'));c.addWidget(self.sort_field_combo);c.addWidget(self.sort_dir_combo)
         self.best_only=QCheckBox('仅显示每个 Duplicate Group 的最佳图');self.best_only.toggled.connect(self.filters_changed);c.addWidget(self.best_only)
         self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());c.addWidget(self.show_face_boxes)
         c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
@@ -692,7 +696,7 @@ class Window(QMainWindow):
         if self.yaw_combo.currentText()!='全部':filters['angle_class']=self.yaw_combo.currentText()
         if self.pitch_combo.currentText()!='全部':filters['pitch_class']=self.pitch_combo.currentText()
         if self.eligibility_combo.currentText()!='全部':filters['eligibility']=self.eligibility_combo.currentText()
-        return ViewSpec(name,filters,self.sort_combo.currentText(),self.best_only.isChecked(),self.quick_mode,self.quick_n.value(),self.rank_basis_combo.currentText())
+        return ViewSpec(name,filters,self.sort_field_combo.currentText(),self.sort_dir_combo.currentText(),self.best_only.isChecked(),self.quick_mode,self.quick_n.value(),self.rank_basis_combo.currentText())
     def update_saved_view_combo(self):
         self.saved_view_combo.blockSignals(True);self.saved_view_combo.clear();self.saved_view_combo.addItem('未选择')
         for v in self.saved_views:self.saved_view_combo.addItem(v.name)
@@ -707,7 +711,7 @@ class Window(QMainWindow):
         else:self.saved_views[existing]=spec
         self.update_saved_view_combo();self.saved_view_combo.setCurrentText(name);self.save()
     def apply_view_spec(self,spec):
-        mapping=((self.view_combo,spec.filters.get('status','全部')),(self.scale_combo,spec.filters.get('person_scale','全部')),(self.yaw_combo,spec.filters.get('angle_class','全部')),(self.pitch_combo,spec.filters.get('pitch_class','全部')),(self.eligibility_combo,spec.filters.get('eligibility','全部')),(self.sort_combo,spec.sort_mode),(self.rank_basis_combo,spec.ranking_basis))
+        mapping=((self.view_combo,spec.filters.get('status','全部')),(self.scale_combo,spec.filters.get('person_scale','全部')),(self.yaw_combo,spec.filters.get('angle_class','全部')),(self.pitch_combo,spec.filters.get('pitch_class','全部')),(self.eligibility_combo,spec.filters.get('eligibility','全部')),(self.sort_field_combo,spec.sort_field),(self.sort_dir_combo,spec.sort_direction),(self.rank_basis_combo,spec.ranking_basis))
         for combo,value in mapping:combo.blockSignals(True);combo.setCurrentText(value);combo.blockSignals(False)
         self.best_only.blockSignals(True);self.best_only.setChecked(spec.best_only);self.best_only.blockSignals(False);self.quick_n.blockSignals(True);self.quick_n.setValue(max(1,spec.limit_n));self.quick_n.blockSignals(False);self.quick_mode=spec.quick_mode if spec.quick_mode in ('','view_top','view_bottom') else '';self.page=0;self.refresh()
     def load_selected_view(self):
@@ -742,10 +746,9 @@ class Window(QMainWindow):
     def indices(self,with_quick=True):
         base=[i for i,r in enumerate(self.records) if (self.view_combo.currentText()=='全部' or r.status==self.view_combo.currentText()) and (self.scale_combo.currentText()=='全部' or r.person_scale==self.scale_combo.currentText()) and (self.yaw_combo.currentText()=='全部' or r.angle_class==self.yaw_combo.currentText()) and (self.pitch_combo.currentText()=='全部' or r.pitch_class==self.pitch_combo.currentText()) and (self.eligibility_combo.currentText()=='全部' or r.eligibility==self.eligibility_combo.currentText())]
         if self.best_only.isChecked():base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
-        sort=self.sort_combo.currentText()
-        key_func={'Face Quality 高 → 低':lambda r:r.face_quality,'Face Quality 低 → 高':lambda r:r.face_quality,'BRISQUE 低 → 高':lambda r:r.brisque,'BRISQUE 高 → 低':lambda r:r.brisque,'Sharpness 高 → 低':lambda r:r.blur,'Sharpness 低 → 高':lambda r:r.blur,'状态':lambda r:r.status,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
-        reverse=sort in ('Face Quality 高 → 低','BRISQUE 高 → 低','Sharpness 高 → 低')
-        if sort in key_func:base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=reverse)
+        sort=self.sort_field_combo.currentText()
+        key_func={'Face Quality':lambda r:r.face_quality,'BRISQUE':lambda r:r.brisque,'Sharpness':lambda r:r.blur,'Face Pixels':lambda r:r.face_px,'状态':lambda r:r.status,'Eligibility':lambda r:r.eligibility,'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:r.person_scale,'Yaw':lambda r:r.angle_class,'Pitch':lambda r:r.pitch_class}
+        if sort in key_func:base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=self.sort_dir_combo.currentText()=='降序')
         n=self.quick_n.value()
         if with_quick and self.quick_mode=='view_top':base=sorted(base,key=lambda i:self.quick_key(self.records[i]),reverse=True)[:n]
         if with_quick and self.quick_mode=='view_bottom':base=sorted(base,key=lambda i:self.quick_key(self.records[i]))[:n]
@@ -757,6 +760,7 @@ class Window(QMainWindow):
         if self.yaw_combo.currentText()!='全部':parts.append('Yaw：'+self.yaw_combo.currentText())
         if self.pitch_combo.currentText()!='全部':parts.append('Pitch：'+self.pitch_combo.currentText())
         if self.eligibility_combo.currentText()!='全部':parts.append('Eligibility：'+self.eligibility_combo.currentText())
+        if self.sort_field_combo.currentText()!='默认顺序':parts.append(f'排序：{self.sort_field_combo.currentText()} {self.sort_dir_combo.currentText()}')
         if self.best_only.isChecked():parts.append('每组最佳图')
         if self.quick_mode=='view_top':parts.append(f'Top {self.quick_n.value()} · {self.rank_basis_combo.currentText()}')
         if self.quick_mode=='view_bottom':parts.append(f'Bottom {self.quick_n.value()} · {self.rank_basis_combo.currentText()}')
