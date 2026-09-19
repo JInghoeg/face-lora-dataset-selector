@@ -44,6 +44,14 @@ if (-not (Test-Path $portable)) {
     throw "Portable output directory was not created: $portable"
 }
 
+# This application reads image files only; it never opens video streams.
+# OpenCV's FFmpeg plugin is therefore unused but costs about 27 MB unpacked.
+$ffmpeg = Get-ChildItem (Join-Path $portable "_internal\cv2") -Filter "opencv_videoio_ffmpeg*.dll" -ErrorAction SilentlyContinue
+foreach ($file in $ffmpeg) {
+    Remove-Item $file.FullName -Force
+    Write-Host "Removed unused OpenCV video codec: $($file.Name)"
+}
+
 Copy-Item "README.md" $portable -Force
 Copy-Item "LICENSE" $portable -Force
 Copy-Item "THIRD_PARTY_NOTICES.md" $portable -Force
