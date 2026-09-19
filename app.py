@@ -331,9 +331,11 @@ class Analyzer(QObject):
             if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
 def rank(r):return(r.face_quality,-r.brisque,r.blur)
+AUTO_RECOMMEND_BLOCKING_FLAGS={'secondary_faces_detected','probable_multi_person','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
 def recommendation_qualified(r):
-    """自动推荐的最低质量门槛；未通过者仍是备选，不会被强行补位。"""
-    return r.eligibility=='PASS' and r.face_quality>=.45 and r.brisque<=70 and r.blur>=40
+    """自动推荐门槛与 REVIEW 分离：非阻断型 warning（如 low_face_ratio）不应变相淘汰可用图片。"""
+    blocked=bool(r.hard_rejects) or any(x.code in AUTO_RECOMMEND_BLOCKING_FLAGS for x in r.review_flags)
+    return not blocked and r.face_quality>=.45 and r.brisque<=70 and r.blur>=40
 def group_entries(rs,group,qualified=False):
     entries=[r for r in rs if r.duplicate_group==group]
     if qualified:
@@ -954,6 +956,8 @@ def self_test():
         if len(content_hash)!=64 or sid1==sid2 or not sid1.startswith('img_') or not sid2.startswith('img_'):raise RuntimeError('stable sample_id/content hash self-test failed')
     probe=Photo(Path('probe.jpg'),123,456);probe.sample_id='img_probe';probe.content_sha256='a'*64;probe.face_detections=[FaceDetection('face_1',[1.,2.,30.,40.],.9,.1,30,True)];probe.primary_face_id='face_1';probe.review_flags=[AnalysisFinding('low_face_ratio','primary_face',.01,.018,'test flag')];derive_eligibility(probe)
     if probe.eligibility!='REVIEW':raise RuntimeError('eligibility REVIEW self-test failed')
+    probe.face_quality=.6;probe.brisque=30.;probe.blur=60.
+    if not recommendation_qualified(probe):raise RuntimeError('non-blocking REVIEW flag incorrectly blocks recommendation')
     restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','降序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
