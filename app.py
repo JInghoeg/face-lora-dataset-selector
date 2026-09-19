@@ -35,12 +35,31 @@ MIGAN_SIZE=28079181
 EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
 
 @dataclass
+class AnalysisFinding:
+    code:str; source:str; value:Optional[float]=None; threshold:Optional[float]=None; detail:Optional[str]=None
+
+@dataclass
+class FaceDetection:
+    detection_id:str; bbox_xywh:list[float]=field(default_factory=list); confidence:float=0.; area_ratio:float=0.; face_px:int=0; is_primary:bool=False; detector:str='yunet'
+
+@dataclass
+class AISuggestion:
+    patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False
+
+@dataclass
 class Photo:
-    path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0; faces:int=0; face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; reasons:list[str]=field(default_factory=list); auto_status:str='备选'; manual_status:Optional[str]=None
+    path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0
+    sample_id:str=''; content_sha256:str=''
+    faces:int=0; face_detections:list[FaceDetection]=field(default_factory=list); primary_face_id:Optional[str]=None
+    face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0
+    analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'
+    reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
+    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None
     @property
     def status(self): return self.manual_status or self.auto_status
     @property
     def source(self): return self.path.stem.split('_frame_',1)[0] if '_frame_' in self.path.stem else str(self.path.parent.resolve())
+
 @dataclass
 class TextPhoto:
     path:Path; file_size:int; mtime_ns:int; boxes:list=field(default_factory=list); selected:list=field(default_factory=list); manual:list=field(default_factory=list); scores:list=field(default_factory=list); suggested:list=field(default_factory=list); width:int=0; height:int=0
@@ -61,24 +80,59 @@ def phash_int(image):
     value=0
     for bit in bits:value=(value<<1)|int(bit)
     return value
+def sha256_file(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        while True:
+            chunk=f.read(1024*1024)
+            if not chunk:break
+            h.update(chunk)
+    return h.hexdigest()
+def sample_id_for(content_sha256): return 'img_'+content_sha256[:16]
 def cache_path(folder): return CACHE/(hashlib.sha256(key(folder).encode()).hexdigest()[:24]+'.json')
 def load_data(folder):
     try:
-        data=json.loads(cache_path(folder).read_text(encoding='utf-8')); return data if data.get('version',data.get('schema_version')) in (1,2) else {}
+        data=json.loads(cache_path(folder).read_text(encoding='utf-8')); return data if data.get('version',data.get('schema_version')) in (1,2,3) else {}
     except Exception:return {}
 def load_cached(folder):
-    d=load_data(folder);return {x['path'].casefold():x for x in d.get('records',[])} if d.get('version',d.get('schema_version'))==2 else {}
-def manual_states(folder):
-    return {x['path'].casefold():x.get('manual_status') for x in load_data(folder).get('records',[]) if x.get('manual_status')}
+    d=load_data(folder);return {x['path'].casefold():x for x in d.get('records',[])} if d.get('version',d.get('schema_version'))==3 else {}
+def load_cached_by_hash(folder):
+    d=load_data(folder)
+    if d.get('version',d.get('schema_version'))!=3:return {}
+    return {x.get('content_sha256'):x for x in d.get('records',[]) if x.get('content_sha256')}
+def legacy_manual_states(folder):
+    d=load_data(folder)
+    if d.get('version',d.get('schema_version')) not in (1,2):return {}
+    return {x['path'].casefold():x.get('manual_status') for x in d.get('records',[]) if x.get('manual_status')}
+def finding_from_dict(x):
+    if isinstance(x,AnalysisFinding):return x
+    return AnalysisFinding(**x) if isinstance(x,dict) else AnalysisFinding(str(x),'legacy',detail=str(x))
+def face_detection_from_dict(x):
+    if isinstance(x,FaceDetection):return x
+    return FaceDetection(**x) if isinstance(x,dict) else None
+def ai_suggestion_from_dict(x):
+    if isinstance(x,AISuggestion) or x is None:return x
+    return AISuggestion(**x) if isinstance(x,dict) else None
 def photo_to_dict(p):
     d=asdict(p); d['path']=str(p.path.resolve()); return d
 def photo_from_dict(d,path,size,mtime):
     p=Photo(path,size,mtime)
-    for name in p.__dataclass_fields__:
-        if name not in ('path','file_size','mtime_ns','reasons') and name in d:setattr(p,name,d[name])
-    p.reasons=list(d.get('reasons',[])); return p
+    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','analysis_metrics','eligibility','auto_status','manual_status')
+    for name in simple:
+        if name in d:setattr(p,name,d[name])
+    p.face_detections=[x for x in (face_detection_from_dict(v) for v in d.get('face_detections',[])) if x is not None]
+    p.review_flags=[finding_from_dict(v) for v in d.get('review_flags',[])]
+    p.hard_rejects=[finding_from_dict(v) for v in d.get('hard_rejects',[])]
+    p.reasons=list(d.get('reasons',[]))
+    p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
+    return p
 def save_data(folder,records,target):
-    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':2,'folder':str(folder.resolve()),'target':target,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+def finding_text(f):
+    return f.detail or f.code
+def derive_eligibility(r):
+    r.eligibility='REJECT' if r.hard_rejects else ('REVIEW' if r.review_flags else 'PASS')
+    return r.eligibility
 def ensure_pose():
     if not POSE.exists():
         POSE.parent.mkdir(exist_ok=True); urllib.request.urlretrieve(POSE_URL,POSE)
@@ -153,40 +207,53 @@ class Analyzer(QObject):
         try:
             files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
             if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);manual=manual_states(self.folder); result=[]; todo=[]
+            old=load_cached(self.folder);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder); result=[]; todo=[]
             for i,path in enumerate(files):
                 stat=path.stat(); cache=old.get(key(path))
-                if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:result.append(photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns))
-                else:result.append(None);todo.append((i,path,stat.st_size,stat.st_mtime_ns))
+                if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
+                    result.append(photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns));continue
+                content_sha=sha256_file(path);same=old_by_hash.get(content_sha)
+                if same:
+                    restored=photo_from_dict(same,path,stat.st_size,stat.st_mtime_ns);restored.content_sha256=content_sha;restored.sample_id=sample_id_for(content_sha);result.append(restored)
+                else:
+                    result.append(None);todo.append((i,path,stat.st_size,stat.st_mtime_ns,content_sha))
             if todo:
                 self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
                 with PoseLandmarker.create_from_options(opt) as pl:
-                    for n,(i,p,s,m) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m);self.progress.emit(n,len(todo),p.name)
+                    for n,(i,p,s,m,h) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m,h);self.progress.emit(n,len(todo),p.name)
             rec=[x for x in result if x]
-            for r in rec:r.manual_status=manual.get(key(r.path),r.manual_status)
+            for r in rec:
+                if not r.manual_status:r.manual_status=legacy_manual.get(key(r.path))
+                derive_eligibility(r)
             self.groups(rec);self.base(rec);self.finished.emit(rec)
         except Exception:self.failed.emit(traceback.format_exc())
     @staticmethod
-    def one(path,qm,pl,size,mtime):
-        r=Photo(path,size,mtime)
+    def one(path,qm,pl,size,mtime,content_sha=None):
+        r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=sample_id_for(r.content_sha256)
         try:
             with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean()); fs=qm.faces(bgr);r.faces=0 if fs is None else len(fs);po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
-            if r.faces==1:
-                f=fs[0];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=w*h/max(1,r.width*r.height);r.face_px=int(min(w,h));crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.;r.face_quality=qm.quality(bgr,f);r.brisque=qm.brisque(bgr);r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
-            else:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var());r.brisque=qm.brisque(bgr)
-            dark,bright=float((gray<20).mean()),float((gray>235).mean())
-            if r.faces==0:r.reasons.append('YuNet 未检测到人脸')
-            elif r.faces>1:r.reasons.append(f'YuNet 检测到 {r.faces} 张人脸')
-            if r.width<512 or r.height<512:r.reasons.append('图片分辨率低于 512px')
-            if r.faces==1 and r.face_px<120:r.reasons.append('人脸实际像素过小')
-            if r.faces==1 and r.face_ratio<.018:r.reasons.append('脸部占画面比例过低')
-            if r.faces==1 and r.blur<25:r.reasons.append('人脸严重模糊')
-            if r.faces==1 and r.face_quality<.25:r.reasons.append('eDifFIQA 人脸质量过低')
-            if r.brisque>80:r.reasons.append('BRISQUE 整图质量过低')
-            if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.reasons.append('严重欠曝或过曝')
-        except Exception as e:r.reasons.append(f'无法读取或分析图片：{e}')
-        return r
+            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean());fs=qm.faces(bgr);rows=[] if fs is None else list(fs);po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
+            for n,f in enumerate(rows):
+                x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
+                r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet'))
+            r.faces=len(r.face_detections)
+            if rows:
+                primary_index=max(range(len(rows)),key=lambda i:r.face_detections[i].area_ratio*max(.01,r.face_detections[i].confidence))
+                r.face_detections[primary_index].is_primary=True;r.primary_face_id=r.face_detections[primary_index].detection_id
+                f=rows[primary_index];d=r.face_detections[primary_index];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=d.area_ratio;r.face_px=d.face_px;crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.;r.face_quality=qm.quality(bgr,f);r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
+            else:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var())
+            r.brisque=qm.brisque(bgr);dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces}
+            if r.faces==0:r.review_flags.append(AnalysisFinding('no_face_detected','yunet',detail='YuNet 未检测到人脸'))
+            elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'YuNet 检测到 {r.faces} 张人脸，需确认次要检测框'))
+            if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
+            if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
+            if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
+            if rows and r.blur<25:r.review_flags.append(AnalysisFinding('severe_face_blur','primary_face',r.blur,25.,'主脸明显模糊'))
+            if rows and r.face_quality<.25:r.review_flags.append(AnalysisFinding('low_face_quality','ediffiqa',r.face_quality,.25,'eDifFIQA 人脸质量偏低'))
+            if r.brisque>80:r.review_flags.append(AnalysisFinding('high_brisque','brisque',r.brisque,80.,'BRISQUE 整图质量偏低'))
+            if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.review_flags.append(AnalysisFinding('extreme_exposure','image',r.brightness,None,'图像疑似严重欠曝或过曝'))
+        except Exception as e:r.hard_rejects.append(AnalysisFinding('read_or_analysis_error','analyzer',detail=f'无法读取或分析图片：{e}'))
+        derive_eligibility(r);return r
     @staticmethod
     def groups(rs,threshold=8,adjacent=16):
         """以组内质量最佳图为锚点分组，避免 A≈B≈C 的无限传递合并。"""
@@ -207,12 +274,12 @@ class Analyzer(QObject):
     @staticmethod
     def base(rs):
         for r in rs:
-            if r.manual_status is None:r.auto_status='淘汰' if r.reasons else '备选'
+            if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
 def rank(r):return(r.face_quality,-r.brisque,r.blur)
 def recommendation_qualified(r):
     """自动推荐的最低质量门槛；未通过者仍是备选，不会被强行补位。"""
-    return not r.reasons and r.face_quality>=.45 and r.brisque<=70 and r.blur>=40
+    return r.eligibility=='PASS' and r.face_quality>=.45 and r.brisque<=70 and r.blur>=40
 def group_entries(rs,group,qualified=False):
     entries=[r for r in rs if r.duplicate_group==group]
     if qualified:
@@ -234,7 +301,7 @@ def alloc(total,names,weights):
     return out
 def recommend(rs,target):
     for r in rs:
-        if r.manual_status is None:r.auto_status='淘汰' if r.reasons else '备选'
+        if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
     fixed=[r for r in rs if r.manual_status=='推荐'];remain=max(0,target-len(fixed))
     # 质量门槛 -> 每个 duplicate group 的最佳代表 -> 景别 × Yaw 分桶。
     pool=group_best([r for r in rs if recommendation_qualified(r) and r.manual_status is None]);b=defaultdict(list);sc=defaultdict(list)
@@ -634,8 +701,8 @@ class Window(QMainWindow):
         while self.stat_layout.count():
             child=self.stat_layout.takeAt(0)
             if child.widget():child.widget().deleteLater()
-        st=Counter(r.status for r in self.records);sel=[r for r in self.records if r.status=='推荐'];sc=Counter(r.person_scale for r in sel);yw=Counter(r.angle_class for r in sel);pt=Counter(r.pitch_class for r in sel);grp={r.duplicate_group for r in sel if r.duplicate_group};du=sum(r.status!='推荐' and not r.reasons and r.duplicate_group and (self.qualified_group_rank(r)[0]>1 or r.duplicate_group in grp) for r in self.records);bad=sum(bool(r.reasons) for r in self.records);group_count=len({r.duplicate_group for r in self.records if r.duplicate_group})
-        self.stats.setText(f'目标 / 实际推荐：{self.target} / {len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · Duplicate Group：{group_count}\n因近重复未推荐：{du} · 因质量问题淘汰：{bad}')
+        st=Counter(r.status for r in self.records);sel=[r for r in self.records if r.status=='推荐'];sc=Counter(r.person_scale for r in sel);yw=Counter(r.angle_class for r in sel);pt=Counter(r.pitch_class for r in sel);grp={r.duplicate_group for r in sel if r.duplicate_group};du=sum(r.status!='推荐' and r.eligibility!='REJECT' and r.duplicate_group and (self.qualified_group_rank(r)[0]>1 or r.duplicate_group in grp) for r in self.records);bad=sum(r.eligibility=='REJECT' for r in self.records);review=sum(r.eligibility=='REVIEW' for r in self.records);group_count=len({r.duplicate_group for r in self.records if r.duplicate_group})
+        self.stats.setText(f'目标 / 实际推荐：{self.target} / {len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · Duplicate Group：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
         self.stat_layout.addWidget(QLabel('状态（点击筛选）'),0,0,1,3)
         for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{value} {st[value]}','status',value,1,col)
         self.stat_layout.addWidget(QLabel('景别（推荐）'),2,0,1,3)
@@ -655,7 +722,7 @@ class Window(QMainWindow):
     def selected(self):
         x=self.grid.currentItem();return self.records[x.data(Qt.UserRole)] if x else None
     def details(self,it):
-        r=self.records[it.data(Qt.UserRole)];reasons='；'.join(r.reasons) or '无（符合基础训练门槛）';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';self.detail.setText(f'文件：{r.path.name}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\n分辨率：{r.width} × {r.height}\n人脸数：{r.faces}\n脸部占比：{r.face_ratio*100:.1f}%\n人脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n淘汰原因：{reasons}')
+        r=self.records[it.data(Qt.UserRole)];flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';self.detail.setText(f'文件：{r.path.name}\nSample ID：{r.sample_id}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\nEligibility：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n需复核：{flags}\n硬淘汰：{rejects}')
     def manual(self,v):
         r=self.selected()
         if r:r.manual_status=v;self.refresh();self.save()
