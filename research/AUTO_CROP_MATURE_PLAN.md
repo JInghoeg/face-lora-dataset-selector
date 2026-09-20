@@ -164,3 +164,20 @@ Current research defaults:
 - accept 2..6 split subjects.
 
 These are research defaults, not frozen production policy. They must be checked against the next contact-sheet run before promotion.
+
+
+## Composite Split v1.2 — head-assisted output policy
+
+Real-data review identified three remaining cases:
+
+1. partial-body/equipment composites should not be treated as useful person splits;
+2. a single person may occasionally receive two person boxes;
+3. tightly overlapping multiple people should remain one composed image instead of being split apart.
+
+Minimal adaptation now reuses DeepGHS' existing `detect_heads()` as a second mature signal:
+
+- zero detected heads -> reject as a headless partial-body composite candidate;
+- exactly one detected head + multiple person boxes containing it -> keep only the largest person box;
+- multiple heads + overlapping person boxes -> keep the whole original image once as a group composition.
+
+The person and head detectors remain upstream and unchanged. This layer only decides how their outputs map to product actions.
