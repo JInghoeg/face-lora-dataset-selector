@@ -87,10 +87,35 @@ def overlay_boxes(image: Image.Image, detections) -> Image.Image:
     return out
 
 
-def top_crop(image: Image.Image, detections) -> Image.Image:
+def box_area(box) -> int:
+    x0, y0, x1, y1 = box
+    return max(0, x1 - x0) * max(0, y1 - y0)
+
+
+def primary_detection(detections):
+    """Select the dominant subject by box area, not detector confidence.
+
+    Confidence measures detection certainty, not which person is the intended
+    foreground subject. Area is only a review-display policy here; comparable
+    large persons remain ambiguous and must not be auto-cropped.
+    """
     if not detections:
+        return None, False
+    ordered = sorted(detections, key=lambda x: box_area(x[0]), reverse=True)
+    primary = ordered[0]
+    ambiguous = False
+    if len(ordered) > 1:
+        a0 = max(1, box_area(primary[0]))
+        a1 = box_area(ordered[1][0])
+        ambiguous = (a1 / a0) >= 0.60
+    return primary, ambiguous
+
+
+def primary_crop(image: Image.Image, detections) -> Image.Image:
+    primary, _ = primary_detection(detections)
+    if primary is None:
         return Image.new("RGB", image.size, "white")
-    box, _, _ = max(detections, key=lambda x: x[2])
+    box, _, _ = primary
     return image.crop(tuple(box)).convert("RGB")
 
 
@@ -112,7 +137,7 @@ def make_contact_sheets(rows: list[dict], out: Path) -> None:
             visuals = [
                 ("ORIGINAL", original),
                 ("RAW DEEPGHS BOX", overlay_boxes(original, detections)),
-                ("RAW TOP BOX CROP", top_crop(original, detections)),
+                ("RAW LARGEST BOX CROP", primary_crop(original, detections)),
             ]
             for col, (title, image) in enumerate(visuals):
                 x, y = col * tile_w, r * tile_h
@@ -161,6 +186,7 @@ def main() -> int:
             conf_threshold=CONF_THRESHOLD,
             iou_threshold=IOU_THRESHOLD,
         )
+        primary, ambiguous = primary_detection(detections)
         rows.append(
             {
                 "path": str(path),
@@ -169,11 +195,15 @@ def main() -> int:
                     {"box": list(box), "type": kind, "score": float(score)}
                     for box, kind, score in detections
                 ],
+                "primary_policy": "largest_area",
+                "primary_box": list(primary[0]) if primary else None,
+                "ambiguous_multi_person": ambiguous,
             }
         )
 
     no_detection = sum(not r["detections"] for r in rows)
     multi_detection = sum(len(r["detections"]) > 1 for r in rows)
+    ambiguous_multi = sum(r.get("ambiguous_multi_person", False) for r in rows)
     result = {
         "upstream": {
             "library": "dghs-imgutils",
@@ -186,6 +216,7 @@ def main() -> int:
         "count": len(rows),
         "no_detection": no_detection,
         "multi_detection": multi_detection,
+        "ambiguous_multi_person": ambiguous_multi,
         "samples": rows,
     }
     (out / "results.json").write_text(
@@ -197,6 +228,7 @@ def main() -> int:
     print(f"Done: {out}", flush=True)
     print(f"No detection: {no_detection}/{len(rows)}", flush=True)
     print(f"Multiple detections: {multi_detection}/{len(rows)}", flush=True)
+    print(f"Ambiguous comparable persons: {ambiguous_multi}/{len(rows)}", flush=True)
     return 0
 
 
