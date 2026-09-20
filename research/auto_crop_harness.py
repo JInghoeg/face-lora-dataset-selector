@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -474,7 +475,7 @@ def write_contact_sheets(run_dir: Path, pack: list[dict]) -> None:
         page.save(out / f"review_{page_no:03d}.jpg", quality=90)
 
 
-def analyze(folder: Path, include_all: bool, review_size: int) -> Path:
+def analyze(folder: Path, include_all: bool, review_size: int, progress=None) -> Path:
     files, records, scope = selected_input_files(folder, include_all)
     if not files:
         raise RuntimeError("没有找到可分析图片。")
@@ -496,7 +497,9 @@ def analyze(folder: Path, include_all: bool, review_size: int) -> Path:
     proposals = []
     with PoseLandmarker.create_from_options(options) as landmarker:
         for index, path in enumerate(files, 1):
-            print(f"[{index}/{len(files)}] {path.name}")
+            print(f"[{index}/{len(files)}] {path.name}", flush=True)
+            if progress:
+                progress(index, len(files), path.name)
             width = height = 0
             try:
                 rgb = load_rgb(path)
@@ -839,11 +842,34 @@ def main() -> int:
         if not folder.exists():
             QMessageBox.critical(None, "目录不存在", str(folder))
             return 2
+        dialog = QProgressDialog("准备分析…", "取消", 0, 100)
+        dialog.setWindowTitle("Auto Crop Research")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.show()
+        app.processEvents()
+
+        def update_progress(index, total, name):
+            if dialog.wasCanceled():
+                raise RuntimeError("用户取消分析")
+            dialog.setMaximum(max(1, total))
+            dialog.setValue(max(0, index - 1))
+            dialog.setLabelText(f"正在分析 {index} / {total}\n{name}")
+            app.processEvents()
+
         try:
-            run_dir = analyze(folder, args.all, args.review_size)
+            run_dir = analyze(folder, args.all, args.review_size, update_progress)
+            dialog.setValue(dialog.maximum())
+            dialog.setLabelText("分析完成，正在打开复核界面…")
+            app.processEvents()
         except Exception as exc:
+            dialog.close()
             QMessageBox.critical(None, "Auto Crop benchmark 失败", str(exc))
             return 2
+        finally:
+            dialog.close()
 
     window = ReviewWindow(run_dir)
     window.show()
