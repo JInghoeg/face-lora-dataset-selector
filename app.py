@@ -1112,14 +1112,14 @@ class Window(QMainWindow):
         for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{value} {st[value]}','status',value,1,col)
         self.stat_layout.addWidget(QLabel('景别（推荐）'),2,0,1,3)
         for n,value in enumerate(SCALES):self.stat_button(f'{value} {sc[value]}','scale',value,3+n//2,n%2)
-        self.stat_layout.addWidget(QLabel('Yaw（推荐）'),5,0,1,3)
+        self.stat_layout.addWidget(QLabel('水平角度（推荐）'),5,0,1,3)
         for n,value in enumerate(YAWS):self.stat_button(f'{value} {yw[value]}','yaw',value,6+n//2,n%2)
-        self.stat_layout.addWidget(QLabel('Pitch（推荐）'),9,0,1,3)
+        self.stat_layout.addWidget(QLabel('俯仰（推荐）'),9,0,1,3)
         for n,value in enumerate(PITCHES):self.stat_button(f'{value} {pt[value]}','pitch',value,10+n//2,n%2)
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);self.grid.clear();self.visible_item_map={};self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · AI {r.ai_suggestion.decision if r.ai_suggestion else "无"} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);reason=r.recommendation_reasons[0] if r.recommendation_reasons else '无';it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · AI {r.ai_suggestion.decision if r.ai_suggestion else "无"} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}\n推荐/备选原因：{reason}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
         pages=max(1,math.ceil(len(visible)/PAGE));self.page=min(self.page,pages-1);self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图\n{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
     def change(self,d):
         n=self.page+d
@@ -1145,7 +1145,7 @@ class Window(QMainWindow):
         if a.suggested_status in ('推荐','备选','淘汰'):r.manual_status=a.suggested_status
         elif a.suggested_eligibility=='REJECT':r.manual_status='淘汰'
         elif a.suggested_eligibility=='REVIEW':r.manual_status='备选'
-        a.decision='accepted';self.refresh();self.save();self.update_ai_panel(r)
+        a.decision='accepted';recommend(self.records,self.target);self.refresh();self.save();self.update_ai_panel(r)
     def reject_ai_suggestion(self):
         r=self.selected()
         if not r or not r.ai_suggestion:return
@@ -1209,7 +1209,7 @@ class Window(QMainWindow):
         except Exception as e:QMessageBox.critical(self,'AI 建议导入失败',str(e))
     def manual(self,v):
         r=self.selected()
-        if r:r.manual_status=v;self.refresh();self.save()
+        if r:r.manual_status=v;recommend(self.records,self.target);self.refresh();self.save()
     def restore(self):
         r=self.selected()
         if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
@@ -1266,6 +1266,9 @@ def self_test():
     if not recommendation_qualified(side):raise RuntimeError('usable side profile is incorrectly blocked by FIQA')
     recommend([front,side],2)
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
+    bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
+    recommend([bad],1)
+    if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
     restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
     if not restored.ai_suggestion or restored.ai_suggestion.bundle_id!='bundle_1' or restored.ai_suggestion.decision!='pending':raise RuntimeError('AI suggestion round-trip self-test failed')
