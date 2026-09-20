@@ -46,6 +46,7 @@ POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_l
 MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
 MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
+ANALYSIS_VERSION=4
 EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff','.gif'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
 
 @dataclass
@@ -147,14 +148,19 @@ def load_data(folder):
         data=json.loads(cache_path(folder).read_text(encoding='utf-8')); return data if data.get('version',data.get('schema_version')) in (1,2,3) else {}
     except Exception:return {}
 def load_cached(folder):
-    d=load_data(folder);return {x['path'].casefold():x for x in d.get('records',[])} if d.get('version',d.get('schema_version'))==3 else {}
+    d=load_data(folder)
+    if d.get('version',d.get('schema_version'))!=3 or d.get('analysis_version')!=ANALYSIS_VERSION:return {}
+    return {x['path'].casefold():x for x in d.get('records',[])}
 def load_cached_by_hash(folder):
     d=load_data(folder)
-    if d.get('version',d.get('schema_version'))!=3:return {}
+    if d.get('version',d.get('schema_version'))!=3 or d.get('analysis_version')!=ANALYSIS_VERSION:return {}
     out=defaultdict(list)
     for x in d.get('records',[]):
         if x.get('content_sha256'):out[x['content_sha256']].append(x)
     return out
+def historical_records(folder):
+    d=load_data(folder)
+    return {str(x.get('path','')).casefold():x for x in d.get('records',[]) if isinstance(x,dict) and x.get('path')}
 def legacy_manual_states(folder):
     d=load_data(folder)
     if d.get('version',d.get('schema_version')) not in (1,2):return {}
@@ -196,7 +202,7 @@ def view_spec_from_dict(x):
 def saved_views_from_data(folder):
     return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
 def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None):
-    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'analysis_version':ANALYSIS_VERSION,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
 def derive_eligibility(r):
@@ -454,7 +460,7 @@ class Analyzer(QObject):
         try:
             files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
             if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
+            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
             for i,path in enumerate(files):
                 stat=path.stat();cache=old.get(key(path))
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
@@ -481,7 +487,15 @@ class Analyzer(QObject):
                     for n,(i,p,s,m,h) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m,h);self.progress.emit(n,len(todo),p.name)
             rec=[x for x in result if x]
             for r in rec:
-                if not r.manual_status:r.manual_status=legacy_manual.get(key(r.path))
+                hist=history.get(key(r.path))
+                same_content=bool(hist and hist.get('content_sha256') and hist.get('content_sha256')==r.content_sha256)
+                if same_content:
+                    if hist.get('sample_id'):r.sample_id=hist['sample_id']
+                    r.manual_status=hist.get('manual_status')
+                    r.duplicate_ignore=bool(hist.get('duplicate_ignore',False))
+                    r.duplicate_reviewed=bool(hist.get('duplicate_reviewed',False))
+                    r.ai_suggestion=ai_suggestion_from_dict(hist.get('ai_suggestion'))
+                elif not r.manual_status:r.manual_status=legacy_manual.get(key(r.path))
                 derive_eligibility(r)
             self.groups(rec);self.base(rec);self.finished.emit(rec)
         except Exception:self.failed.emit(traceback.format_exc())
@@ -1380,6 +1394,7 @@ def self_test():
     probe.duplicate_reviewed=True;restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
     if not restored.duplicate_reviewed:raise RuntimeError('duplicate review completion persistence self-test failed')
+    if ANALYSIS_VERSION<1:raise RuntimeError('analysis version self-test failed')
     if not restored.ai_suggestion or restored.ai_suggestion.bundle_id!='bundle_1' or restored.ai_suggestion.decision!='pending':raise RuntimeError('AI suggestion round-trip self-test failed')
     entry=manifest_entry(probe,Path('.'));flat=flat_manifest_entry(probe,Path('.'));summary=dataset_summary([probe],'test view')
     if entry['sample_id']!='img_probe' or flat['eligibility']!='REVIEW' or summary['total_samples']!=1:raise RuntimeError('AI bundle serialization self-test failed')
