@@ -78,7 +78,7 @@ class Photo:
     sample_id:str=''; content_sha256:str=''
     faces:int=0; face_detections:list[FaceDetection]=field(default_factory=list); primary_face_id:Optional[str]=None
     face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False
-    analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'
+    analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'; recommendation_reasons:list[str]=field(default_factory=list)
     reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
     auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None
     @property
@@ -157,6 +157,7 @@ def photo_from_dict(d,path,size,mtime):
     p.face_detections=[x for x in (face_detection_from_dict(v) for v in d.get('face_detections',[])) if x is not None]
     p.review_flags=[finding_from_dict(v) for v in d.get('review_flags',[])]
     p.hard_rejects=[finding_from_dict(v) for v in d.get('hard_rejects',[])]
+    p.recommendation_reasons=list(d.get('recommendation_reasons',[]))
     p.reasons=list(d.get('reasons',[]))
     p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
     return p
@@ -226,6 +227,7 @@ def manifest_entry(photo,root):
         'face_detections':[asdict(x) for x in photo.face_detections],
         'review_flags':[asdict(x) for x in photo.review_flags],
         'hard_rejects':[asdict(x) for x in photo.hard_rejects],
+        'recommendation_reasons':list(photo.recommendation_reasons),
         'ai_suggestion':asdict(photo.ai_suggestion) if photo.ai_suggestion else None,
     }
 
@@ -255,6 +257,7 @@ def flat_manifest_entry(photo,root):
         'duplicate_group':photo.duplicate_group,
         'review_flag_codes':'|'.join(x.code for x in photo.review_flags),
         'hard_reject_codes':'|'.join(x.code for x in photo.hard_rejects),
+        'recommendation_reasons':'|'.join(photo.recommendation_reasons),
     }
 
 def dataset_summary(records,view_description=''):
@@ -495,11 +498,17 @@ class Analyzer(QObject):
             if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
 def rank(r):return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
+AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_detected','secondary_faces_detected','probable_multi_person','low_face_pixels','low_face_quality','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
+def recommendation_blockers(r):
+    out=[]
+    if r.hard_rejects:out.extend('硬淘汰：'+finding_text(x) for x in r.hard_rejects)
+    out.extend('需先复核：'+finding_text(x) for x in r.review_flags if x.code in AUTO_RECOMMEND_BLOCKING_FLAGS)
+    if r.brisque>70:out.append(f'BRISQUE {r.brisque:.1f} > 70')
+    if r.blur<40:out.append(f'主脸清晰度 {r.blur:.1f} < 40')
+    return out
 def recommendation_qualified(r):
-    """自动推荐门槛与 REVIEW 分离：非阻断型 warning（如 low_face_ratio）不应变相淘汰可用图片。"""
-    blocked=bool(r.hard_rejects) or any(x.code in AUTO_RECOMMEND_BLOCKING_FLAGS for x in r.review_flags)
-    return not blocked and r.face_quality>=.45 and r.brisque<=70 and r.blur>=40
+    """FIQA 不再使用统一 0.45 生杀线；极低 FIQA(<0.25)由 low_face_quality 复核标记阻断。"""
+    return not recommendation_blockers(r)
 def group_entries(rs,group,qualified=False):
     entries=[r for r in rs if r.duplicate_group==group]
     if qualified:
@@ -521,10 +530,22 @@ def alloc(total,names,weights):
     return out
 def recommend(rs,target):
     for r in rs:
+        r.recommendation_reasons=[]
         if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
+        else:r.recommendation_reasons=[f'人工状态优先：{r.manual_status}']
     fixed=[r for r in rs if r.manual_status=='推荐'];remain=max(0,target-len(fixed))
-    # 质量门槛 -> 每个 duplicate group 的最佳代表 -> 景别 × Yaw 分桶。
-    pool=group_best([r for r in rs if recommendation_qualified(r) and r.manual_status is None]);b=defaultdict(list);sc=defaultdict(list)
+    eligible=[r for r in rs if r.manual_status is None and recommendation_qualified(r)]
+    eligible_ids={id(r) for r in eligible}
+    for r in rs:
+        if r.manual_status is None and id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
+    # 通过基础门槛 -> 每个 duplicate group 的最佳代表 -> 景别 × Yaw 覆盖分配。
+    pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
+    for r in eligible:
+        if id(r) not in pool_ids:
+            gr,gs=(1,1)
+            if r.duplicate_group:
+                entries=group_entries(eligible,r.duplicate_group);gr=entries.index(r)+1 if r in entries else 0;gs=len(entries)
+            r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已保留更优代表（组内 {gr}/{gs}）'] if r.duplicate_group else ['同类候选中已有更优代表']
     for r in pool:b[r.person_scale,r.angle_class].append(r);sc[r.person_scale].append(r)
     for x in list(b.values())+list(sc.values()):x.sort(key=rank,reverse=True)
     sq=alloc(remain,[x for x in SCALES if sc[x]],{'近景/头肩':.35,'半身':.3,'大半身':.2,'全身':.15});used={r.duplicate_group for r in fixed if r.duplicate_group};chosen=[];ids=set();got=Counter()
@@ -538,13 +559,20 @@ def recommend(rs,target):
         yn=[x for x in YAWS if b[s,x]]
         for y,n in alloc(sq[s],yn,{'正脸':.35,'左3/4':.2,'右3/4':.2,'左侧脸':.125,'右侧脸':.125}).items():take(b[s,y],n)
         take(sc[s],max(0,sq[s]-got[s]))
-    # 仅在现有合格组代表内、按景别完成度补位；不放宽质量或重复组约束。
     while len(chosen)<remain:
         progress=False
         for s in sorted(sq,key=lambda x:got[x]/max(1,sq[x])):
             n=len(chosen);take(sc[s],1);progress|=len(chosen)>n
         if not progress:break
-    for r in chosen:r.auto_status='推荐'
+    chosen_ids={id(r) for r in chosen}
+    for r in chosen:
+        r.auto_status='推荐';r.recommendation_reasons=[f'自动推荐：通过基础门槛，并用于补足 {r.person_scale} / {r.angle_class} 覆盖']
+    for r in pool:
+        if id(r) not in chosen_ids and not r.recommendation_reasons:
+            r.recommendation_reasons=[f'已通过基础门槛，但当前目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
+    if fixed and remain==0:
+        for r in pool:
+            if not r.recommendation_reasons:r.recommendation_reasons=[f'已通过基础门槛，但人工推荐已占满目标 {target} 张']
 
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
@@ -1076,7 +1104,7 @@ class Window(QMainWindow):
     def selected(self):
         x=self.grid.currentItem();return self.records[x.data(Qt.UserRole)] if x else None
     def details(self,it):
-        r=self.records[it.data(Qt.UserRole)];flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';self.detail.setText(f'文件：{r.path.name}\nSample ID：{r.sample_id}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\nEligibility：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n需复核：{flags}\n硬淘汰：{rejects}');self.update_ai_panel(r)
+        r=self.records[it.data(Qt.UserRole)];flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';self.detail.setText(f'文件：{r.path.name}\nSample ID：{r.sample_id}\n\n状态：{r.status}（{"人工" if r.manual_status else "自动"}）\nEligibility：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\nYaw 分类：{r.angle_class}\nPitch 分类：{r.pitch_class}\n景别：{r.person_scale}\nDuplicate Group：{dup}\nGroup Size：{gs}\nGroup Rank：{gr} / {gs}\n合格成员 Rank：{qr if qr else "未达推荐门槛"} / {qs}\n\n推荐/备选原因：{'；'.join(r.recommendation_reasons) or '无'}\n需复核：{flags}\n硬淘汰：{rejects}');self.update_ai_panel(r)
     def update_ai_panel(self,r=None):
         r=r or self.selected()
         if not r or not r.ai_suggestion:self.ai_label.setText('当前图片没有 AI 建议');return
@@ -1210,6 +1238,11 @@ def self_test():
     if probe.eligibility!='REVIEW':raise RuntimeError('eligibility REVIEW self-test failed')
     probe.face_quality=.6;probe.brisque=30.;probe.blur=60.
     if not recommendation_qualified(probe):raise RuntimeError('non-blocking REVIEW flag incorrectly blocks recommendation')
+    side=Photo(Path('side.jpg'));side.face_quality=.30;side.brisque=30.;side.blur=60.;side.person_scale='近景/头肩';side.angle_class='左侧脸';side.eligibility='PASS'
+    front=Photo(Path('front.jpg'));front.face_quality=.65;front.brisque=30.;front.blur=60.;front.person_scale='近景/头肩';front.angle_class='正脸';front.eligibility='PASS'
+    if not recommendation_qualified(side):raise RuntimeError('usable side profile is incorrectly blocked by FIQA')
+    recommend([front,side],2)
+    if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
     if not restored.ai_suggestion or restored.ai_suggestion.bundle_id!='bundle_1' or restored.ai_suggestion.decision!='pending':raise RuntimeError('AI suggestion round-trip self-test failed')
