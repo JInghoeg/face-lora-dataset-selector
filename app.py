@@ -463,19 +463,22 @@ class QualityModels:
 
 class Analyzer(QObject):
     status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
-    def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0
+    def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
     def run(self):
         try:
             files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
             if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
+            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set();current_keys={key(p) for p in files};self.deleted_count=sum(1 for k in old if k not in current_keys)
             for i,path in enumerate(files):
                 stat=path.stat();cache=old.get(key(path))
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
                     restored=photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns)
                     if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
-                    used_sample_ids.add(restored.sample_id);result[i]=restored
-                else:pending.append((i,path,stat.st_size,stat.st_mtime_ns,cache))
+                    used_sample_ids.add(restored.sample_id);result[i]=restored;self.unchanged_count+=1
+                else:
+                    pending.append((i,path,stat.st_size,stat.st_mtime_ns,cache))
+                    if cache:self.modified_count+=1
+                    else:self.added_count+=1
             todo=[]
             for i,path,size,mtime,path_cache in pending:
                 content_sha=sha256_file(path);same=None
@@ -487,6 +490,7 @@ class Analyzer(QObject):
                     restored=photo_from_dict(same,path,size,mtime);restored.content_sha256=content_sha
                     if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
                     used_sample_ids.add(restored.sample_id);result[i]=restored
+                    if path_cache:self.modified_count=max(0,self.modified_count-1);self.unchanged_count+=1
                 else:todo.append((i,path,size,mtime,content_sha))
             self.changed_count=len(todo)
             if todo:
@@ -1058,7 +1062,7 @@ class DuplicateReviewDialog(QDialog):
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
-        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('重新分析当前文件夹');self.rescan.clicked.connect(self.start);self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
+        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
         for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);rec.addWidget(b)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setPrefix('自定义 ');ap=QPushButton('应用');ap.clicked.connect(lambda:self.run_rec(self.custom.value()));rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
@@ -1091,7 +1095,7 @@ class Window(QMainWindow):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
-        self.records=rs;self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'读取缓存：{len(rs)} 张，无需重新分析' if unchanged else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True)
+        self.records=rs;self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True)
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
