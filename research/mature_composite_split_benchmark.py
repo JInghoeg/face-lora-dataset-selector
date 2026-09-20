@@ -37,6 +37,15 @@ IMAGE_EXTS = {
     ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"
 }
 
+# Research-only post-filter defaults. These do NOT change the upstream detector.
+# They are deliberately exposed as CLI parameters so real-data review can tune
+# the integration layer without retraining/replacing DeepGHS.
+MIN_IMAGE_AREA_RATIO = 0.03
+MIN_LARGEST_AREA_RATIO = 0.20
+DUPLICATE_SMALLER_COVERAGE = 0.78
+MAX_RAW_DETECTIONS = 8
+MAX_SPLITS = 6
+
 
 def local_root() -> Path:
     return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
@@ -53,6 +62,81 @@ def image_files(folder: Path):
     for p in sorted(folder.rglob("*"), key=lambda x: str(x).casefold()):
         if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
             yield p
+
+
+def intersection_area(a, b) -> int:
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    x0, y0 = max(ax0, bx0), max(ay0, by0)
+    x1, y1 = min(ax1, bx1), min(ay1, by1)
+    return max(0, x1 - x0) * max(0, y1 - y0)
+
+
+def suppress_duplicate_detections(detections, smaller_coverage: float):
+    """Remove nested/strongly-overlapping boxes that represent the same person.
+
+    This is a thin post-processing layer over upstream detector outputs.
+    If one box covers most of another box, keep the larger box; confidence is
+    only used as a tie-breaker for almost-equal areas.
+    """
+    ordered = sorted(
+        detections,
+        key=lambda d: (box_area(d[0]), d[2]),
+        reverse=True,
+    )
+    kept = []
+    suppressed = []
+
+    for det in ordered:
+        box, _, _ = det
+        area = max(1, box_area(box))
+        duplicate_of = None
+
+        for kept_det in kept:
+            kept_box = kept_det[0]
+            inter = intersection_area(box, kept_box)
+            smaller = min(area, max(1, box_area(kept_box)))
+            if inter / smaller >= smaller_coverage:
+                duplicate_of = kept_det
+                break
+
+        if duplicate_of is None:
+            kept.append(det)
+        else:
+            suppressed.append(det)
+
+    return kept, suppressed
+
+
+def significant_detections(
+    detections,
+    image_size: tuple[int, int],
+    min_image_area_ratio: float,
+    min_largest_area_ratio: float,
+):
+    """Keep detections large enough to plausibly be independent split subjects."""
+    if not detections:
+        return [], []
+
+    image_w, image_h = image_size
+    image_area = max(1, image_w * image_h)
+    largest = max(box_area(d[0]) for d in detections)
+
+    kept = []
+    rejected = []
+    for det in detections:
+        area = box_area(det[0])
+        image_ratio = area / image_area
+        largest_ratio = area / max(1, largest)
+        if (
+            image_ratio >= min_image_area_ratio
+            and largest_ratio >= min_largest_area_ratio
+        ):
+            kept.append(det)
+        else:
+            rejected.append(det)
+
+    return kept, rejected
 
 
 def reading_order(detections):
@@ -161,7 +245,9 @@ def make_contact_sheet(rows: list[dict], out: Path):
 
             draw.text(
                 (8, row_idx * tile_h + tile_h - 24),
-                f"{Path(item['path']).name[:90]} | detections={len(detections)}",
+                f"{Path(item['path']).name[:78]} | raw={item.get('raw_detection_count', len(detections))} "
+                f"| valid={len(detections)} | dup-={item.get('duplicate_suppressed_count', 0)} "
+                f"| small-={item.get('size_rejected_count', 0)}",
                 fill="black",
             )
 
@@ -173,6 +259,11 @@ def main() -> int:
     parser.add_argument("--folder", type=Path)
     parser.add_argument("--target", type=int, default=12)
     parser.add_argument("--scan-limit", type=int, default=100)
+    parser.add_argument("--min-image-area-ratio", type=float, default=MIN_IMAGE_AREA_RATIO)
+    parser.add_argument("--min-largest-area-ratio", type=float, default=MIN_LARGEST_AREA_RATIO)
+    parser.add_argument("--duplicate-smaller-coverage", type=float, default=DUPLICATE_SMALLER_COVERAGE)
+    parser.add_argument("--max-raw-detections", type=int, default=MAX_RAW_DETECTIONS)
+    parser.add_argument("--max-splits", type=int, default=MAX_SPLITS)
     args = parser.parse_args()
 
     folder = args.folder or default_dataset()
@@ -213,13 +304,35 @@ def main() -> int:
                 pass
             image = ImageOps.exif_transpose(im).convert("RGB")
 
-        detections = detect_person(
+        raw_detections = detect_person(
             image,
             model_name=MODEL_NAME,
             conf_threshold=CONF_THRESHOLD,
             iou_threshold=IOU_THRESHOLD,
         )
-        if len(detections) < 2:
+
+        # UI thumbnail grids / contact sheets can produce dozens of valid but
+        # irrelevant small person detections. Composite Split v1.1 deliberately
+        # skips those noisy images instead of trying to understand the layout.
+        if len(raw_detections) > args.max_raw_detections:
+            print(
+                f"  -> skip noisy image: {len(raw_detections)} raw detections",
+                flush=True,
+            )
+            continue
+
+        deduped, duplicate_suppressed = suppress_duplicate_detections(
+            raw_detections,
+            args.duplicate_smaller_coverage,
+        )
+        detections, size_rejected = significant_detections(
+            deduped,
+            image.size,
+            args.min_image_area_ratio,
+            args.min_largest_area_ratio,
+        )
+
+        if len(detections) < 2 or len(detections) > args.max_splits:
             continue
 
         sample_dir = split_root / f"{len(rows) + 1:02d}_{path.stem[:70]}"
@@ -227,6 +340,9 @@ def main() -> int:
         rows.append(
             {
                 "path": str(path),
+                "raw_detection_count": len(raw_detections),
+                "duplicate_suppressed_count": len(duplicate_suppressed),
+                "size_rejected_count": len(size_rejected),
                 "detections": [
                     {
                         "box": list(box),
@@ -236,10 +352,32 @@ def main() -> int:
                     }
                     for box, kind, score in detections
                 ],
+                "suppressed_duplicates": [
+                    {
+                        "box": list(box),
+                        "type": kind,
+                        "score": float(score),
+                        "area": box_area(box),
+                    }
+                    for box, kind, score in duplicate_suppressed
+                ],
+                "rejected_small": [
+                    {
+                        "box": list(box),
+                        "type": kind,
+                        "score": float(score),
+                        "area": box_area(box),
+                    }
+                    for box, kind, score in size_rejected
+                ],
                 "outputs": outputs,
             }
         )
-        print(f"  -> composite candidate: {len(detections)} people", flush=True)
+        print(
+            f"  -> composite candidate: raw={len(raw_detections)} "
+            f"dedup={len(deduped)} valid={len(detections)}",
+            flush=True,
+        )
 
     result = {
         "upstream": {
@@ -250,6 +388,13 @@ def main() -> int:
             "iou_threshold": IOU_THRESHOLD,
         },
         "dataset": str(folder),
+        "post_filter": {
+            "min_image_area_ratio": args.min_image_area_ratio,
+            "min_largest_area_ratio": args.min_largest_area_ratio,
+            "duplicate_smaller_coverage": args.duplicate_smaller_coverage,
+            "max_raw_detections": args.max_raw_detections,
+            "max_splits": args.max_splits,
+        },
         "scanned": scanned,
         "composite_candidates": len(rows),
         "samples": rows,
