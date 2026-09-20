@@ -91,6 +91,11 @@ class TextPhoto:
     path:Path; file_size:int; mtime_ns:int; boxes:list=field(default_factory=list); selected:list=field(default_factory=list); manual:list=field(default_factory=list); scores:list=field(default_factory=list); suggested:list=field(default_factory=list); width:int=0; height:int=0
 
 def key(path): return str(path.resolve()).casefold()
+def human_bytes(value):
+    n=float(max(0,value))
+    for unit in ('B','KB','MB','GB'):
+        if n<1024 or unit=='GB':return f'{n:.0f} {unit}' if unit in ('B','KB') else f'{n:.1f} {unit}'
+        n/=1024
 
 def phash_int(image):
     """64-bit pHash compatible with ImageHash's historical scipy DCT implementation."""
@@ -826,21 +831,34 @@ class ThumbnailWorker(QObject):
 
 class DuplicateReviewDialog(QDialog):
     def __init__(self,records,on_changed,parent=None):
-        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.setWindowTitle('Duplicate Group 人工复核');self.resize(1080,760)
-        root=QVBoxLayout(self);split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(210);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(150,150));self.members.setGridSize(QSize(220,235));rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,820]);root.addWidget(split,1)
+        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={};self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
+        root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“保留勾选”等按钮后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
+        split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(220);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(280,280));self.members.setGridSize(QSize(340,390));self.members.setWordWrap(True);self.members.itemChanged.connect(self.member_check_changed);self.members.itemDoubleClicked.connect(self.open_member);rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,1230]);root.addWidget(split,1)
         actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('保留勾选');selected.clicked.connect(self.keep_checked);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
         for b in (best,selected,all_keep,restore,self.toggle_grouping):actions.addWidget(b)
         actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);root.addLayout(actions);self.reload_groups()
     @staticmethod
     def thumb(path):
         reader=QImageReader(str(path));reader.setAutoTransform(True);size=reader.size()
-        if size.isValid():size.scale(150,150,Qt.KeepAspectRatio);reader.setScaledSize(size)
+        if size.isValid():size.scale(280,280,Qt.KeepAspectRatio);reader.setScaledSize(size)
         image=reader.read();return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
+    def remember_checks(self):
+        for i in range(self.members.count()):
+            it=self.members.item(i);idx=it.data(Qt.UserRole)
+            if isinstance(idx,int) and 0<=idx<len(self.records):self.draft_checks[self.records[idx].sample_id]=it.checkState()==Qt.Checked
+    def member_check_changed(self,it):
+        idx=it.data(Qt.UserRole)
+        if isinstance(idx,int) and 0<=idx<len(self.records):self.draft_checks[self.records[idx].sample_id]=it.checkState()==Qt.Checked
+    def open_member(self,it):
+        idx=it.data(Qt.UserRole)
+        if isinstance(idx,int) and 0<=idx<len(self.records):
+            try:os.startfile(str(self.records[idx].path))
+            except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def grouped(self,gid):
         if gid==-1:return [r for r in self.records if r.duplicate_ignore]
         return group_entries(self.records,gid)
     def reload_groups(self,prefer=None):
-        self.group_list.clear();groups=sorted({r.duplicate_group for r in self.records if r.duplicate_group})
+        self.remember_checks();self.group_list.clear();groups=sorted({r.duplicate_group for r in self.records if r.duplicate_group})
         for gid in groups:
             members=self.grouped(gid);item=QListWidgetItem(f'Group {gid} · {len(members)} 张');item.setData(Qt.UserRole,gid);self.group_list.addItem(item)
         ignored=[r for r in self.records if r.duplicate_ignore]
@@ -854,17 +872,15 @@ class DuplicateReviewDialog(QDialog):
         self.group_list.setCurrentRow(row);self.show_group(self.group_list.item(row))
     def show_group(self,item):
         if item is None:return
-        gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.clear();self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张')
+        self.remember_checks();gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.blockSignals(True);self.members.clear();self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张')
         self.toggle_grouping.setText('勾选项恢复自动分组' if gid==-1 else '勾选项移出重复组')
         for rank_no,r in enumerate(members,1):
-            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';text=f'{prefix}{r.path.name}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
-            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if r.manual_status=='推荐' else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n状态：{r.status} · Eligibility：{r.eligibility}');self.members.addItem(it)
+            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';checked=self.draft_checks.get(r.sample_id,r.manual_status=='推荐')
+            text=f'{prefix}{r.path.name}\n{human_bytes(r.file_size)} · {r.width}×{r.height}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
+            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if checked else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n文件：{human_bytes(r.file_size)} · {r.width}×{r.height}\n状态：{r.status} · Eligibility：{r.eligibility}');self.members.addItem(it)
+        self.members.blockSignals(False)
     def checked_records(self):
-        out=[]
-        for i in range(self.members.count()):
-            it=self.members.item(i)
-            if it.checkState()==Qt.Checked:out.append(self.records[it.data(Qt.UserRole)])
-        return out
+        self.remember_checks();return [r for r in self.current_records() if self.draft_checks.get(r.sample_id,False)]
     def current_records(self):return self.grouped(self.current_group) if self.current_group is not None else []
     def changed(self,prefer=None):
         self.on_changed();self.reload_groups(prefer)
@@ -873,20 +889,20 @@ class DuplicateReviewDialog(QDialog):
         members=self.current_records()
         if not members:return
         best=members[0]
-        for r in members:r.manual_status='推荐' if r is best else '备选'
+        for r in members:r.manual_status='推荐' if r is best else '备选';self.draft_checks[r.sample_id]=r is best
         self.changed(self.current_group)
     def keep_checked(self):
-        members=self.current_records();checked=set(id(r) for r in self.checked_records())
+        members=self.current_records();checked={r.sample_id for r in self.checked_records()}
         if not members or not checked:QMessageBox.information(self,'未勾选图片','请先勾选希望保留的图片。');return
-        for r in members:r.manual_status='推荐' if id(r) in checked else '备选'
+        for r in members:r.manual_status='推荐' if r.sample_id in checked else '备选'
         self.changed(self.current_group)
     def keep_all(self):
         members=self.current_records()
-        for r in members:r.manual_status='推荐'
+        for r in members:r.manual_status='推荐';self.draft_checks[r.sample_id]=True
         if members:self.changed(self.current_group)
     def restore_auto(self):
         members=self.current_records()
-        for r in members:r.manual_status=None
+        for r in members:r.manual_status=None;self.draft_checks[r.sample_id]=False
         if members:self.changed(self.current_group)
     def toggle_ignore(self):
         checked=self.checked_records()
@@ -913,7 +929,7 @@ class Window(QMainWindow):
         dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);c.addWidget(dup_review);c.addStretch(1);c.addWidget(self.export);l.addLayout(c)
         v=QHBoxLayout();v.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');v.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);v.addWidget(save_view);v.addWidget(load_view);v.addWidget(delete_view)
         v.addSpacing(18);v.addWidget(QLabel('Top/Bottom 依据'));self.rank_basis_combo=QComboBox();self.rank_basis_combo.addItems(['综合质量','Face Quality','BRISQUE','Sharpness','Face Pixels']);self.rank_basis_combo.currentTextChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.rank_basis_combo);self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());v.addWidget(self.quick_n);top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('清除 Top/Bottom');clear_top.clicked.connect(lambda:self.quick(''));v.addWidget(top_view);v.addWidget(bottom_view);v.addWidget(clear_top);v.addStretch(1);export_view_ai=QPushButton('导出当前视图 AI 包…');export_view_ai.clicked.connect(lambda:self.export_ai_bundle('current_view'));export_all_ai=QPushButton('导出全部 AI 包…');export_all_ai.clicked.connect(lambda:self.export_ai_bundle('dataset'));import_ai=QPushButton('导入 AI 建议…');import_ai.clicked.connect(self.import_ai_patch);v.addWidget(export_view_ai);v.addWidget(export_all_ai);v.addWidget(import_ai);l.addLayout(v)
-        self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:4px; background:#eef3f8;');l.addWidget(self.current_view_label)
+        self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:7px; color:#1f2937; background:#eef3f8; border:1px solid #cbd5e1; border-radius:4px;');l.addWidget(self.current_view_label)
         s=QSplitter(Qt.Horizontal);self.grid=QListWidget();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
         for i,x in enumerate(('推荐','备选','淘汰')):b=QPushButton(x);b.clicked.connect(lambda _,v=x:self.manual(v));ml.addWidget(b,0,i)
         restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);ai_box=QGroupBox('AI 审核建议');ail=QVBoxLayout(ai_box);self.ai_label=QLabel('当前图片没有 AI 建议');self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout();accept_ai=QPushButton('接受');accept_ai.clicked.connect(self.accept_ai_suggestion);reject_ai=QPushButton('拒绝');reject_ai.clicked.connect(self.reject_ai_suggestion);clear_ai=QPushButton('清除');clear_ai.clicked.connect(self.clear_ai_suggestion);aib.addWidget(accept_ai);aib.addWidget(reject_ai);aib.addWidget(clear_ai);ail.addLayout(aib);sl.addWidget(ai_box);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
