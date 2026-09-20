@@ -578,15 +578,14 @@ def recommend(rs,target):
         for s in sorted(sq,key=lambda x:got[x]/max(1,sq[x])):
             n=len(chosen);take(sc[s],1);progress|=len(chosen)>n
         if not progress:break
-    chosen_ids={id(r) for r in chosen}
+    chosen_ids={id(r) for r in chosen};fixed_groups={r.duplicate_group for r in fixed if r.duplicate_group}
     for r in chosen:
         r.auto_status='推荐';r.recommendation_reasons=[f'自动推荐：通过基础门槛，并用于补足 {r.person_scale} / {r.angle_class} 覆盖']
     for r in pool:
-        if id(r) not in chosen_ids and not r.recommendation_reasons:
-            r.recommendation_reasons=[f'已通过基础门槛，但当前目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
-    if fixed and remain==0:
-        for r in pool:
-            if not r.recommendation_reasons:r.recommendation_reasons=[f'已通过基础门槛，但人工推荐已占满目标 {target} 张']
+        if id(r) in chosen_ids or r.recommendation_reasons:continue
+        if remain==0:r.recommendation_reasons=[f'已通过基础门槛，但人工推荐已占满目标 {target} 张']
+        elif r.duplicate_group and r.duplicate_group in fixed_groups:r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已有人工推荐代表']
+        else:r.recommendation_reasons=[f'已通过基础门槛，但当前目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
 
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
