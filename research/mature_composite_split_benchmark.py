@@ -48,6 +48,7 @@ MAX_SPLITS = 6
 HEAD_MODEL_NAME = "head_detect_v2.0_s"
 HEAD_CONF_THRESHOLD = 0.4
 GROUP_OVERLAP_SMALLER_COVERAGE = 0.18
+GROUP_MARGIN_RATIO = 0.08
 
 
 def local_root() -> Path:
@@ -247,6 +248,54 @@ def overlay(image: Image.Image, detections) -> Image.Image:
     return out
 
 
+def union_box(detections):
+    xs0, ys0, xs1, ys1 = [], [], [], []
+    for box, _, _ in detections:
+        x0, y0, x1, y1 = box
+        xs0.append(x0)
+        ys0.append(y0)
+        xs1.append(x1)
+        ys1.append(y1)
+    return min(xs0), min(ys0), max(xs1), max(ys1)
+
+
+def expand_box(box, image_size: tuple[int, int], margin_ratio: float):
+    x0, y0, x1, y1 = box
+    image_w, image_h = image_size
+    w = max(1, x1 - x0)
+    h = max(1, y1 - y0)
+    mx = round(w * margin_ratio)
+    my = round(h * margin_ratio)
+    return (
+        max(0, x0 - mx),
+        max(0, y0 - my),
+        min(image_w, x1 + mx),
+        min(image_h, y1 + my),
+    )
+
+
+def export_group_crop(
+    image: Image.Image,
+    detections,
+    out_dir: Path,
+    stem: str,
+    margin_ratio: float,
+):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_union = union_box(detections)
+    crop_box = expand_box(raw_union, image.size, margin_ratio)
+    output_path = out_dir / f"{stem}_group_01.jpg"
+    image.crop(crop_box).convert("RGB").save(output_path, quality=95)
+    return [{
+        "index": 1,
+        "mode": "group_crop",
+        "box": list(crop_box),
+        "raw_union_box": list(raw_union),
+        "margin_ratio": margin_ratio,
+        "output": str(output_path),
+    }]
+
+
 def export_splits(image: Image.Image, detections, out_dir: Path, stem: str):
     out_dir.mkdir(parents=True, exist_ok=True)
     outputs = []
@@ -288,8 +337,9 @@ def make_contact_sheet(rows: list[dict], out: Path):
             ]
             ordered = reading_order(detections)
 
-            if item.get("mode") == "keep_whole_group":
-                montage = original.copy()
+            if item.get("mode") == "group_crop":
+                group_box = tuple(item["outputs"][0]["box"])
+                montage = original.crop(group_box).convert("RGB")
             else:
                 montage = Image.new("RGB", original.size, "white")
                 if ordered:
@@ -339,6 +389,7 @@ def main() -> int:
     parser.add_argument("--max-raw-detections", type=int, default=MAX_RAW_DETECTIONS)
     parser.add_argument("--max-splits", type=int, default=MAX_SPLITS)
     parser.add_argument("--group-overlap", type=float, default=GROUP_OVERLAP_SMALLER_COVERAGE)
+    parser.add_argument("--group-margin", type=float, default=GROUP_MARGIN_RATIO)
     args = parser.parse_args()
 
     folder = args.folder or default_dataset()
@@ -436,16 +487,14 @@ def main() -> int:
 
         sample_dir = split_root / f"{len(rows) + 1:02d}_{path.stem[:70]}"
         if group_keep:
-            sample_dir.mkdir(parents=True, exist_ok=True)
-            output_path = sample_dir / f"{path.stem[:70]}_group_original.jpg"
-            image.convert("RGB").save(output_path, quality=95)
-            outputs = [{
-                "index": 1,
-                "mode": "keep_whole_group",
-                "box": [0, 0, image.width, image.height],
-                "output": str(output_path),
-            }]
-            mode = "keep_whole_group"
+            outputs = export_group_crop(
+                image,
+                detections,
+                sample_dir,
+                path.stem[:70],
+                args.group_margin,
+            )
+            mode = "group_crop"
         else:
             outputs = export_splits(image, detections, sample_dir, path.stem[:70])
             for output in outputs:
@@ -507,6 +556,7 @@ def main() -> int:
             "head_model_name": HEAD_MODEL_NAME,
             "head_conf_threshold": HEAD_CONF_THRESHOLD,
             "group_overlap_smaller_coverage": args.group_overlap,
+            "group_margin_ratio": args.group_margin,
         },
         "scanned": scanned,
         "composite_candidates": len(rows),
@@ -524,7 +574,7 @@ def main() -> int:
     print(f"Composite candidates: {len(rows)}", flush=True)
     print(f"Output images exported: {sum(len(r['outputs']) for r in rows)}", flush=True)
     print(
-        f"Whole-group keeps: {sum(r.get('mode') == 'keep_whole_group' for r in rows)}",
+        f"Group crops: {sum(r.get('mode') == 'group_crop' for r in rows)}",
         flush=True,
     )
     return 0
