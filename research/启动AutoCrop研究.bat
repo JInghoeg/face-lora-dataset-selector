@@ -20,11 +20,27 @@ echo. >> "%LOG%"
 echo ===== Dependency preflight ===== >> "%LOG%"
 "%PY%" -u -c "import cv2, mediapipe, PySide6, PIL, numpy; print('imports OK')" >> "%LOG%" 2>&1
 if errorlevel 1 (
-    type "%LOG%"
-    echo.
-    echo Startup failed. Log: %LOG%
-    pause
-    exit /b 1
+    echo Missing runtime dependencies. Installing from requirements.txt...
+    echo. >> "%LOG%"
+    echo ===== Installing requirements ===== >> "%LOG%"
+    "%PY%" -m pip install --disable-pip-version-check -r requirements.txt >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        type "%LOG%"
+        echo.
+        echo Dependency installation failed. Log: %LOG%
+        pause
+        exit /b 1
+    )
+    echo. >> "%LOG%"
+    echo ===== Dependency recheck ===== >> "%LOG%"
+    "%PY%" -u -c "import cv2, mediapipe, PySide6, PIL, numpy; print('imports OK')" >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        type "%LOG%"
+        echo.
+        echo Dependency recheck failed. Log: %LOG%
+        pause
+        exit /b 1
+    )
 )
 
 echo. >> "%LOG%"
