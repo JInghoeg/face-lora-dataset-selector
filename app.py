@@ -1061,6 +1061,69 @@ class DuplicateReviewDialog(QDialog):
         for r in checked:r.duplicate_ignore=not restore
         self.changed(-1 if not restore else None,True)
 
+class CompositeScanWorker(QObject):
+    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    def __init__(self,records):super().__init__();self.records=records
+    def run(self):
+        try:
+            todo=[r for r in self.records if r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION]
+            total=len(todo)
+            for i,r in enumerate(todo,1):
+                with Image.open(r.path) as im:
+                    try:im.seek(0)
+                    except EOFError:pass
+                    image=im.convert('RGB')
+                r.composite_proposal=detect_composite_proposal(image,COMPOSITE_MODEL_CACHE)
+                r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION
+                self.progress.emit(i,total,r.path.name)
+            self.finished.emit(self.records)
+        except Exception:self.failed.emit(traceback.format_exc())
+
+class CompositeSplitReviewDialog(QDialog):
+    def __init__(self,records,changed,parent=None):
+        super().__init__(parent);self.records=[r for r in records if r.composite_proposal is not None];self.changed=changed;self.current=-1
+        self.setWindowTitle('Composite Split 复核');self.resize(1320,820);self.ui();self.reload()
+    @staticmethod
+    def quad(box):
+        x0,y0,x1,y1=map(int,box);return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]]
+    @staticmethod
+    def pixmap_from_bgr(img,max_size=220):
+        if img is None or not img.size:return QPixmap()
+        h,w=img.shape[:2];rgb=cv2.cvtColor(img,cv2.COLOR_BGR2RGB);q=QImage(rgb.data,w,h,rgb.strides[0],QImage.Format_RGB888).copy();pix=QPixmap.fromImage(q)
+        return pix.scaled(max_size,max_size,Qt.KeepAspectRatio,Qt.SmoothTransformation)
+    def ui(self):
+        root=QVBoxLayout(self);split=QSplitter(Qt.Horizontal)
+        self.items=QListWidget();self.items.setMinimumWidth(310);self.items.itemClicked.connect(self.show_item);split.addWidget(self.items)
+        right=QWidget();rl=QVBoxLayout(right);self.info=QLabel('选择候选图');self.info.setWordWrap(True);self.info.setStyleSheet('font-weight:600;');rl.addWidget(self.info)
+        self.preview=ImagePreview();rl.addWidget(self.preview,1)
+        rl.addWidget(QLabel('建议输出预览'));self.outputs=QListWidget();self.outputs.setViewMode(QListWidget.IconMode);self.outputs.setResizeMode(QListWidget.Adjust);self.outputs.setMovement(QListWidget.Static);self.outputs.setIconSize(QSize(220,220));self.outputs.setGridSize(QSize(250,260));self.outputs.setMaximumHeight(300);rl.addWidget(self.outputs)
+        actions=QHBoxLayout();accept=QPushButton('接受建议');accept.clicked.connect(lambda:self.set_decision('accepted'));reject=QPushButton('拒绝');reject.clicked.connect(lambda:self.set_decision('rejected'));pending=QPushButton('恢复待定');pending.clicked.connect(lambda:self.set_decision('pending'));actions.addWidget(accept);actions.addWidget(reject);actions.addWidget(pending);actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);rl.addLayout(actions)
+        split.addWidget(right);split.setSizes([330,990]);root.addWidget(split)
+    def label(self,r):
+        p=r.composite_proposal;mark={'accepted':'✓','rejected':'×','pending':'•'}.get(p.decision,'•');mode='拆分' if p.mode=='split_people' else '群组裁剪';return f'{mark} {r.path.name}\n{mode} · {len(p.output_boxes)} 个输出'
+    def reload(self,select=None):
+        self.items.clear()
+        for i,r in enumerate(self.records):
+            it=QListWidgetItem(self.label(r));it.setData(Qt.UserRole,i);self.items.addItem(it)
+        if self.records:
+            target=0 if select is None else max(0,min(select,len(self.records)-1));self.items.setCurrentRow(target);self.show_item(self.items.item(target))
+    def show_item(self,it):
+        if it is None:return
+        self.current=it.data(Qt.UserRole);r=self.records[self.current];p=r.composite_proposal
+        im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR)
+        if im is None:return
+        boxes=[self.quad(b) for b in p.output_boxes];self.preview.set_data(im,boxes,[True]*len(boxes),[False]*len(boxes))
+        mode='拆成独立人物/视角' if p.mode=='split_people' else '重叠多人合并裁剪'
+        self.info.setText(f'{r.path.name}\n{mode} · 输出 {len(p.output_boxes)} 张\n状态：{p.decision}\n{p.detail}')
+        self.outputs.clear()
+        h,w=im.shape[:2]
+        for n,b in enumerate(p.output_boxes,1):
+            x0,y0,x1,y1=map(int,b);x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1));crop=im[y0:y1,x0:x1]
+            item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),f'输出 {n}\n{x1-x0} × {y1-y0}');self.outputs.addItem(item)
+    def set_decision(self,value):
+        if self.current<0:return
+        r=self.records[self.current];r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
+
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
