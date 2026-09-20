@@ -49,6 +49,13 @@ MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
 EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff','.gif'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
+COMPOSITE_ARCHIVE_DIR='_CompositeSplit_Originals'
+def is_composite_archive_path(path,folder):
+    try:rel=path.resolve().relative_to(folder.resolve())
+    except Exception:return False
+    archive=COMPOSITE_ARCHIVE_DIR.casefold();return any(part.casefold()==archive for part in rel.parts[:-1])
+def active_image_files(folder):
+    return sorted((x for x in folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT and not is_composite_archive_path(x,folder)),key=lambda x:str(x).lower())
 
 @dataclass
 class AnalysisFinding:
@@ -188,7 +195,11 @@ def photo_from_dict(d,path,size,mtime):
     p.recommendation_reasons=list(d.get('recommendation_reasons',[]))
     p.reasons=list(d.get('reasons',[]))
     p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
-    p.composite_proposal=composite_proposal_from_dict(d.get('composite_proposal'))
+    proposal=composite_proposal_from_dict(d.get('composite_proposal'))
+    if proposal is not None and proposal.version==COMPOSITE_PROPOSAL_VERSION:p.composite_proposal=proposal
+    else:
+        p.composite_proposal=None
+        if proposal is not None:p.composite_scan_version=0
     return p
 def view_spec_from_dict(x):
     if isinstance(x,ViewSpec):return x
@@ -468,7 +479,7 @@ class Analyzer(QObject):
     def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
     def run(self):
         try:
-            files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
+            files=active_image_files(self.folder)
             if not files:raise RuntimeError('没有找到图片。')
             old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set();current_keys={key(p) for p in files};self.deleted_count=sum(1 for k in old if k not in current_keys)
             for i,path in enumerate(files):
@@ -1067,7 +1078,7 @@ class CompositeScanWorker(QObject):
     def __init__(self,records):super().__init__();self.records=records
     def run(self):
         try:
-            todo=[r for r in self.records if r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION]
+            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION]
             total=len(todo)
             for i,r in enumerate(todo,1):
                 with Image.open(r.path) as im:
@@ -1081,8 +1092,8 @@ class CompositeScanWorker(QObject):
         except Exception:self.failed.emit(traceback.format_exc())
 
 class CompositeSplitReviewDialog(QDialog):
-    def __init__(self,records,changed,parent=None):
-        super().__init__(parent);self.records=[r for r in records if r.composite_proposal is not None];self.changed=changed;self.current=-1
+    def __init__(self,records,changed,accept_materialized,parent=None):
+        super().__init__(parent);self.records=[r for r in records if r.status=='推荐' and r.composite_proposal is not None];self.changed=changed;self.accept_materialized=accept_materialized;self.current=-1
         self.setWindowTitle('Composite Split 复核');self.resize(1320,820);self.ui();self.reload()
     @staticmethod
     def quad(box):
@@ -1129,7 +1140,15 @@ class CompositeSplitReviewDialog(QDialog):
             item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),f'输出 {n}\n{x1-x0} × {y1-y0}');self.outputs.addItem(item)
     def set_decision(self,value):
         if self.current<0:return
-        r=self.records[self.current];r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
+        r=self.records[self.current]
+        if value=='accepted':
+            if not self.accept_materialized(r):return
+            self.records.pop(self.current);self.changed()
+            if self.records:self.reload(min(self.current,len(self.records)-1))
+            else:
+                self.current=-1;self.items.clear();self.outputs.clear();self.info.setText('当前没有待复核的 Composite Split 推荐图');self.preview.set_data(None,[],[],[])
+            return
+        r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 def unique_output_path(dst:Path,name:str):
     out=dst/name
@@ -1160,7 +1179,7 @@ def save_training_crop(source:Path,box,out:Path):
         return crop.size
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.pending_composite_recommend_paths=set();self.composite_materialized=False;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
@@ -1195,7 +1214,14 @@ class Window(QMainWindow):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
-        self.records=rs;self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
+        self.records=rs
+        if self.pending_composite_recommend_paths:
+            found=set()
+            for r in rs:
+                k=key(r.path)
+                if k in self.pending_composite_recommend_paths:r.manual_status='推荐';found.add(k)
+            self.pending_composite_recommend_paths.difference_update(found)
+        self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -1440,29 +1466,52 @@ class Window(QMainWindow):
         r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';self.page=0;self.refresh();self.save()
     def update_composite_button(self):
         if not hasattr(self,'composite_btn'):return
-        proposals=[r.composite_proposal for r in self.records if r.composite_proposal is not None]
+        proposals=[r.composite_proposal for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
         pending=sum(p.decision=='pending' for p in proposals)
         self.composite_btn.setText(f'Composite Split 复核… ({len(proposals)} / 待定 {pending})' if proposals else 'Composite Split 复核…')
     def open_composite_review(self):
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         if self.composite_thread and self.composite_thread.isRunning():return
-        todo=sum(r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION for r in self.records)
+        todo=sum(r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION for r in self.records)
         if not todo:
-            candidates=[r for r in self.records if r.composite_proposal is not None]
-            if not candidates:QMessageBox.information(self,'没有候选','当前数据集中没有检测到需要 Composite Split 的图片。');return
-            CompositeSplitReviewDialog(self.records,self.composite_review_changed,self).exec();self.update_composite_button();return
+            candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
+            if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。');return
+            CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review();return
         self.composite_btn.setEnabled(False);self.progress.setText(f'Composite Split 扫描准备中：{todo} 张待检查')
         self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(lambda n,t,name:self.progress.setText(f'Composite Split {n}/{t}：{name}'));self.composite_worker.finished.connect(self.composite_scan_done);self.composite_worker.failed.connect(self.composite_scan_failed);self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start()
     def composite_scan_done(self,records):
-        self.records=records;count=sum(r.composite_proposal is not None for r in records);self.progress.setText(f'Composite Split 扫描完成：{count} 张候选');self.composite_btn.setEnabled(True);self.update_composite_button();self.save()
-        if count:CompositeSplitReviewDialog(self.records,self.composite_review_changed,self).exec();self.update_composite_button()
-        else:QMessageBox.information(self,'没有候选','当前数据集中没有检测到需要 Composite Split 的图片。')
+        self.records=records;count=sum(r.status=='推荐' and r.composite_proposal is not None for r in records);self.progress.setText(f'Composite Split 扫描完成：{count} 张推荐候选');self.composite_btn.setEnabled(True);self.update_composite_button();self.save()
+        if count:CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review()
+        else:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。')
     def composite_scan_failed(self,error):
         self.composite_btn.setEnabled(True);self.progress.setText('Composite Split 扫描失败');QMessageBox.critical(self,'Composite Split 扫描失败',error)
     def composite_thread_done(self):
         if self.composite_worker:self.composite_worker.deleteLater()
         if self.composite_thread:self.composite_thread.deleteLater()
         self.composite_worker=None;self.composite_thread=None
+    def materialize_composite(self,r):
+        if not self.folder or r not in self.records or r.composite_proposal is None:return False
+        proposal=r.composite_proposal;source=r.path;outputs=[]
+        try:
+            suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
+            for index,box in enumerate(proposal.output_boxes,1):
+                out=unique_output_path(source.parent,f'{source.stem}__{tag}_{index:02d}{suffix}');save_training_crop(source,box,out);outputs.append(out)
+            try:relative=source.resolve().relative_to(self.folder.resolve())
+            except Exception:relative=Path(source.name)
+            archive=self.folder/COMPOSITE_ARCHIVE_DIR/relative;archive.parent.mkdir(parents=True,exist_ok=True);archive=unique_output_path(archive.parent,archive.name)
+            shutil.move(str(source),str(archive))
+        except Exception as e:
+            for out in outputs:
+                try:
+                    if out.exists():out.unlink()
+                except OSError:pass
+            QMessageBox.critical(self,'Composite Split 写入失败',f'{source.name}\n\n{e}')
+            return False
+        self.pending_composite_recommend_paths.update(key(out) for out in outputs);self.records=[x for x in self.records if x is not r];self.composite_materialized=True;self.progress.setText(f'Composite Split 已落盘：{source.name} → {len(outputs)} 张推荐图；原图已隔离');return True
+    def after_composite_review(self):
+        self.update_composite_button()
+        if self.composite_materialized:
+            self.composite_materialized=False;self.save();QTimer.singleShot(0,self.start)
     def composite_review_changed(self):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):
@@ -1490,16 +1539,10 @@ class Window(QMainWindow):
         dst=Path(x)
         if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,'请选择新目录','导出目录不能是源目录或其子目录。');return
         try:
-            dst.mkdir(parents=True,exist_ok=True);originals=0;derived=0;composite_sources=0
+            dst.mkdir(parents=True,exist_ok=True);written=0
             for r in sel:
-                proposal=r.composite_proposal
-                if proposal is not None and proposal.decision=='accepted':
-                    composite_sources+=1;suffix=composite_output_suffix(r.path);tag='group' if proposal.mode=='group_crop' else 'split'
-                    for index,box in enumerate(proposal.output_boxes,1):
-                        name=f'{r.path.stem}__{tag}_{index:02d}{suffix}';out=unique_output_path(dst,name);save_training_crop(r.path,box,out);derived+=1
-                    continue
-                out=unique_output_path(dst,r.path.name);shutil.copy2(r.path,out);originals+=1
-            QMessageBox.information(self,'导出完成',f'训练图片共 {originals+derived} 张。\n原图复制：{originals} 张\nComposite Split 派生：{derived} 张（来自 {composite_sources} 张复合图）\n\n已接受的复合图不会重复导出原图。\n源图片未被修改。')
+                out=unique_output_path(dst,r.path.name);shutil.copy2(r.path,out);written+=1
+            QMessageBox.information(self,'导出完成',f'已导出 {written} 张当前推荐图片。\n\nComposite Split 已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。')
         except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
 
 def self_test():
@@ -1523,10 +1566,12 @@ def self_test():
     composite_fake=composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
     if not composite_fake or composite_fake.mode!='split_people' or len(composite_fake.output_boxes)!=2:raise RuntimeError('Composite Split proposal self-test failed')
     with tempfile.TemporaryDirectory() as composite_td:
-        source=Path(composite_td)/'source.png';out=Path(composite_td)/'crop.png'
-        Image.new('RGB',(100,80),(20,30,40)).save(source)
+        root=Path(composite_td);source=root/'source.png';out=root/'crop.png';archive=root/COMPOSITE_ARCHIVE_DIR;archive.mkdir()
+        Image.new('RGB',(100,80),(20,30,40)).save(source);Image.new('RGB',(20,20),(1,2,3)).save(archive/'archived.png')
         size=save_training_crop(source,[10,15,60,55],out)
         if size!=(50,40) or not out.exists():raise RuntimeError('Composite Split export crop self-test failed')
+        active={p.name for p in active_image_files(root)}
+        if 'archived.png' in active or 'source.png' not in active:raise RuntimeError('Composite archive exclusion self-test failed')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
     fake=[np.array([10,10,20,20,*([0]*10),.9],dtype=np.float32),np.array([200,200,20,20,*([0]*10),.9],dtype=np.float32)]
