@@ -120,3 +120,22 @@ Action:
 - Stage 2 is now justified: test the existing ISNetIS anime-character segmentation on the same 20 challenge images to see whether it preserves full character silhouette better.
 
 The 60% ambiguity ratio is a temporary review flag only, not a production crop rule. It must be validated before production use.
+
+
+## Composite Split research
+
+Composite Split is a single unified pre-processing capability:
+
+- one input image;
+- upstream person detector finds N independent people / character views;
+- export N single-person crops in deterministic reading order;
+- no separate "two-panel" versus "four-view" algorithm.
+
+The first benchmark directly reuses DeepGHS `detect_person()` and exports raw detector boxes only. It intentionally does not add panel detection, custom layout understanding, segmentation fusion, or production filtering yet.
+
+Research gate:
+- scan at most 100 images;
+- stop after 12 multi-person candidates;
+- inspect whether all intended character views are recovered;
+- record background-NPC false splits and body-part cuts;
+- only then decide the minimum adaptation needed before production integration.
