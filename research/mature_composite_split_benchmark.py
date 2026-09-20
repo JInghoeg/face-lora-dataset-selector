@@ -168,36 +168,30 @@ def associate_heads(person_detections, head_detections):
 
 
 def suppress_same_head_people(person_detections, head_detections):
-    """If multiple person boxes contain the same detected head, keep the larger box.
+    """Collapse duplicate person boxes only for a confirmed single-head image.
 
-    This addresses duplicate/fragment person detections without inventing another
-    visual detector. Boxes with no associated head are left untouched here.
+    In crowded compositions, overlapping person boxes can legitimately contain
+    several head centers. Trying to deduplicate those by shared-head membership
+    would destroy real multi-person groups. The mature head detector is therefore
+    used conservatively here: one detected head + multiple person boxes means the
+    larger person box is kept; multi-head images are left intact for group logic.
     """
-    if not person_detections or not head_detections:
+    if not person_detections or len(head_detections) != 1:
         return person_detections, []
 
-    ordered = sorted(
-        person_detections,
-        key=lambda d: (box_area(d[0]), d[2]),
-        reverse=True,
-    )
-    kept = []
-    suppressed = []
-    claimed_head_indexes = set()
+    head_center = box_center(head_detections[0][0])
+    matching = [
+        person for person in person_detections
+        if point_in_box(head_center, person[0])
+    ]
+    if len(matching) <= 1:
+        return person_detections, []
 
-    for person in ordered:
-        matching = []
-        for idx, head in enumerate(head_detections):
-            if point_in_box(box_center(head[0]), person[0]):
-                matching.append(idx)
-
-        if matching and any(idx in claimed_head_indexes for idx in matching):
-            suppressed.append(person)
-            continue
-
-        kept.append(person)
-        claimed_head_indexes.update(matching)
-
+    keep = max(matching, key=lambda d: (box_area(d[0]), d[2]))
+    matching_ids = {id(det) for det in matching}
+    kept = [det for det in person_detections if id(det) not in matching_ids]
+    kept.append(keep)
+    suppressed = [det for det in matching if det is not keep]
     return kept, suppressed
 
 
