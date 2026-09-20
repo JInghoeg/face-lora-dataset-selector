@@ -1178,6 +1178,24 @@ def save_training_crop(source:Path,box,out:Path):
         else:crop.save(out)
         return crop.size
 
+def materialize_composite_source(folder:Path,source:Path,proposal:CompositeProposal):
+    outputs=[]
+    suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
+    try:
+        for index,box in enumerate(proposal.output_boxes,1):
+            out=unique_output_path(source.parent,f'{source.stem}__{tag}_{index:02d}{suffix}');save_training_crop(source,box,out);outputs.append(out)
+        try:relative=source.resolve().relative_to(folder.resolve())
+        except Exception:relative=Path(source.name)
+        archive=folder/COMPOSITE_ARCHIVE_DIR/relative;archive.parent.mkdir(parents=True,exist_ok=True);archive=unique_output_path(archive.parent,archive.name)
+        shutil.move(str(source),str(archive))
+        return outputs,archive
+    except Exception:
+        for out in outputs:
+            try:
+                if out.exists():out.unlink()
+            except OSError:pass
+        raise
+
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.pending_composite_recommend_paths=set();self.composite_materialized=False;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
@@ -1491,20 +1509,9 @@ class Window(QMainWindow):
         self.composite_worker=None;self.composite_thread=None
     def materialize_composite(self,r):
         if not self.folder or r not in self.records or r.composite_proposal is None:return False
-        proposal=r.composite_proposal;source=r.path;outputs=[]
-        try:
-            suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
-            for index,box in enumerate(proposal.output_boxes,1):
-                out=unique_output_path(source.parent,f'{source.stem}__{tag}_{index:02d}{suffix}');save_training_crop(source,box,out);outputs.append(out)
-            try:relative=source.resolve().relative_to(self.folder.resolve())
-            except Exception:relative=Path(source.name)
-            archive=self.folder/COMPOSITE_ARCHIVE_DIR/relative;archive.parent.mkdir(parents=True,exist_ok=True);archive=unique_output_path(archive.parent,archive.name)
-            shutil.move(str(source),str(archive))
+        source=r.path
+        try:outputs,_archive=materialize_composite_source(self.folder,source,r.composite_proposal)
         except Exception as e:
-            for out in outputs:
-                try:
-                    if out.exists():out.unlink()
-                except OSError:pass
             QMessageBox.critical(self,'Composite Split 写入失败',f'{source.name}\n\n{e}')
             return False
         self.pending_composite_recommend_paths.update(key(out) for out in outputs);self.records=[x for x in self.records if x is not r];self.composite_materialized=True;self.progress.setText(f'Composite Split 已落盘：{source.name} → {len(outputs)} 张推荐图；原图已隔离');return True
@@ -1566,12 +1573,15 @@ def self_test():
     composite_fake=composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
     if not composite_fake or composite_fake.mode!='split_people' or len(composite_fake.output_boxes)!=2:raise RuntimeError('Composite Split proposal self-test failed')
     with tempfile.TemporaryDirectory() as composite_td:
-        root=Path(composite_td);source=root/'source.png';out=root/'crop.png';archive=root/COMPOSITE_ARCHIVE_DIR;archive.mkdir()
+        root=Path(composite_td);source=root/'source.png';archive=root/COMPOSITE_ARCHIVE_DIR;archive.mkdir()
         Image.new('RGB',(100,80),(20,30,40)).save(source);Image.new('RGB',(20,20),(1,2,3)).save(archive/'archived.png')
-        size=save_training_crop(source,[10,15,60,55],out)
-        if size!=(50,40) or not out.exists():raise RuntimeError('Composite Split export crop self-test failed')
         active={p.name for p in active_image_files(root)}
         if 'archived.png' in active or 'source.png' not in active:raise RuntimeError('Composite archive exclusion self-test failed')
+        proposal=CompositeProposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
+        outputs,archived=materialize_composite_source(root,source,proposal)
+        if source.exists() or not archived.exists() or len(outputs)!=2 or any(not p.exists() for p in outputs):raise RuntimeError('Composite materialization self-test failed')
+        active={p.name for p in active_image_files(root)}
+        if archived.name in active or {p.name for p in outputs}-active:raise RuntimeError('Composite materialized active-set self-test failed')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
     fake=[np.array([10,10,20,20,*([0]*10),.9],dtype=np.float32),np.array([200,200,20,20,*([0]*10),.9],dtype=np.float32)]
