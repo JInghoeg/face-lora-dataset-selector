@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/v0.3-composite-split
+      - feature/v0.3-workflow-recovery
   workflow_dispatch:
 
 permissions:
