@@ -403,6 +403,28 @@ def dedupe_face_rows(rows):
         if not drop:kept.append(f)
     return kept
 
+def pose_head_roi(points,width,height):
+    if not points:return None
+    def valid(i,min_vis=.25):
+        p=points[i];return 0<=p.x<=1 and 0<=p.y<=1 and getattr(p,'visibility',1)>=min_vis
+    head=[points[i] for i in range(0,11) if i<len(points) and valid(i)]
+    if len(head)<2:return None
+    xs=[p.x*width for p in head];ys=[p.y*height for p in head];cx=sum(xs)/len(xs);cy=sum(ys)/len(ys)
+    span_x=max(xs)-min(xs);span_y=max(ys)-min(ys);shoulder=0.
+    if len(points)>12 and valid(11,.2) and valid(12,.2):
+        dx=(points[11].x-points[12].x)*width;dy=(points[11].y-points[12].y)*height;shoulder=math.hypot(dx,dy)
+    rw=max(70.,span_x*2.4,shoulder*.9);rh=max(90.,span_y*3.2,shoulder*1.05)
+    return (max(0.,cx-rw*.5),max(0.,cy-rh*.55),min(float(width),cx+rw*.5),min(float(height),cy+rh*.45))
+def filter_face_rows_by_head(rows,roi):
+    rows=[] if rows is None else list(rows)
+    if not roi:return rows
+    x0,y0,x1,y1=roi;out=[]
+    for f in rows:
+        x,y,w,h=map(float,f[:4]);cx=x+w*.5;cy=y+h*.5
+        inter=max(0.,min(x+w,x1)-max(x,x0))*max(0.,min(y+h,y1)-max(y,y0));area=max(1.,w*h)
+        if (x0<=cx<=x1 and y0<=cy<=y1) or inter/area>=.35:out.append(f)
+    return out
+
 class QualityModels:
     pts=np.array([[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]],np.float32)
     def __init__(self):
@@ -471,20 +493,20 @@ class Analyzer(QObject):
         except Exception as e:
             r.hard_rejects.append(AnalysisFinding('read_error','image',detail=f'无法读取图片：{e}'));derive_eligibility(r);return r
 
-        rows=[];face_fallback_used=False
+        pose_points=None;head_roi=None
         try:
-            fs=qm.faces(bgr);rows=[] if fs is None else list(fs)
-            if not rows:
-                fs=qm.faces(bgr,True);rows=[] if fs is None else list(fs);face_fallback_used=bool(rows)
-            rows=dedupe_face_rows(rows)
-            if face_fallback_used:r.analysis_metrics['face_detector_fallback']=True
-        except Exception as e:
-            r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
-
-        try:
-            po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));r.person_scale=person_scale(po.pose_landmarks[0] if po.pose_landmarks else None)
+            po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));pose_points=po.pose_landmarks[0] if po.pose_landmarks else None;r.person_scale=person_scale(pose_points);head_roi=pose_head_roi(pose_points,r.width,r.height)
+            if head_roi:r.analysis_metrics['pose_head_roi']=[round(float(v),2) for v in head_roi]
         except Exception as e:
             r.review_flags.append(AnalysisFinding('pose_analysis_error','mediapipe',detail=f'景别/姿态分析失败：{e}'))
+
+        rows=[];face_fallback_used=False
+        try:
+            fs=qm.faces(bgr);rows=[] if fs is None else list(fs);rows=filter_face_rows_by_head(rows,head_roi);rows=dedupe_face_rows(rows)
+            if not rows and head_roi:
+                fs=qm.faces(bgr,True);rows=[] if fs is None else list(fs);rows=filter_face_rows_by_head(rows,head_roi);rows=dedupe_face_rows(rows);face_fallback_used=bool(rows)
+        except Exception as e:
+            r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
 
         for n,f in enumerate(rows):
             x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
@@ -509,7 +531,7 @@ class Analyzer(QObject):
         try:r.brisque=qm.brisque(bgr)
         except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
 
-        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces,'face_detector_fallback':face_fallback_used}
+        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics.update({'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces,'face_detector_fallback':face_fallback_used})
         if r.faces==0:
             if r.person_scale=='全身':r.review_flags.append(AnalysisFinding('no_face_full_body_review','yunet',detail='未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认'))
             else:r.hard_rejects.append(AnalysisFinding('no_face_not_full_body','yunet',detail='两个检测阈值均未找到人脸，且不是全身图'))
@@ -1330,6 +1352,8 @@ def self_test():
     if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
+    fake=[np.array([10,10,20,20,*([0]*10),.9],dtype=np.float32),np.array([200,200,20,20,*([0]*10),.9],dtype=np.float32)]
+    if len(filter_face_rows_by_head(fake,(0,0,80,80)))!=1:raise RuntimeError('pose-guided face filtering self-test failed')
     with tempfile.TemporaryDirectory() as td:
         test_path=Path(td)/'sample.bin';test_path.write_bytes(b'face-lora-selector-v3')
         content_hash=sha256_file(test_path);sid1=new_sample_id();sid2=new_sample_id()
