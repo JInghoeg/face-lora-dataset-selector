@@ -18,6 +18,7 @@ import random
 import statistics
 import sys
 import time
+import traceback
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -809,6 +810,19 @@ def self_test() -> None:
     pack = choose_review_pack(proposals, 20)
     if len(pack) != 20 or len({p["path"] for p in pack}) != 20:
         raise RuntimeError("review pack self-test failed")
+
+    # Exercise the real bundled Pose model too; the old self-test stopped before
+    # the code path used by the benchmark itself.
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=str(ensure_pose())),
+        running_mode=VisionTaskRunningMode.IMAGE,
+        num_poses=1,
+        output_segmentation_masks=True,
+    )
+    blank = np.zeros((128, 128, 3), dtype=np.uint8)
+    with PoseLandmarker.create_from_options(options) as landmarker:
+        landmarker.detect(MPImage(image_format=MPImageFormat.SRGB, data=blank))
+
     print("Auto Crop research harness self-test OK")
 
 
@@ -835,11 +849,17 @@ def main() -> int:
     else:
         folder = Path(args.folder) if args.folder else None
         if not folder:
-            selected = QFileDialog.getExistingDirectory(None, "选择 Valby / 角色图片文件夹")
-            if not selected:
-                return 0
-            folder = Path(selected)
+            sibling_valby = PROJECT_ROOT.parent / "渥尔比"
+            if sibling_valby.exists():
+                folder = sibling_valby
+            else:
+                selected = QFileDialog.getExistingDirectory(None, "选择 Valby / 角色图片文件夹")
+                if not selected:
+                    return 0
+                folder = Path(selected)
+        print(f"Dataset folder: {folder}", flush=True)
         if not folder.exists():
+            print(f"ERROR: dataset folder does not exist: {folder}", file=sys.stderr, flush=True)
             QMessageBox.critical(None, "目录不存在", str(folder))
             return 2
         dialog = QProgressDialog("准备分析…", "取消", 0, 100)
@@ -866,6 +886,8 @@ def main() -> int:
             app.processEvents()
         except Exception as exc:
             dialog.close()
+            print("Auto Crop benchmark failed:", file=sys.stderr, flush=True)
+            traceback.print_exc()
             QMessageBox.critical(None, "Auto Crop benchmark 失败", str(exc))
             return 2
         finally:
