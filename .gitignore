@@ -21,3 +21,4 @@ dist/
 
 # Local research / benchmark artifacts
 _research_output/
+models/composite_split_cache/
