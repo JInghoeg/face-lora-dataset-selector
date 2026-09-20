@@ -139,3 +139,28 @@ Research gate:
 - inspect whether all intended character views are recovered;
 - record background-NPC false splits and body-part cuts;
 - only then decide the minimum adaptation needed before production integration.
+
+
+## Composite Split v1.1 — approved minimal adaptation
+
+After the first real-data split review, two product-specific integration problems were confirmed while the mature detector itself remained useful:
+
+1. noisy screenshots / UI grids can contain many tiny person detections that are irrelevant to Composite Split;
+2. rare nested / strongly-overlapping person boxes can split one subject twice.
+
+Approved adaptation boundary:
+- keep DeepGHS detection unchanged;
+- suppress nested/strongly-overlapping duplicate boxes using overlap-over-smaller-box coverage;
+- require retained split boxes to be significant relative to both the full image and the largest detected subject;
+- skip images with an excessive raw detection count;
+- expose all research thresholds as CLI parameters and record them in results.json;
+- do not add a new detector, layout model, panel detector, or production UI.
+
+Current research defaults:
+- minimum person box area: 3% of image;
+- minimum relative area: 20% of the largest retained subject;
+- duplicate suppression: >=78% coverage of the smaller box;
+- skip if raw detections >8;
+- accept 2..6 split subjects.
+
+These are research defaults, not frozen production policy. They must be checked against the next contact-sheet run before promotion.
