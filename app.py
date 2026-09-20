@@ -510,16 +510,18 @@ class Analyzer(QObject):
 def rank(r):
     """透明的字典序质量排序：FIQA 优先，其次 BRISQUE，最后清晰度；不是综合加权分数。"""
     return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_detected','secondary_faces_detected','probable_multi_person','low_face_pixels','low_face_quality','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
+AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_detected','secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
 def recommendation_blockers(r):
     out=[]
     if r.hard_rejects:out.extend('硬淘汰：'+finding_text(x) for x in r.hard_rejects)
     out.extend('需先复核：'+finding_text(x) for x in r.review_flags if x.code in AUTO_RECOMMEND_BLOCKING_FLAGS)
+    for x in r.review_flags:
+        if x.code=='low_face_quality' and r.angle_class not in ('左侧脸','右侧脸'):out.append('需先复核：'+finding_text(x))
     if r.brisque>70:out.append(f'BRISQUE {r.brisque:.1f} > 70')
     if r.blur<40:out.append(f'主脸清晰度 {r.blur:.1f} < 40')
     return out
 def recommendation_qualified(r):
-    """FIQA 不再使用统一 0.45 生杀线；极低 FIQA(<0.25)由 low_face_quality 复核标记阻断。"""
+    """FIQA 不再使用统一生杀线；侧脸低 FIQA 只警告，正脸/3⁄4 极低 FIQA 仍先复核。"""
     return not recommendation_blockers(r)
 def group_entries(rs,group,qualified=False):
     entries=[r for r in rs if r.duplicate_group==group]
@@ -1263,9 +1265,11 @@ def self_test():
     if probe.eligibility!='REVIEW':raise RuntimeError('eligibility REVIEW self-test failed')
     probe.face_quality=.6;probe.brisque=30.;probe.blur=60.
     if not recommendation_qualified(probe):raise RuntimeError('non-blocking REVIEW flag incorrectly blocks recommendation')
-    side=Photo(Path('side.jpg'));side.face_quality=.30;side.brisque=30.;side.blur=60.;side.person_scale='近景/头肩';side.angle_class='左侧脸';side.eligibility='PASS'
+    side=Photo(Path('side.jpg'));side.face_quality=.20;side.brisque=30.;side.blur=60.;side.person_scale='近景/头肩';side.angle_class='左侧脸';side.eligibility='REVIEW';side.review_flags=[AnalysisFinding('low_face_quality','ediffiqa',.20,.25,'侧脸 FIQA 偏低')]
     front=Photo(Path('front.jpg'));front.face_quality=.65;front.brisque=30.;front.blur=60.;front.person_scale='近景/头肩';front.angle_class='正脸';front.eligibility='PASS'
+    low_front=Photo(Path('low_front.jpg'));low_front.face_quality=.20;low_front.brisque=30.;low_front.blur=60.;low_front.person_scale='近景/头肩';low_front.angle_class='正脸';low_front.eligibility='REVIEW';low_front.review_flags=[AnalysisFinding('low_face_quality','ediffiqa',.20,.25,'正脸 FIQA 偏低')]
     if not recommendation_qualified(side):raise RuntimeError('usable side profile is incorrectly blocked by FIQA')
+    if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
     recommend([front,side],2)
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
