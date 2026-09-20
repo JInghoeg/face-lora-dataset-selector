@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 try:
     from imgutils.detect import detect_person
-    from imgutils.segment import get_isnetis_mask, segment_rgba_with_isnetis
+    from imgutils.segment import get_isnetis_mask
 except ImportError as exc:
     raise SystemExit(
         "dghs-imgutils is not installed. Run research\\运行成熟人物检测基线.bat first."
@@ -82,14 +82,17 @@ def make_contact_sheets(rows: list[dict], out: Path) -> None:
                 (tuple(d["box"]), d["type"], d["score"])
                 for d in item["detections"]
             ]
-            rgba_mask, cutout = segment_rgba_with_isnetis(original)
-            _ = rgba_mask
+            alpha = Image.fromarray(
+                (np.clip(mask, 0.0, 1.0) * 255.0).astype(np.uint8), mode="L"
+            )
+            cutout = Image.new("RGBA", original.size, (255, 255, 255, 0))
+            cutout.paste(original.convert("RGBA"), (0, 0), alpha)
 
             visuals = [
                 ("ORIGINAL", original),
-                ("LARGEST PERSON BOX", overlay_boxes(original, detections)),
+                ("PERSON DETECTIONS", overlay_boxes(original, detections)),
                 ("RAW ISNETIS MASK", mask_visual(mask)),
-                ("RAW ISNETIS CUTOUT", cutout.convert("RGBA")),
+                ("ISNETIS CUTOUT", cutout),
             ]
             for col, (title, image) in enumerate(visuals):
                 x, y = col * tile_w, r * tile_h
