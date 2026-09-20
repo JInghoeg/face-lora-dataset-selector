@@ -42,3 +42,62 @@ jobs:
         shell: pwsh
         run: |
           python app.py --self-test
+
+
+  portable-smoke:
+    needs: runtime
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[portable]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+
+      - name: Build Portable
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable smoke test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) { throw "Portable executable not found: $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) { Get-Content $err }
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Portable size report
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $files = Get-ChildItem $root -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+          "Uncompressed portable: $totalMB MB" | Tee-Object -FilePath "portable-size-report.txt"
+          $files | Sort-Object Length -Descending | Select-Object -First 40 | ForEach-Object {
+            $relative = $_.FullName.Substring($root.Length + 1)
+            ("{0,7:N1} MB  {1}" -f ($_.Length / 1MB), $relative) |
+              Tee-Object -FilePath "portable-size-report.txt" -Append | Write-Host
+          }
+
+      - name: Upload size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: composite-portable-size-report
+          path: portable-size-report.txt
