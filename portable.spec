@@ -1,8 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_dynamic_libs
 
-# Bundle only this project's runtime models. MI-GAN remains on-demand.
-datas = [('models', 'models')]
+# Bundle only the explicitly tracked runtime models. MI-GAN and Composite Split
+# detector caches remain on-demand and must never be swept into Portable builds
+# just because a developer has downloaded them locally.
+datas = [
+    ('models/yunet_2023mar.onnx', 'models'),
+    ('models/ediffiqa_t.onnx', 'models'),
+    ('models/brisque_model_live.yml', 'models'),
+    ('models/brisque_range_live.yml', 'models'),
+    ('models/mb1_120x120.onnx', 'models'),
+    ('models/param_mean_std_62d_120x120.pkl', 'models'),
+    ('models/pose_landmarker_lite.task', 'models'),
+    ('models/ppocrv5_mobile_det/inference.onnx', 'models/ppocrv5_mobile_det'),
+    ('models/ppocrv5_mobile_det/inference.yml', 'models/ppocrv5_mobile_det'),
+]
 
 # MediaPipe needs native extension modules, but collecting the entire package
 # with collect_all() also drags in unrelated features and data. Keep native
