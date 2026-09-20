@@ -22,6 +22,14 @@ import traceback
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+# Windows terminals often default to GBK/cp936. Dataset filenames may contain
+# CJK/Korean/Japanese characters, so keep diagnostic output UTF-8-safe.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except (AttributeError, ValueError):
+        pass
+
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageOps
