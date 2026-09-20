@@ -181,3 +181,17 @@ Minimal adaptation now reuses DeepGHS' existing `detect_heads()` as a second mat
 - multiple heads + overlapping person boxes -> keep the whole original image once as a group composition.
 
 The person and head detectors remain upstream and unchanged. This layer only decides how their outputs map to product actions.
+
+
+### Group composition correction
+
+For tightly overlapping multi-person compositions, the output action is now `group_crop`, not full-image passthrough.
+
+Implementation:
+- union all retained person boxes in the overlapping group;
+- expand the union conservatively by 8% on each axis;
+- clip to source-image bounds;
+- export one grouped crop;
+- keep the original source untouched.
+
+This preserves the group relationship while removing unrelated outer background.
