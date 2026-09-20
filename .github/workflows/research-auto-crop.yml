@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - "research/auto-crop-harness-v0"
+  pull_request:
+    branches:
+      - "feature/v0.3-qa-fixes-20260920"
   workflow_dispatch:
 
 permissions:
