@@ -62,3 +62,17 @@ Production integration is complete only when:
 4. duplicate same-person outputs are suppressed;
 5. proposals can be accepted/rejected before export;
 6. the original dataset folder remains unchanged until an explicit user action.
+
+
+## Production gate status
+
+Validated on the production branch:
+
+- Python 3.9 runtime self-test: PASS
+- Python 3.12 runtime self-test: PASS
+- vendored DeepGHS person/head runtime parity against official `dghs-imgutils==0.19.0`: PASS
+- production dependencies remain on the selector's existing OpenCV 4.12 stack
+- full `dghs-imgutils` dependency tree is not required at runtime
+- downloaded person/head ONNX weights remain on-demand and outside the Portable bundle
+
+Next gate: Windows Portable build + executable self-test, followed by local human UI QA.
