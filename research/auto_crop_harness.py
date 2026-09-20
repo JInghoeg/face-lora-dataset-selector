@@ -492,8 +492,10 @@ def analyze(folder: Path, include_all: bool, review_size: int) -> Path:
     with PoseLandmarker.create_from_options(options) as landmarker:
         for index, path in enumerate(files, 1):
             print(f"[{index}/{len(files)}] {path.name}")
+            width = height = 0
             try:
                 rgb = load_rgb(path)
+                height, width = rgb.shape[:2]
                 result = propose(rgb, landmarker)
             except Exception as exc:
                 result = {
@@ -513,8 +515,8 @@ def analyze(folder: Path, include_all: bool, review_size: int) -> Path:
             proposal = CropProposal(
                 path=str(path.resolve()),
                 relative_path=str(path.resolve().relative_to(folder.resolve())),
-                width=int(rgb.shape[1]) if "rgb" in locals() else 0,
-                height=int(rgb.shape[0]) if "rgb" in locals() else 0,
+                width=width,
+                height=height,
                 selector_status=effective_status(rec),
                 person_scale=(rec or {}).get("person_scale", ""),
                 angle_class=(rec or {}).get("angle_class", ""),
@@ -667,7 +669,7 @@ class ReviewWindow(QMainWindow):
         split.addWidget(self.original)
         split.addWidget(self.overlay)
         split.addWidget(self.cropped)
-        split.setSizes([1, 1, 1])
+        split.setSizes([500, 500, 500])
         layout.addWidget(split, 1)
 
         self.reason = QLabel()
@@ -691,8 +693,8 @@ class ReviewWindow(QMainWindow):
         nav.addWidget(next_btn)
         layout.addLayout(nav)
 
-        QShortcut(QKeySequence(Qt.Key_Left), self, activated=lambda: self.move(-1))
-        QShortcut(QKeySequence(Qt.Key_Right), self, activated=lambda: self.move(1))
+        QShortcut(QKeySequence("Left"), self, activated=lambda: self.move(-1))
+        QShortcut(QKeySequence("Right"), self, activated=lambda: self.move(1))
         for idx, (code, _) in enumerate(CROP_LABELS + KEEP_LABELS, 1):
             QShortcut(QKeySequence(str(idx)), self, activated=lambda c=code: self.record(c))
 
