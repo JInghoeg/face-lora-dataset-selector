@@ -45,6 +45,11 @@ from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageForm
 from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 
+# Allow direct execution as `python research/auto_crop_harness.py`.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # Reuse project models/cache semantics instead of creating a parallel stack.
 from app import EXT, ensure_pose, load_data, key
 
