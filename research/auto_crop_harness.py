@@ -19,6 +19,7 @@ import statistics
 import sys
 import time
 import traceback
+import shutil
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -864,6 +865,11 @@ class ReviewWindow(QMainWindow):
         self.show_current()
         if all(self.labels.get(s["path"]) for s in self.samples):
             summary = write_summary(self.run_dir)
+            latest_summary = PROJECT_ROOT / "research" / "latest-summary.json"
+            try:
+                shutil.copy2(self.run_dir / "summary.json", latest_summary)
+            except Exception:
+                traceback.print_exc()
             def pct(v):
                 return "N/A" if v is None else f"{v:.1%}"
             report = (
@@ -876,8 +882,11 @@ class ReviewWindow(QMainWindow):
                 f"需要手调率：{pct(summary['manual_adjust_rate'])}\n"
                 f"KEEP 漏裁率：{pct(summary['missed_crop_rate'])}\n"
                 f"安全裁剪中位裁减：{pct(summary['median_safe_trim_ratio'])}\n\n"
-                f"报告目录：\n{self.run_dir}"
+                f"报告目录：\n{self.run_dir}\n\n"
+                f"便捷副本：\n{latest_summary}"
             )
+            print(f"Benchmark report: {self.run_dir / 'summary.json'}", flush=True)
+            print(f"Latest summary copy: {latest_summary}", flush=True)
             QMessageBox.information(self, "Auto Crop Benchmark 报告", report)
 
     def move(self, delta: int):
