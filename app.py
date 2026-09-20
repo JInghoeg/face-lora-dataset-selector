@@ -507,7 +507,9 @@ class Analyzer(QObject):
         for r in rs:
             if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
-def rank(r):return(r.face_quality,-r.brisque,r.blur)
+def rank(r):
+    """透明的字典序质量排序：FIQA 优先，其次 BRISQUE，最后清晰度；不是综合加权分数。"""
+    return(r.face_quality,-r.brisque,r.blur)
 AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_detected','secondary_faces_detected','probable_multi_person','low_face_pixels','low_face_quality','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
 def recommendation_blockers(r):
     out=[]
@@ -970,7 +972,7 @@ class Window(QMainWindow):
         for label,value in [('原始顺序','默认顺序'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels'),('最终状态','状态'),('判定状态','Eligibility'),('重复组','Duplicate Group'),('来源','来源目录 / 源视频'),('景别','景别'),('水平角度','Yaw'),('俯仰','Pitch')]:self.sort_field_combo.addItem(label,value)
         self.sort_field_combo.currentIndexChanged.connect(self.sort_changed);self.sort_dir_combo=QComboBox();self.sort_dir_combo.addItem('优先顺序','优先顺序');self.sort_dir_combo.addItem('反向','反向');self.sort_dir_combo.currentIndexChanged.connect(self.sort_changed);sg.addWidget(QLabel('按'));sg.addWidget(self.sort_field_combo);sg.addWidget(self.sort_dir_combo);order_row.addWidget(sort_box,1)
         extreme_box=QGroupBox('3. 极值检查：在当前筛选结果上取 Top / Bottom');eg=QHBoxLayout(extreme_box);self.rank_basis_combo=QComboBox()
-        for label,value in [('综合质量','综合质量'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels')]:self.rank_basis_combo.addItem(label,value)
+        for label,value in [('质量排序（FIQA→BRISQUE→清晰度）','综合质量'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels')]:self.rank_basis_combo.addItem(label,value)
         self.rank_basis_combo.currentIndexChanged.connect(lambda _=None:self.quick_changed());self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('关闭极值检查');clear_top.clicked.connect(lambda:self.quick(''));eg.addWidget(QLabel('依据'));eg.addWidget(self.rank_basis_combo);eg.addWidget(self.quick_n);eg.addWidget(top_view);eg.addWidget(bottom_view);eg.addWidget(clear_top);order_row.addWidget(extreme_box,2);l.addLayout(order_row)
 
         tools=QHBoxLayout();tools.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');tools.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);tools.addWidget(save_view);tools.addWidget(load_view);tools.addWidget(delete_view);tools.addStretch(1);export_view_ai=QPushButton('导出当前视图 AI 包…');export_view_ai.clicked.connect(lambda:self.export_ai_bundle('current_view'));export_all_ai=QPushButton('导出全部 AI 包…');export_all_ai.clicked.connect(lambda:self.export_ai_bundle('dataset'));import_ai=QPushButton('导入 AI 建议…');import_ai.clicked.connect(self.import_ai_patch);tools.addWidget(export_view_ai);tools.addWidget(export_all_ai);tools.addWidget(import_ai);l.addLayout(tools)
