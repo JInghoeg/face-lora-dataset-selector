@@ -282,7 +282,7 @@ def dataset_summary(records,view_description=''):
         'duplicate_member_count':sum(bool(r.duplicate_group) for r in records),
         'duplicate_ignored_count':sum(r.duplicate_ignore for r in records),
         'secondary_face_flag_count':sum(any(x.code=='secondary_faces_detected' for x in r.review_flags) for r in records),
-        'no_face_count':sum(any(x.code=='no_face_detected' for x in r.review_flags) for r in records),
+        'no_face_count':sum(r.faces==0 for r in records),
         'hard_reject_count':sum(bool(r.hard_rejects) for r in records),
         'view_description':view_description,
     }
@@ -373,13 +373,30 @@ def person_scale(points):
     good=lambda ids:any(0<=points[i].x<=1 and 0<=points[i].y<=1 and getattr(points[i],'visibility',0)>=.45 for i in ids)
     return '全身' if good((27,28)) else '大半身' if good((25,26)) else '半身' if good((23,24)) else '近景/头肩'
 
+def face_box_intersection(a,b):
+    ax,ay,aw,ah=map(float,a[:4]);bx,by,bw,bh=map(float,b[:4]);x0=max(ax,bx);y0=max(ay,by);x1=min(ax+aw,bx+bw);y1=min(ay+ah,by+bh)
+    return max(0.,x1-x0)*max(0.,y1-y0)
+def dedupe_face_rows(rows):
+    rows=list(rows or [])
+    if len(rows)<2:return rows
+    ordered=sorted(rows,key=lambda f:float(f[2]*f[3]),reverse=True);kept=[]
+    for f in ordered:
+        area=max(1.,float(f[2]*f[3]));drop=False
+        for k in kept:
+            karea=max(1.,float(k[2]*k[3]));inter=face_box_intersection(f,k);small=min(area,karea);union=area+karea-inter;iou=inter/max(1.,union);contain=inter/max(1.,small)
+            if iou>=.45 or contain>=.82:
+                drop=True;break
+        if not drop:kept.append(f)
+    return kept
+
 class QualityModels:
     pts=np.array([[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]],np.float32)
     def __init__(self):
-        required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM]); self.yunet_path=native_model(YUNET);self.brisque_model=native_model(BRISQUE);self.brisque_range=native_model(BRISQUE_RANGE);self.det=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.7,.3,5000); self.fq=ort.InferenceSession(str(EDIFF),providers=['CPUExecutionProvider']); self.fqin=self.fq.get_inputs()[0].name; self.pose=ort.InferenceSession(str(DDDFA),providers=['CPUExecutionProvider']); self.posein=self.pose.get_inputs()[0].name
+        required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM]); self.yunet_path=native_model(YUNET);self.brisque_model=native_model(BRISQUE);self.brisque_range=native_model(BRISQUE_RANGE);self.det=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.7,.3,5000);self.det_fallback=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.45,.3,5000); self.fq=ort.InferenceSession(str(EDIFF),providers=['CPUExecutionProvider']); self.fqin=self.fq.get_inputs()[0].name; self.pose=ort.InferenceSession(str(DDDFA),providers=['CPUExecutionProvider']); self.posein=self.pose.get_inputs()[0].name
         with DDDFA_NORM.open('rb') as f:n=pickle.load(f)
         self.mean=n['mean'].astype(np.float32); self.std=n['std'].astype(np.float32)
-    def faces(self,img):self.det.setInputSize((img.shape[1],img.shape[0])); return self.det.detect(img)[1]
+    def faces(self,img,fallback=False):
+        det=self.det_fallback if fallback else self.det;det.setInputSize((img.shape[1],img.shape[0]));return det.detect(img)[1]
     @staticmethod
     def crop(img,roi):
         sx,sy,ex,ey=map(lambda x:int(round(x)),roi); out=np.zeros((max(1,ey-sy),max(1,ex-sx),3),np.uint8); h,w=img.shape[:2];x0,x1=max(0,sx),min(w,ex);y0,y1=max(0,sy),min(h,ey)
@@ -440,9 +457,13 @@ class Analyzer(QObject):
         except Exception as e:
             r.hard_rejects.append(AnalysisFinding('read_error','image',detail=f'无法读取图片：{e}'));derive_eligibility(r);return r
 
-        rows=[]
+        rows=[];face_fallback_used=False
         try:
             fs=qm.faces(bgr);rows=[] if fs is None else list(fs)
+            if not rows:
+                fs=qm.faces(bgr,True);rows=[] if fs is None else list(fs);face_fallback_used=bool(rows)
+            rows=dedupe_face_rows(rows)
+            if face_fallback_used:r.analysis_metrics['face_detector_fallback']=True
         except Exception as e:
             r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
 
@@ -475,8 +496,10 @@ class Analyzer(QObject):
         except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
 
         dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces}
-        if r.faces==0:r.review_flags.append(AnalysisFinding('no_face_detected','yunet',detail='YuNet 未检测到人脸'))
-        elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'YuNet 检测到 {r.faces} 张人脸，需确认次要检测框'))
+        if r.faces==0:
+            if r.person_scale=='全身':r.review_flags.append(AnalysisFinding('no_face_full_body_review','yunet',detail='未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认'))
+            else:r.hard_rejects.append(AnalysisFinding('no_face_not_full_body','yunet',detail='两个检测阈值均未找到人脸，且不是全身图'))
+        elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'去重后仍检测到 {r.faces} 张独立人脸，需确认是否多人'))
         if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
         if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
         if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
@@ -510,7 +533,7 @@ class Analyzer(QObject):
 def rank(r):
     """透明的字典序质量排序：FIQA 优先，其次 BRISQUE，最后清晰度；不是综合加权分数。"""
     return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_detected','secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
+AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_full_body_review','secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
 def recommendation_blockers(r):
     out=[]
     if r.hard_rejects:out.extend('硬淘汰：'+finding_text(x) for x in r.hard_rejects)
@@ -870,12 +893,25 @@ class ThumbnailWorker(QObject):
                 except Exception:pass
         finally:self.finished.emit(self.token)
 
+class ReviewGrid(QListWidget):
+    middleItemClicked=Signal(object);rightItemDoubleClicked=Signal(object)
+    def mouseReleaseEvent(self,event):
+        item=self.itemAt(event.position().toPoint())
+        if event.button()==Qt.MiddleButton and item is not None:
+            self.middleItemClicked.emit(item);event.accept();return
+        super().mouseReleaseEvent(event)
+    def mouseDoubleClickEvent(self,event):
+        item=self.itemAt(event.position().toPoint())
+        if event.button()==Qt.RightButton and item is not None:
+            self.rightItemDoubleClicked.emit(item);event.accept();return
+        super().mouseDoubleClickEvent(event)
+
 class DuplicateReviewDialog(QDialog):
     def __init__(self,records,on_changed,parent=None):
         super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={};self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
         root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“保留勾选”等按钮后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
         split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(220);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(280,280));self.members.setGridSize(QSize(340,390));self.members.setWordWrap(True);self.members.itemChanged.connect(self.member_check_changed);self.members.itemDoubleClicked.connect(self.open_member);rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,1230]);root.addWidget(split,1)
-        actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('保留勾选');selected.clicked.connect(self.keep_checked);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
+        actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('完成本组：勾选推荐 / 未勾淘汰');selected.clicked.connect(self.keep_checked);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
         for b in (best,selected,all_keep,restore,self.toggle_grouping):actions.addWidget(b)
         actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);root.addLayout(actions);self.reload_groups()
     @staticmethod
@@ -916,9 +952,9 @@ class DuplicateReviewDialog(QDialog):
         self.remember_checks();gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.blockSignals(True);self.members.clear();self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张')
         self.toggle_grouping.setText('勾选项恢复自动分组' if gid==-1 else '勾选项移出重复组')
         for rank_no,r in enumerate(members,1):
-            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';checked=self.draft_checks.get(r.sample_id,r.manual_status=='推荐')
+            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';checked=self.draft_checks.get(r.sample_id,r.status=='推荐')
             text=f'{prefix}{r.path.name}\n{human_bytes(r.file_size)} · {r.width}×{r.height}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
-            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if checked else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n文件：{human_bytes(r.file_size)} · {r.width}×{r.height}\n状态：{r.status} · Eligibility：{r.eligibility}');self.members.addItem(it)
+            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if checked else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n文件：{human_bytes(r.file_size)} · {r.width}×{r.height}\n状态：{r.status} · 判定：{'可直接用' if r.eligibility=='PASS' else '需复核' if r.eligibility=='REVIEW' else '硬淘汰'}');self.members.addItem(it)
         self.members.blockSignals(False)
     def checked_records(self):
         self.remember_checks();return [r for r in self.current_records() if self.draft_checks.get(r.sample_id,False)]
@@ -930,12 +966,12 @@ class DuplicateReviewDialog(QDialog):
         members=self.current_records()
         if not members:return
         best=members[0]
-        for r in members:r.manual_status='推荐' if r is best else '备选';self.draft_checks[r.sample_id]=r is best
+        for r in members:r.manual_status='推荐' if r is best else '淘汰';self.draft_checks[r.sample_id]=r is best
         self.changed(self.current_group)
     def keep_checked(self):
         members=self.current_records();checked={r.sample_id for r in self.checked_records()}
         if not members or not checked:QMessageBox.information(self,'未勾选图片','请先勾选希望保留的图片。');return
-        for r in members:r.manual_status='推荐' if r.sample_id in checked else '备选'
+        for r in members:r.manual_status='推荐' if r.sample_id in checked else '淘汰'
         self.changed(self.current_group)
     def keep_all(self):
         members=self.current_records()
@@ -970,15 +1006,15 @@ class Window(QMainWindow):
         self.best_only=QCheckBox('重复组只看最佳');self.best_only.toggled.connect(self.filters_changed);fg.addWidget(self.best_only);clear_filters=QPushButton('清除筛选');clear_filters.clicked.connect(self.clear_filters);fg.addWidget(clear_filters);fg.addStretch(1);l.addWidget(filter_box)
 
         order_row=QHBoxLayout();sort_box=QGroupBox('2. 排序：只改变顺序');sg=QHBoxLayout(sort_box);self.sort_field_combo=QComboBox()
-        for label,value in [('原始顺序','默认顺序'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels'),('最终状态','状态'),('判定状态','Eligibility'),('重复组','Duplicate Group'),('来源','来源目录 / 源视频'),('景别','景别'),('水平角度','Yaw'),('俯仰','Pitch')]:self.sort_field_combo.addItem(label,value)
+        for label,value in [('原始顺序','默认顺序'),('质量排序（FIQA→BRISQUE→清晰度）','质量排序'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels'),('最终状态','状态'),('判定状态','Eligibility'),('重复组','Duplicate Group'),('来源','来源目录 / 源视频'),('景别','景别'),('水平角度','Yaw'),('俯仰','Pitch')]:self.sort_field_combo.addItem(label,value)
         self.sort_field_combo.currentIndexChanged.connect(self.sort_changed);self.sort_dir_combo=QComboBox();self.sort_dir_combo.addItem('优先顺序','优先顺序');self.sort_dir_combo.addItem('反向','反向');self.sort_dir_combo.currentIndexChanged.connect(self.sort_changed);sg.addWidget(QLabel('按'));sg.addWidget(self.sort_field_combo);sg.addWidget(self.sort_dir_combo);order_row.addWidget(sort_box,1)
         extreme_box=QGroupBox('3. 极值检查：在当前筛选结果上取 Top / Bottom');eg=QHBoxLayout(extreme_box);self.rank_basis_combo=QComboBox()
         for label,value in [('质量排序（FIQA→BRISQUE→清晰度）','综合质量'),('人脸识别质量（FIQA）','Face Quality'),('整图质量（BRISQUE）','BRISQUE'),('主脸清晰度','Sharpness'),('主脸像素','Face Pixels')]:self.rank_basis_combo.addItem(label,value)
         self.rank_basis_combo.currentIndexChanged.connect(lambda _=None:self.quick_changed());self.quick_n=QSpinBox();self.quick_n.setRange(1,500);self.quick_n.setValue(10);self.quick_n.setPrefix('N=');self.quick_n.valueChanged.connect(lambda _=None:self.quick_changed());top_view=QPushButton('Top N');top_view.clicked.connect(lambda:self.quick('view_top'));bottom_view=QPushButton('Bottom N');bottom_view.clicked.connect(lambda:self.quick('view_bottom'));clear_top=QPushButton('关闭极值检查');clear_top.clicked.connect(lambda:self.quick(''));eg.addWidget(QLabel('依据'));eg.addWidget(self.rank_basis_combo);eg.addWidget(self.quick_n);eg.addWidget(top_view);eg.addWidget(bottom_view);eg.addWidget(clear_top);order_row.addWidget(extreme_box,2);l.addLayout(order_row)
 
         tools=QHBoxLayout();tools.addWidget(QLabel('保存视图'));self.saved_view_combo=QComboBox();self.saved_view_combo.addItem('未选择');tools.addWidget(self.saved_view_combo);save_view=QPushButton('保存当前视图');save_view.clicked.connect(self.save_current_view);load_view=QPushButton('载入');load_view.clicked.connect(self.load_selected_view);delete_view=QPushButton('删除');delete_view.clicked.connect(self.delete_selected_view);tools.addWidget(save_view);tools.addWidget(load_view);tools.addWidget(delete_view);tools.addStretch(1);export_view_ai=QPushButton('导出当前视图 AI 包…');export_view_ai.clicked.connect(lambda:self.export_ai_bundle('current_view'));export_all_ai=QPushButton('导出全部 AI 包…');export_all_ai.clicked.connect(lambda:self.export_ai_bundle('dataset'));import_ai=QPushButton('导入 AI 建议…');import_ai.clicked.connect(self.import_ai_patch);tools.addWidget(export_view_ai);tools.addWidget(export_all_ai);tools.addWidget(import_ai);l.addLayout(tools)
-        self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:7px; color:#1f2937; background:#eef3f8; border:1px solid #cbd5e1; border-radius:4px;');l.addWidget(self.current_view_label)
-        s=QSplitter(Qt.Horizontal);self.grid=QListWidget();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
+        self.current_view_label=QLabel('当前视图：全部图片\n显示：0 / 0 张');self.current_view_label.setStyleSheet('font-weight:600; padding:7px; color:#1f2937; background:#eef3f8; border:1px solid #cbd5e1; border-radius:4px;');l.addWidget(self.current_view_label);self.shortcut_hint=QLabel('快捷操作：鼠标中键单击图片 = 推荐 ↔ 备选（淘汰图先恢复为备选）｜右键双击图片 = 淘汰');self.shortcut_hint.setStyleSheet('padding:5px 8px;color:#1f2937;background:#ffffff;border:1px solid #d1d5db;');l.addWidget(self.shortcut_hint)
+        s=QSplitter(Qt.Horizontal);self.grid=ReviewGrid();self.grid.setViewMode(QListWidget.IconMode);self.grid.setResizeMode(QListWidget.Adjust);self.grid.setMovement(QListWidget.Static);self.grid.setIconSize(QSize(150,150));self.grid.setGridSize(QSize(174,205));self.grid.itemClicked.connect(self.details);self.grid.itemDoubleClicked.connect(self.open);self.grid.middleItemClicked.connect(self.quick_toggle_item);self.grid.rightItemDoubleClicked.connect(self.quick_reject_item);s.addWidget(self.grid);side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel('目标 / 实际推荐：0 / 0');self.stats.setWordWrap(True);sl.addWidget(self.stats);self.stat_box=QGroupBox('统计（点击分类筛选）');self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box);box=QGroupBox('图片分析数据');bl=QVBoxLayout(box);self.detail=QLabel('点击缩略图查看详情');self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(box);man=QGroupBox('人工状态（优先于自动结果）');ml=QGridLayout(man)
         for i,x in enumerate(('推荐','备选','淘汰')):b=QPushButton(x);b.clicked.connect(lambda _,v=x:self.manual(v));ml.addWidget(b,0,i)
         restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);ai_box=QGroupBox('AI 审核建议');ail=QVBoxLayout(ai_box);self.ai_label=QLabel('当前图片没有 AI 建议');self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout();accept_ai=QPushButton('接受');accept_ai.clicked.connect(self.accept_ai_suggestion);reject_ai=QPushButton('拒绝');reject_ai.clicked.connect(self.reject_ai_suggestion);clear_ai=QPushButton('清除');clear_ai.clicked.connect(self.clear_ai_suggestion);aib.addWidget(accept_ai);aib.addWidget(reject_ai);aib.addWidget(clear_ai);ail.addLayout(aib);sl.addWidget(ai_box);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
     def choose(self):
@@ -1056,9 +1092,9 @@ class Window(QMainWindow):
         spec=self.current_view_spec();base=[i for i,r in enumerate(self.records) if photo_matches_filters(r,spec.filters)]
         if spec.best_only:base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
         sort=spec.sort_field;status_order={'推荐':0,'备选':1,'淘汰':2};eligibility_order={'PASS':0,'REVIEW':1,'REJECT':2};scale_order={x:i for i,x in enumerate(SCALES)};yaw_order={x:i for i,x in enumerate(YAWS)};pitch_order={x:i for i,x in enumerate(PITCHES)}
-        key_func={'Face Quality':lambda r:r.face_quality,'BRISQUE':lambda r:r.brisque,'Sharpness':lambda r:r.blur,'Face Pixels':lambda r:r.face_px,'状态':lambda r:status_order.get(r.status,99),'Eligibility':lambda r:eligibility_order.get(r.eligibility,99),'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:scale_order.get(r.person_scale,99),'Yaw':lambda r:yaw_order.get(r.angle_class,99),'Pitch':lambda r:pitch_order.get(r.pitch_class,99)}
+        key_func={'质量排序':lambda r:rank(r),'Face Quality':lambda r:r.face_quality,'BRISQUE':lambda r:r.brisque,'Sharpness':lambda r:r.blur,'Face Pixels':lambda r:r.face_px,'状态':lambda r:status_order.get(r.status,99),'Eligibility':lambda r:eligibility_order.get(r.eligibility,99),'Duplicate Group':lambda r:(r.duplicate_group==0,r.duplicate_group),'来源目录 / 源视频':lambda r:r.source,'景别':lambda r:scale_order.get(r.person_scale,99),'Yaw':lambda r:yaw_order.get(r.angle_class,99),'Pitch':lambda r:pitch_order.get(r.pitch_class,99)}
         if sort in key_func:
-            best_reverse=sort in ('Face Quality','Sharpness','Face Pixels');reverse=best_reverse
+            best_reverse=sort in ('质量排序','Face Quality','Sharpness','Face Pixels');reverse=best_reverse
             if spec.sort_direction=='反向':reverse=not reverse
             base.sort(key=lambda i:key_func[sort](self.records[i]),reverse=reverse)
         if with_quick and spec.quick_mode=='view_top':base=sorted(base,key=lambda i:self.quick_key(self.records[i]),reverse=True)[:spec.limit_n]
@@ -1217,6 +1253,14 @@ class Window(QMainWindow):
         r=self.selected()
         if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
     def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
+    def quick_toggle_item(self,it):
+        r=self.records[it.data(Qt.UserRole)]
+        if r.status=='推荐':r.manual_status='备选'
+        elif r.status=='备选':r.manual_status='推荐'
+        else:r.manual_status='备选'
+        recommend(self.records,self.target);self.page=0;self.refresh();self.save()
+    def quick_reject_item(self,it):
+        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';recommend(self.records,self.target);self.page=0;self.refresh();self.save()
     def open_duplicate_review(self):
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         DuplicateReviewDialog(self.records,self.duplicate_review_changed,self).exec()
@@ -1256,6 +1300,8 @@ def self_test():
     if not math.isfinite(score):raise RuntimeError('BRISQUE self-test returned a non-finite score')
     test_image=Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB))
     if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
+    nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
+    if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
     with tempfile.TemporaryDirectory() as td:
         test_path=Path(td)/'sample.bin';test_path.write_bytes(b'face-lora-selector-v3')
         content_hash=sha256_file(test_path);sid1=new_sample_id();sid2=new_sample_id()
