@@ -36,13 +36,64 @@ jobs:
         shell: pwsh
         run: |
           python -c "import sys,numpy,cv2; print(sys.version); print('numpy',numpy.__version__); print('opencv',cv2.__version__)"
-          python -c "import imgutils; from imgutils.detect import detect_person,detect_heads; print('dghs-imgutils import OK')"
+          python -c "from deepghs_yolo_runtime import detect_person,detect_heads; print('vendored DeepGHS runtime import OK')"
 
       - name: Existing selector self-test
         shell: pwsh
         run: |
           python app.py --self-test
 
+
+  detector-parity:
+    needs: runtime
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[parity]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up production Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Download public DeepGHS parity image
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/deepghs/imgutils/main/test/testfile/genshin_post.jpg" -OutFile "genshin_post.jpg"
+
+      - name: Run vendored detector
+        shell: pwsh
+        run: |
+          python .github/scripts/composite_parity.py vendor --image genshin_post.jpg --output vendor.json
+
+      - name: Create official-reference environment
+        shell: pwsh
+        run: |
+          python -m venv .parity-ref
+          .\.parity-ref\Scripts\python.exe -m pip install --upgrade pip
+          .\.parity-ref\Scripts\python.exe -m pip install --no-cache-dir "dghs-imgutils==0.19.0"
+
+      - name: Run official imgutils detector
+        shell: pwsh
+        run: |
+          $env:HF_HOME = Join-Path $PWD "_parity_official_models"
+          $env:HF_HUB_CACHE = Join-Path $env:HF_HOME "hub"
+          $env:HUGGINGFACE_HUB_CACHE = $env:HF_HUB_CACHE
+          .\.parity-ref\Scripts\python.exe .github/scripts/composite_parity.py official --image genshin_post.jpg --output official.json
+
+      - name: Compare detector outputs
+        shell: pwsh
+        run: |
+          python .github/scripts/composite_parity.py compare --vendor vendor.json --official official.json
 
   portable-smoke:
     needs: runtime
