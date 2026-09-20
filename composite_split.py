@@ -244,9 +244,11 @@ def proposal_from_detections(image_size, people, heads) -> Optional[CompositePro
 
 def _configure_hf_cache(model_cache: Path):
     model_cache.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("HF_HOME", str(model_cache))
-    os.environ.setdefault("HF_HUB_CACHE", str(model_cache / "hub"))
-    os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(model_cache / "hub"))
+    # Composite Split models are product-local assets. Override any global
+    # Hugging Face cache setting so first-use downloads stay on the app drive.
+    os.environ["HF_HOME"] = str(model_cache)
+    os.environ["HF_HUB_CACHE"] = str(model_cache / "hub")
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(model_cache / "hub")
 
 
 def detect_proposal(image: Image.Image, model_cache: Path) -> Optional[CompositeProposal]:
