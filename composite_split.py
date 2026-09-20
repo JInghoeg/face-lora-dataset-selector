@@ -1,11 +1,11 @@
 """Production Composite Split adapter.
 
-The visual detectors are provided by the mature DeepGHS imgutils project.
-This module only maps their outputs to selector-specific proposals.
+The visual detectors reuse the mature DeepGHS person/head models and the
+vendored, parity-tested DeepGHS YOLO inference path. This module only maps
+their outputs to selector-specific proposals.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -242,21 +242,12 @@ def proposal_from_detections(image_size, people, heads) -> Optional[CompositePro
     )
 
 
-def _configure_hf_cache(model_cache: Path):
-    model_cache.mkdir(parents=True, exist_ok=True)
-    # Composite Split models are product-local assets. Override any global
-    # Hugging Face cache setting so first-use downloads stay on the app drive.
-    os.environ["HF_HOME"] = str(model_cache)
-    os.environ["HF_HUB_CACHE"] = str(model_cache / "hub")
-    os.environ["HUGGINGFACE_HUB_CACHE"] = str(model_cache / "hub")
-
-
 def detect_proposal(image: Image.Image, model_cache: Path) -> Optional[CompositeProposal]:
-    _configure_hf_cache(model_cache)
-    from imgutils.detect import detect_heads, detect_person
+    from deepghs_yolo_runtime import detect_heads, detect_person
 
     people = detect_person(
         image,
+        model_cache=model_cache,
         model_name=PERSON_MODEL,
         conf_threshold=PERSON_CONF,
         iou_threshold=PERSON_IOU,
@@ -266,6 +257,7 @@ def detect_proposal(image: Image.Image, model_cache: Path) -> Optional[Composite
 
     heads = detect_heads(
         image,
+        model_cache=model_cache,
         model_name=HEAD_MODEL,
         conf_threshold=HEAD_CONF,
     )
