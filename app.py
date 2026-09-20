@@ -988,7 +988,7 @@ class Window(QMainWindow):
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
-    def done(self,rs):self.records=rs;self.target=self.custom.value();recommend(rs,self.target);self.quick_mode='';self.view_combo.setCurrentText('推荐');self.page=0;self.progress.setText(f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.refresh();self.save()
+    def done(self,rs):self.records=rs;self.target=self.custom.value();recommend(rs,self.target);self.quick_mode='';self.view_combo.setCurrentText('全部');self.page=0;self.progress.setText(f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.refresh();self.save()
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
     @staticmethod
     def thumb(p):
@@ -1217,7 +1217,7 @@ class Window(QMainWindow):
     def restore(self):
         r=self.selected()
         if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
-    def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.quick_mode='';self.view_combo.setCurrentText('推荐');self.refresh() if self.records else None;self.save()
+    def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
     def open_duplicate_review(self):
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         DuplicateReviewDialog(self.records,self.duplicate_review_changed,self).exec()
