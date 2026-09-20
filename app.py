@@ -17,7 +17,7 @@ try:
     from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
-    from composite_split import CompositeProposal, Detection as CompositeDetection, proposal_from_dict as composite_proposal_from_dict, proposal_from_detections as composite_proposal_from_detections, detect_proposal as detect_composite_proposal
+    from composite_split import CompositeProposal, Detection as CompositeDetection, PROPOSAL_VERSION as COMPOSITE_PROPOSAL_VERSION, proposal_from_dict as composite_proposal_from_dict, proposal_from_detections as composite_proposal_from_detections, detect_proposal as detect_composite_proposal
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
     print(msg)
@@ -96,7 +96,7 @@ class Photo:
     face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False; duplicate_reviewed:bool=False
     analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'; recommendation_reasons:list[str]=field(default_factory=list)
     reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
-    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[CompositeProposal]=None
+    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[CompositeProposal]=None; composite_scan_version:int=0
     @property
     def status(self): return self.manual_status or self.auto_status
     @property
@@ -179,7 +179,7 @@ def photo_to_dict(p):
     d=asdict(p); d['path']=str(p.path.resolve()); return d
 def photo_from_dict(d,path,size,mtime):
     p=Photo(path,size,mtime)
-    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','duplicate_ignore','duplicate_reviewed','analysis_metrics','eligibility','auto_status','manual_status')
+    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','duplicate_ignore','duplicate_reviewed','analysis_metrics','eligibility','auto_status','manual_status','composite_scan_version')
     for name in simple:
         if name in d:setattr(p,name,d[name])
     p.face_detections=[x for x in (face_detection_from_dict(v) for v in d.get('face_detections',[])) if x is not None]
