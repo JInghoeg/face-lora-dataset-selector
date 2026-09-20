@@ -214,8 +214,8 @@ def view_spec_from_dict(x):
     return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),field_name,direction,bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
 def saved_views_from_data(folder):
     return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
-def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None,pending_composite_paths=None):
-    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'analysis_version':ANALYSIS_VERSION,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'pending_composite_recommend_paths':sorted(pending_composite_paths or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None,pending_composite_outputs=None):
+    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'analysis_version':ANALYSIS_VERSION,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'pending_composite_outputs':list(pending_composite_outputs or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
 def derive_eligibility(r):
@@ -646,10 +646,12 @@ def recommend(rs,target):
     for r in rs:
         r.recommendation_reasons=[]
         r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-    eligible=[r for r in rs if recommendation_qualified(r)]
+    auto_pool=[r for r in rs if r.manual_status is None]
+    eligible=[r for r in auto_pool if recommendation_qualified(r)]
     eligible_ids={id(r) for r in eligible}
     for r in rs:
-        if id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
+        if r.manual_status is not None:r.recommendation_reasons=[f'人工状态固定：{r.manual_status}（不占自动推荐目标）']
+        elif id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
     pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
     for r in eligible:
         if id(r) not in pool_ids:
@@ -1091,9 +1093,26 @@ class CompositeScanWorker(QObject):
             self.finished.emit(self.records)
         except Exception:self.failed.emit(traceback.format_exc())
 
+class IncrementalAnalysisWorker(QObject):
+    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    def __init__(self,items):super().__init__();self.items=list(items)
+    def run(self):
+        try:
+            if not self.items:self.finished.emit([]);return
+            qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
+            out=[]
+            with PoseLandmarker.create_from_options(opt) as pl:
+                total=len(self.items)
+                for i,(path,status) in enumerate(self.items,1):
+                    stat=path.stat();r=Analyzer.one(path,qm,pl,stat.st_size,stat.st_mtime_ns)
+                    r.manual_status=status;r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;derive_eligibility(r);out.append(r)
+                    self.progress.emit(i,total,path.name)
+            self.finished.emit(out)
+        except Exception:self.failed.emit(traceback.format_exc())
+
 class CompositeSplitReviewDialog(QDialog):
     def __init__(self,records,changed,accept_materialized,parent=None):
-        super().__init__(parent);self.records=[r for r in records if r.status=='推荐' and r.composite_proposal is not None];self.changed=changed;self.accept_materialized=accept_materialized;self.current=-1
+        super().__init__(parent);self.records=[r for r in records if r.status=='推荐' and r.composite_proposal is not None];self.changed=changed;self.accept_materialized=accept_materialized;self.current=-1;self.output_keep={}
         self.setWindowTitle('Composite Split 复核');self.resize(1320,820);self.ui();self.reload()
     @staticmethod
     def quad(box):
@@ -1108,7 +1127,7 @@ class CompositeSplitReviewDialog(QDialog):
         self.items=QListWidget();self.items.setMinimumWidth(310);self.items.itemClicked.connect(self.show_item);split.addWidget(self.items)
         right=QWidget();rl=QVBoxLayout(right);self.info=QLabel('选择候选图');self.info.setWordWrap(True);self.info.setStyleSheet('font-weight:600;');rl.addWidget(self.info)
         self.preview=ImagePreview();rl.addWidget(self.preview,1)
-        rl.addWidget(QLabel('建议输出预览'));self.outputs=QListWidget();self.outputs.setViewMode(QListWidget.IconMode);self.outputs.setResizeMode(QListWidget.Adjust);self.outputs.setMovement(QListWidget.Static);self.outputs.setIconSize(QSize(220,220));self.outputs.setGridSize(QSize(250,260));self.outputs.setMaximumHeight(300);rl.addWidget(self.outputs)
+        rl.addWidget(QLabel('建议输出预览（默认全选；取消勾选 = 生成后直接送入淘汰）'));self.outputs=QListWidget();self.outputs.setViewMode(QListWidget.IconMode);self.outputs.setResizeMode(QListWidget.Adjust);self.outputs.setMovement(QListWidget.Static);self.outputs.setIconSize(QSize(220,220));self.outputs.setGridSize(QSize(250,280));self.outputs.setMaximumHeight(320);self.outputs.itemChanged.connect(self.output_selection_changed);rl.addWidget(self.outputs)
         actions=QHBoxLayout();accept=QPushButton('接受建议');accept.clicked.connect(lambda:self.set_decision('accepted'));reject=QPushButton('拒绝');reject.clicked.connect(lambda:self.set_decision('rejected'));pending=QPushButton('恢复待定');pending.clicked.connect(lambda:self.set_decision('pending'));actions.addWidget(accept);actions.addWidget(reject);actions.addWidget(pending);actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);rl.addLayout(actions)
         split.addWidget(right);split.setSizes([330,990]);root.addWidget(split)
     def label(self,r):
@@ -1133,16 +1152,25 @@ class CompositeSplitReviewDialog(QDialog):
         boxes=[self.quad(b) for b in p.output_boxes];self.preview.set_data(im,boxes,[True]*len(boxes),[False]*len(boxes))
         mode='拆成独立人物/视角' if p.mode=='split_people' else '重叠多人合并裁剪'
         self.info.setText(f'{r.path.name}\n{mode} · 输出 {len(p.output_boxes)} 张\n状态：{p.decision}\n{p.detail}')
-        self.outputs.clear()
+        record_key=r.sample_id or key(r.path);keep=self.output_keep.get(record_key)
+        if not isinstance(keep,list) or len(keep)!=len(p.output_boxes):keep=[True]*len(p.output_boxes);self.output_keep[record_key]=keep
+        self.outputs.blockSignals(True);self.outputs.clear()
         h,w=im.shape[:2]
         for n,b in enumerate(p.output_boxes,1):
             x0,y0,x1,y1=map(int,b);x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1));crop=im[y0:y1,x0:x1]
-            item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),f'输出 {n}\n{x1-x0} × {y1-y0}');self.outputs.addItem(item)
+            state='推荐' if keep[n-1] else '淘汰';item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),f'输出 {n}\n{x1-x0} × {y1-y0}\n→ {state}');item.setData(Qt.UserRole,n-1);item.setFlags(item.flags()|Qt.ItemIsUserCheckable);item.setCheckState(Qt.Checked if keep[n-1] else Qt.Unchecked);self.outputs.addItem(item)
+        self.outputs.blockSignals(False)
+    def output_selection_changed(self,item):
+        if self.current<0:return
+        r=self.records[self.current];record_key=r.sample_id or key(r.path);p=r.composite_proposal;keep=self.output_keep.setdefault(record_key,[True]*len(p.output_boxes));index=item.data(Qt.UserRole)
+        if isinstance(index,int) and 0<=index<len(keep):
+            keep[index]=item.checkState()==Qt.Checked;item.setText(item.text().rsplit('\n→ ',1)[0]+f"\n→ {'推荐' if keep[index] else '淘汰'}")
     def set_decision(self,value):
         if self.current<0:return
         r=self.records[self.current]
         if value=='accepted':
-            if not self.accept_materialized(r):return
+            record_key=r.sample_id or key(r.path);keep=list(self.output_keep.get(record_key,[True]*len(r.composite_proposal.output_boxes)))
+            if not self.accept_materialized(r,keep):return
             self.records.pop(self.current);self.changed()
             if self.records:self.reload(min(self.current,len(self.records)-1))
             else:
@@ -1178,6 +1206,10 @@ def save_training_crop(source:Path,box,out:Path):
         else:crop.save(out)
         return crop.size
 
+def composite_output_statuses(outputs,keep_mask):
+    if len(outputs)!=len(keep_mask):raise ValueError('Composite 输出选择数量与生成结果不一致')
+    return [(path,'推荐' if keep else '淘汰') for path,keep in zip(outputs,keep_mask)]
+
 def materialize_composite_source(folder:Path,source:Path,proposal:CompositeProposal):
     outputs=[]
     suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
@@ -1197,7 +1229,7 @@ def materialize_composite_source(folder:Path,source:Path,proposal:CompositePropo
         raise
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.pending_composite_recommend_paths=set();self.composite_materialized=False;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
@@ -1227,18 +1259,24 @@ class Window(QMainWindow):
         restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);ai_box=QGroupBox('AI 审核建议');ail=QVBoxLayout(ai_box);self.ai_label=QLabel('当前图片没有 AI 建议');self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout();accept_ai=QPushButton('接受');accept_ai.clicked.connect(self.accept_ai_suggestion);reject_ai=QPushButton('拒绝');reject_ai.clicked.connect(self.reject_ai_suggestion);clear_ai=QPushButton('清除');clear_ai.clicked.connect(self.clear_ai_suggestion);aib.addWidget(accept_ai);aib.addWidget(reject_ai);aib.addWidget(clear_ai);ail.addLayout(aib);sl.addWidget(ai_box);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1)
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
-        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_recommend_paths=set(str(v).casefold() for v in d.get('pending_composite_recommend_paths',[]) if isinstance(v,str));self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
+        if x:
+            self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
+            for item in d.get('pending_composite_outputs',[]):
+                if isinstance(item,dict) and isinstance(item.get('path'),str) and item.get('status') in ('推荐','淘汰'):self.pending_composite_outputs[key(Path(item['path']))]={'path':item['path'],'status':item['status']}
+            for legacy in d.get('pending_composite_recommend_paths',[]):
+                if isinstance(legacy,str):self.pending_composite_outputs.setdefault(key(Path(legacy)),{'path':legacy,'status':'推荐'})
+            self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
         self.records=rs
-        if self.pending_composite_recommend_paths:
-            found=set()
+        if self.pending_composite_outputs:
+            found=[]
             for r in rs:
-                k=key(r.path)
-                if k in self.pending_composite_recommend_paths:r.manual_status='推荐';r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.add(k)
-            self.pending_composite_recommend_paths.difference_update(found)
+                k=key(r.path);item=self.pending_composite_outputs.get(k)
+                if item:r.manual_status=item['status'];r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.append(k)
+            for k in found:self.pending_composite_outputs.pop(k,None)
         self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
@@ -1469,19 +1507,19 @@ class Window(QMainWindow):
         except Exception as e:QMessageBox.critical(self,'AI 建议导入失败',str(e))
     def manual(self,v):
         r=self.selected()
-        if r:r.manual_status=v;self.refresh();self.save()
+        if r:r.manual_status=v;recommend(self.records,self.target);self.refresh();self.save()
     def restore(self):
         r=self.selected()
-        if r:r.manual_status=None;self.refresh();self.save()
+        if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
     def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
     def quick_toggle_item(self,it):
         r=self.records[it.data(Qt.UserRole)]
         if r.status=='推荐':r.manual_status='备选'
         elif r.status=='备选':r.manual_status='推荐'
         else:r.manual_status='备选'
-        self.page=0;self.refresh();self.save()
+        recommend(self.records,self.target);self.page=0;self.refresh();self.save()
     def quick_reject_item(self,it):
-        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';self.page=0;self.refresh();self.save()
+        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';recommend(self.records,self.target);self.page=0;self.refresh();self.save()
     def update_composite_button(self):
         if not hasattr(self,'composite_btn'):return
         proposals=[r.composite_proposal for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
@@ -1507,18 +1545,38 @@ class Window(QMainWindow):
         if self.composite_worker:self.composite_worker.deleteLater()
         if self.composite_thread:self.composite_thread.deleteLater()
         self.composite_worker=None;self.composite_thread=None
-    def materialize_composite(self,r):
+    def materialize_composite(self,r,keep_mask):
         if not self.folder or r not in self.records or r.composite_proposal is None:return False
         source=r.path
-        try:outputs,_archive=materialize_composite_source(self.folder,source,r.composite_proposal)
+        try:
+            outputs,_archive=materialize_composite_source(self.folder,source,r.composite_proposal);assigned=composite_output_statuses(outputs,keep_mask)
         except Exception as e:
             QMessageBox.critical(self,'Composite Split 写入失败',f'{source.name}\n\n{e}')
             return False
-        self.pending_composite_recommend_paths.update(key(out) for out in outputs);self.records=[x for x in self.records if x is not r];self.composite_materialized=True;self.progress.setText(f'Composite Split 已落盘：{source.name} → {len(outputs)} 张推荐图；原图已隔离');return True
+        for out,status in assigned:self.pending_composite_outputs[key(out)]={'path':str(out.resolve()),'status':status}
+        self.records=[x for x in self.records if x is not r];kept=sum(status=='推荐' for _,status in assigned);rejected=len(assigned)-kept;self.progress.setText(f'Composite 已落盘：{source.name} → 推荐 {kept} / 淘汰 {rejected}；原图已隔离');return True
+    def start_incremental_composite_analysis(self):
+        if self.incremental_thread and self.incremental_thread.isRunning():return
+        items=[]
+        for item in self.pending_composite_outputs.values():
+            path=Path(item['path'])
+            if path.exists():items.append((path,item['status']))
+        if not items:self.refresh();self.save();return
+        self.refresh();self.save();self.progress.setText(f'分析 Composite 新生成图片：0/{len(items)}');self.incremental_thread=QThread(self);self.incremental_worker=IncrementalAnalysisWorker(items);self.incremental_worker.moveToThread(self.incremental_thread);self.incremental_thread.started.connect(self.incremental_worker.run);self.incremental_worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 Composite 新图 {n}/{t}：{name}'));self.incremental_worker.finished.connect(self.incremental_composite_done);self.incremental_worker.failed.connect(self.incremental_composite_failed);self.incremental_worker.finished.connect(self.incremental_thread.quit);self.incremental_worker.failed.connect(self.incremental_thread.quit);self.incremental_thread.finished.connect(self.incremental_composite_thread_done);self.incremental_thread.start()
+    def incremental_composite_done(self,new_records):
+        existing={key(r.path) for r in self.records};added=[]
+        for r in new_records:
+            if key(r.path) not in existing:self.records.append(r);existing.add(key(r.path));added.append(r)
+            self.pending_composite_outputs.pop(key(r.path),None)
+        Analyzer.groups(self.records);recommend(self.records,self.target);self.refresh();self.save();self.update_composite_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
+    def incremental_composite_failed(self,error):
+        self.progress.setText('Composite 新图增量分析失败；状态已保留，可刷新恢复');self.save();QMessageBox.critical(self,'Composite 新图分析失败',error)
+    def incremental_composite_thread_done(self):
+        if self.incremental_worker:self.incremental_worker.deleteLater()
+        if self.incremental_thread:self.incremental_thread.deleteLater()
+        self.incremental_worker=None;self.incremental_thread=None
     def after_composite_review(self):
-        self.update_composite_button()
-        if self.composite_materialized:
-            self.composite_materialized=False;self.save();QTimer.singleShot(0,self.start)
+        self.update_composite_button();self.start_incremental_composite_analysis()
     def composite_review_changed(self):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):
@@ -1532,7 +1590,7 @@ class Window(QMainWindow):
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def save(self):
         if self.folder and self.records:
-            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,self.pending_composite_recommend_paths)
+            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()))
             except Exception:self.progress.setText('缓存保存失败')
     def closeEvent(self,e):self.save();self.sub.save();e.accept()
     def exported(self):
@@ -1578,8 +1636,9 @@ def self_test():
         active={p.name for p in active_image_files(root)}
         if 'archived.png' in active or 'source.png' not in active:raise RuntimeError('Composite archive exclusion self-test failed')
         proposal=CompositeProposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
-        outputs,archived=materialize_composite_source(root,source,proposal)
+        outputs,archived=materialize_composite_source(root,source,proposal);assigned=composite_output_statuses(outputs,[True,False])
         if source.exists() or not archived.exists() or len(outputs)!=2 or any(not p.exists() for p in outputs):raise RuntimeError('Composite materialization self-test failed')
+        if [status for _,status in assigned]!=['推荐','淘汰']:raise RuntimeError('Composite per-output status self-test failed')
         active={p.name for p in active_image_files(root)}
         if archived.name in active or {p.name for p in outputs}-active:raise RuntimeError('Composite materialized active-set self-test failed')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
@@ -1603,9 +1662,9 @@ def self_test():
     if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
     recommend([front,side],2)
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
-    manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.6;manual_extra.brisque=30.;manual_extra.blur=60.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS';manual_extra.manual_status='推荐'
+    manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS';manual_extra.manual_status='推荐'
     recommend([front,side,manual_extra],2)
-    if sum(r.auto_status=='推荐' for r in (front,side,manual_extra))!=2 or sum(r.status=='推荐' for r in (front,side,manual_extra))<2:raise RuntimeError('manual overlay must not consume auto recommendation target')
+    if manual_extra.auto_status=='推荐' or sum(r.auto_status=='推荐' for r in (front,side))!=2 or sum(r.status=='推荐' for r in (front,side,manual_extra))!=3:raise RuntimeError('manual overlay must be additive and never consume auto recommendation target')
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
     recommend([bad],1)
     if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
