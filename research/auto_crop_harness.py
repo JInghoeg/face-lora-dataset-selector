@@ -65,6 +65,7 @@ from app import EXT, ensure_pose, load_data, key
 
 HARNESS_VERSION = 1
 REVIEW_SIZE_DEFAULT = 72
+ANALYSIS_MAX_SIDE = 1280
 RESEARCH_ROOT = (
     Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
     / "Face LoRA Dataset Selector"
@@ -138,20 +139,26 @@ def effective_status(rec: dict | None) -> str:
     return rec.get("manual_status") or rec.get("auto_status") or ""
 
 
-def selected_input_files(folder: Path, include_all: bool) -> tuple[list[Path], dict[str, dict], str]:
+def selected_input_files(folder: Path, include_all: bool) -> tuple[list[Path], dict[str, dict], str, dict]:
     files = image_files(folder)
     records = selector_record_map(folder)
-    if include_all or not records:
-        return files, records, "all"
+    tracked = [p for p in files if key(p) in records]
+    recommended = [p for p in files if effective_status(records.get(key(p))) == "推荐"]
+    stats = {
+        "total_images": len(files),
+        "tracked_images": len(tracked),
+        "untracked_images": len(files) - len(tracked),
+        "recommended_images": len(recommended),
+    }
 
-    recommended = []
-    for p in files:
-        rec = records.get(key(p))
-        if effective_status(rec) == "推荐":
-            recommended.append(p)
+    if include_all or not records:
+        stats["selected_images"] = len(files)
+        return files, records, "all", stats
     if recommended:
-        return recommended, records, "recommended"
-    return files, records, "all_fallback"
+        stats["selected_images"] = len(recommended)
+        return recommended, records, "recommended", stats
+    stats["selected_images"] = len(files)
+    return files, records, "all_fallback", stats
 
 
 def resize_for_saliency(bgr: np.ndarray, max_side: int = 1024) -> tuple[np.ndarray, float]:
@@ -276,6 +283,20 @@ def crop_edge_density(mask: np.ndarray, crop: tuple[int, int, int, int], band: i
     return float(np.count_nonzero((mask > 0) & (region > 0))) / denom
 
 
+def resize_for_analysis(rgb: np.ndarray, max_side: int = ANALYSIS_MAX_SIDE) -> tuple[np.ndarray, float]:
+    """Downscale only the in-memory analysis copy; source/export pixels stay untouched."""
+    h, w = rgb.shape[:2]
+    scale = min(1.0, max_side / max(h, w))
+    if scale >= 0.999:
+        return np.ascontiguousarray(rgb, dtype=np.uint8), 1.0
+    work = cv2.resize(
+        rgb,
+        (max(1, round(w * scale)), max(1, round(h * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+    return np.ascontiguousarray(work, dtype=np.uint8), scale
+
+
 def pose_detect_padded(rgb: np.ndarray, landmarker: PoseLandmarker):
     """Run PoseLandmarker with width padded to a multiple of 4.
 
@@ -301,9 +322,11 @@ def pose_detect_padded(rgb: np.ndarray, landmarker: PoseLandmarker):
 
 
 def propose(rgb: np.ndarray, landmarker: PoseLandmarker) -> dict:
-    h, w = rgb.shape[:2]
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    result, pose_width, pad_right = pose_detect_padded(rgb, landmarker)
+    original_h, original_w = rgb.shape[:2]
+    work_rgb, analysis_scale = resize_for_analysis(rgb)
+    h, w = work_rgb.shape[:2]
+    bgr = cv2.cvtColor(work_rgb, cv2.COLOR_RGB2BGR)
+    result, pose_width, pad_right = pose_detect_padded(work_rgb, landmarker)
 
     hard, pose_present, seg_present = pose_protection(result, pose_width, h)
     if pad_right:
@@ -394,9 +417,20 @@ def propose(rgb: np.ndarray, landmarker: PoseLandmarker) -> dict:
         decision = "keep_original"
         reasons = ["没有单侧达到值得裁剪的幅度"]
 
+    if decision == "suggest_crop":
+        inv = 1.0 / analysis_scale
+        mapped_crop = [
+            max(0, min(original_w, math.floor(x0 * inv))),
+            max(0, min(original_h, math.floor(y0 * inv))),
+            max(0, min(original_w, math.ceil(x1 * inv))),
+            max(0, min(original_h, math.ceil(y1 * inv))),
+        ]
+    else:
+        mapped_crop = None
+
     return {
         "decision": decision,
-        "crop_box": [x0, y0, x1, y1] if decision == "suggest_crop" else None,
+        "crop_box": mapped_crop,
         "trim_ratio": potential_trim if decision == "suggest_crop" else 0.0,
         "potential_trim_ratio": potential_trim,
         "risk_score": risk,
@@ -510,9 +544,18 @@ def write_contact_sheets(run_dir: Path, pack: list[dict]) -> None:
 
 
 def analyze(folder: Path, include_all: bool, review_size: int, progress=None) -> Path:
-    files, records, scope = selected_input_files(folder, include_all)
+    files, records, scope, input_stats = selected_input_files(folder, include_all)
     if not files:
         raise RuntimeError("没有找到可分析图片。")
+    scope_text = "全部图片" if scope.startswith("all") else "推荐图片"
+    print(
+        f"Input scope: folder_total={input_stats['total_images']} | "
+        f"tracked={input_stats['tracked_images']} | "
+        f"untracked={input_stats['untracked_images']} | "
+        f"recommended={input_stats['recommended_images']} | "
+        f"selected={input_stats['selected_images']} ({scope_text})",
+        flush=True,
+    )
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     folder_id = hashlib.sha256(key(folder).encode()).hexdigest()[:12]
@@ -533,7 +576,13 @@ def analyze(folder: Path, include_all: bool, review_size: int, progress=None) ->
         for index, path in enumerate(files, 1):
             print(f"[{index}/{len(files)}] {path.name}", flush=True)
             if progress:
-                progress(index, len(files), path.name)
+                progress(
+                    index,
+                    len(files),
+                    f"{path.name}\n文件夹共 {input_stats['total_images']} 张 · "
+                    f"推荐 {input_stats['recommended_images']} · "
+                    f"未入缓存 {input_stats['untracked_images']} · 本次 {scope_text} {len(files)}",
+                )
             width = height = 0
             try:
                 rgb = load_rgb(path)
@@ -571,6 +620,8 @@ def analyze(folder: Path, include_all: bool, review_size: int, progress=None) ->
         "schema_version": HARNESS_VERSION,
         "dataset_root": str(folder.resolve()),
         "scope": scope,
+        "input_stats": input_stats,
+        "analysis_max_side": ANALYSIS_MAX_SIDE,
         "count": len(proposals),
         "proposals": proposals,
     })
@@ -854,6 +905,11 @@ def self_test() -> None:
     )
     # 127 px deliberately reproduces the upstream float-mask stride bug unless
     # our width-padding workaround is active.
+    large = np.zeros((2400, 3600, 3), dtype=np.uint8)
+    resized, resize_scale = resize_for_analysis(large)
+    if max(resized.shape[:2]) != ANALYSIS_MAX_SIDE or not (0 < resize_scale < 1):
+        raise RuntimeError("analysis downscale self-test failed")
+
     blank = np.zeros((128, 127, 3), dtype=np.uint8)
     with PoseLandmarker.create_from_options(options) as landmarker:
         result, pose_width, pad_right = pose_detect_padded(blank, landmarker)
