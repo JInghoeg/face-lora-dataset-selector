@@ -25,8 +25,22 @@ except ImportError as exc:
         except Exception:pass
     sys.exit(1)
 
-APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'; CACHE=APP_DIR/'cache'
-THUMB_CACHE=CACHE/'thumbnails'
+APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'
+USER_DATA_ROOT=Path(os.environ.get('LOCALAPPDATA') or (Path.home()/'AppData'/'Local'))/'Face LoRA Dataset Selector'
+CACHE=USER_DATA_ROOT/'cache';THUMB_CACHE=CACHE/'thumbnails';LEGACY_CACHE=APP_DIR/'cache'
+def migrate_legacy_cache():
+    if not LEGACY_CACHE.exists():return
+    CACHE.mkdir(parents=True,exist_ok=True)
+    for src in LEGACY_CACHE.glob('*.json'):
+        dst=CACHE/src.name
+        if not dst.exists():
+            try:shutil.copy2(src,dst)
+            except OSError:pass
+    legacy_thumbs=LEGACY_CACHE/'thumbnails'
+    if legacy_thumbs.exists() and not THUMB_CACHE.exists():
+        try:shutil.copytree(legacy_thumbs,THUMB_CACHE)
+        except OSError:pass
+migrate_legacy_cache()
 POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; TEXT=MODELS/'ppocrv5_mobile_det'/'inference.onnx'; MIGAN=MODELS/'migan_pipeline_v2.onnx'
 POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
 MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
@@ -181,8 +195,8 @@ def view_spec_from_dict(x):
     return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),field_name,direction,bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
 def saved_views_from_data(folder):
     return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
-def save_data(folder,records,target,saved_views=None,bundle_ids=None):
-    CACHE.mkdir(exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None):
+    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
 def derive_eligibility(r):
@@ -989,7 +1003,7 @@ class DuplicateReviewDialog(QDialog):
         self.changed(-1 if not restore else None)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('重新分析当前文件夹');self.rescan.clicked.connect(self.start);self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
@@ -1019,21 +1033,27 @@ class Window(QMainWindow):
         restore=QPushButton('恢复自动');restore.clicked.connect(self.restore);ml.addWidget(restore,1,0,1,3);sl.addWidget(man);ai_box=QGroupBox('AI 审核建议');ail=QVBoxLayout(ai_box);self.ai_label=QLabel('当前图片没有 AI 建议');self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout();accept_ai=QPushButton('接受');accept_ai.clicked.connect(self.accept_ai_suggestion);reject_ai=QPushButton('拒绝');reject_ai.clicked.connect(self.reject_ai_suggestion);clear_ai=QPushButton('清除');clear_ai.clicked.connect(self.clear_ai_suggestion);aib.addWidget(accept_ai);aib.addWidget(reject_ai);aib.addWidget(clear_ai);ail.addLayout(aib);sl.addWidget(ai_box);sl.addStretch(1);s.addWidget(side);s.setSizes([1030,370]);l.addWidget(s,1);p=QHBoxLayout();self.prev=QPushButton('上一页');self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel('第 0/0 页');self.next=QPushButton('下一页');self.next.clicked.connect(lambda:self.change(1));p.addStretch(1);p.addWidget(self.prev);p.addWidget(self.page_label);p.addWidget(self.next);p.addStretch(1);l.addLayout(p)
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
-        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
+        if x:self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
-    def done(self,rs):self.records=rs;self.target=self.custom.value();recommend(rs,self.target);self.quick_mode='';self.view_combo.setCurrentText('全部');self.page=0;self.progress.setText(f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.refresh();self.save()
+    def done(self,rs):
+        self.records=rs;self.target=self.custom.value();recommend(rs,self.target);self.page=0;self.progress.setText(f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True)
+        if self.pending_last_view:
+            spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
+        else:
+            self.quick_mode='';self.view_combo.setCurrentText('全部');self.refresh()
+        self.save()
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
     @staticmethod
     def thumb(p):
         r=QImageReader(str(p));r.setAutoTransform(True);z=r.size()
         if z.isValid():z.scale(150,150,Qt.KeepAspectRatio);r.setScaledSize(z)
         i=r.read();return QPixmap.fromImage(i) if not i.isNull() else QPixmap()
-    def filters_changed(self,*_):self.page=0;self.refresh()
-    def sort_changed(self,*_):self.page=0;self.refresh()
+    def filters_changed(self,*_):self.page=0;self.refresh();self.save()
+    def sort_changed(self,*_):self.page=0;self.refresh();self.save()
     def quick_changed(self):
-        if self.quick_mode:self.page=0;self.refresh()
+        if self.quick_mode:self.page=0;self.refresh();self.save()
     def current_view_spec(self,name=''):
         filters={}
         if self.view_combo.currentText()!='全部':filters['status']=self.view_combo.currentText()
@@ -1058,7 +1078,7 @@ class Window(QMainWindow):
     def apply_view_spec(self,spec):
         mapping=((self.view_combo,spec.filters.get('status','全部')),(self.scale_combo,spec.filters.get('person_scale','全部')),(self.yaw_combo,spec.filters.get('angle_class','全部')),(self.pitch_combo,spec.filters.get('pitch_class','全部')),(self.eligibility_combo,spec.filters.get('eligibility','全部')),(self.sort_field_combo,spec.sort_field),(self.sort_dir_combo,spec.sort_direction),(self.rank_basis_combo,spec.ranking_basis))
         for combo,value in mapping:combo.blockSignals(True);set_combo_value(combo,value);combo.blockSignals(False)
-        self.best_only.blockSignals(True);self.best_only.setChecked(spec.best_only);self.best_only.blockSignals(False);self.quick_n.blockSignals(True);self.quick_n.setValue(max(1,spec.limit_n));self.quick_n.blockSignals(False);self.quick_mode=spec.quick_mode if spec.quick_mode in ('','view_top','view_bottom') else '';self.page=0;self.refresh()
+        self.best_only.blockSignals(True);self.best_only.setChecked(spec.best_only);self.best_only.blockSignals(False);self.quick_n.blockSignals(True);self.quick_n.setValue(max(1,spec.limit_n));self.quick_n.blockSignals(False);self.quick_mode=spec.quick_mode if spec.quick_mode in ('','view_top','view_bottom') else '';self.page=0;self.refresh();self.save()
     def load_selected_view(self):
         name=self.saved_view_combo.currentText()
         spec=next((v for v in self.saved_views if v.name==name),None)
@@ -1069,8 +1089,8 @@ class Window(QMainWindow):
         self.saved_views=[v for v in self.saved_views if v.name!=name];self.update_saved_view_combo();self.save()
     def clear_filters(self):
         for combo in (self.view_combo,self.scale_combo,self.yaw_combo,self.pitch_combo,self.eligibility_combo):combo.blockSignals(True);combo.setCurrentIndex(0);combo.blockSignals(False)
-        self.best_only.blockSignals(True);self.best_only.setChecked(False);self.best_only.blockSignals(False);self.page=0;self.refresh()
-    def quick(self,mode):self.quick_mode=mode;self.page=0;self.refresh()
+        self.best_only.blockSignals(True);self.best_only.setChecked(False);self.best_only.blockSignals(False);self.page=0;self.refresh();self.save()
+    def quick(self,mode):self.quick_mode=mode;self.page=0;self.refresh();self.save()
     def quick_key(self,r):
         basis=combo_value(self.rank_basis_combo)
         if basis=='Face Quality':return r.face_quality
@@ -1271,7 +1291,7 @@ class Window(QMainWindow):
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def save(self):
         if self.folder and self.records:
-            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids)
+            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None)
             except Exception:self.progress.setText('缓存保存失败')
     def closeEvent(self,e):self.save();self.sub.save();e.accept()
     def exported(self):
@@ -1334,6 +1354,7 @@ def self_test():
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','优先顺序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
     if not photo_matches_filters(probe,{'eligibility':'REVIEW'}) or photo_matches_filters(probe,{'eligibility':'PASS'}):raise RuntimeError('field-driven View filter self-test failed')
+    if CACHE.resolve().parent!=USER_DATA_ROOT.resolve():raise RuntimeError('user cache root self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='优先顺序':raise RuntimeError('legacy ViewSpec migration self-test failed')
     d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
