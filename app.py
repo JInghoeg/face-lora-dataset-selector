@@ -1219,7 +1219,7 @@ class Window(QMainWindow):
             found=set()
             for r in rs:
                 k=key(r.path)
-                if k in self.pending_composite_recommend_paths:r.manual_status='推荐';found.add(k)
+                if k in self.pending_composite_recommend_paths:r.manual_status='推荐';r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.add(k)
             self.pending_composite_recommend_paths.difference_update(found)
         self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
