@@ -1111,8 +1111,14 @@ class CompositeSplitReviewDialog(QDialog):
     def show_item(self,it):
         if it is None:return
         self.current=it.data(Qt.UserRole);r=self.records[self.current];p=r.composite_proposal
-        im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR)
-        if im is None:return
+        try:
+            with Image.open(r.path) as source:
+                try:source.seek(0)
+                except EOFError:pass
+                source=ImageOps.exif_transpose(source).convert('RGB')
+                rgb=np.asarray(source)
+            im=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
+        except Exception:return
         boxes=[self.quad(b) for b in p.output_boxes];self.preview.set_data(im,boxes,[True]*len(boxes),[False]*len(boxes))
         mode='拆成独立人物/视角' if p.mode=='split_people' else '重叠多人合并裁剪'
         self.info.setText(f'{r.path.name}\n{mode} · 输出 {len(p.output_boxes)} 张\n状态：{p.decision}\n{p.detail}')
