@@ -377,7 +377,7 @@ def face_box_intersection(a,b):
     ax,ay,aw,ah=map(float,a[:4]);bx,by,bw,bh=map(float,b[:4]);x0=max(ax,bx);y0=max(ay,by);x1=min(ax+aw,bx+bw);y1=min(ay+ah,by+bh)
     return max(0.,x1-x0)*max(0.,y1-y0)
 def dedupe_face_rows(rows):
-    rows=list(rows or [])
+    rows=[] if rows is None else list(rows)
     if len(rows)<2:return rows
     ordered=sorted(rows,key=lambda f:float(f[2]*f[3]),reverse=True);kept=[]
     for f in ordered:
@@ -474,7 +474,7 @@ class Analyzer(QObject):
 
         for n,f in enumerate(rows):
             x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
-            r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet'))
+            r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet_fallback' if face_fallback_used else 'yunet'))
         r.faces=len(r.face_detections)
 
         if rows:
@@ -495,7 +495,7 @@ class Analyzer(QObject):
         try:r.brisque=qm.brisque(bgr)
         except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
 
-        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces}
+        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics={'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces,'face_detector_fallback':face_fallback_used}
         if r.faces==0:
             if r.person_scale=='全身':r.review_flags.append(AnalysisFinding('no_face_full_body_review','yunet',detail='未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认'))
             else:r.hard_rejects.append(AnalysisFinding('no_face_not_full_body','yunet',detail='两个检测阈值均未找到人脸，且不是全身图'))
@@ -909,7 +909,7 @@ class ReviewGrid(QListWidget):
 class DuplicateReviewDialog(QDialog):
     def __init__(self,records,on_changed,parent=None):
         super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={};self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
-        root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“保留勾选”等按钮后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
+        root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
         split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(220);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(280,280));self.members.setGridSize(QSize(340,390));self.members.setWordWrap(True);self.members.itemChanged.connect(self.member_check_changed);self.members.itemDoubleClicked.connect(self.open_member);rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,1230]);root.addWidget(split,1)
         actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('完成本组：勾选推荐 / 未勾淘汰');selected.clicked.connect(self.keep_checked);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
         for b in (best,selected,all_keep,restore,self.toggle_grouping):actions.addWidget(b)
