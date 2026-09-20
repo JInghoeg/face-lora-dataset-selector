@@ -1,0 +1,41 @@
+name: Auto Crop Research Harness
+
+on:
+  push:
+    branches:
+      - "research/auto-crop-harness-v0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: App core self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Auto Crop harness self-test
+        shell: pwsh
+        run: |
+          python research/auto_crop_harness.py --self-test
