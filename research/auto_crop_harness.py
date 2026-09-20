@@ -268,13 +268,38 @@ def crop_edge_density(mask: np.ndarray, crop: tuple[int, int, int, int], band: i
     return float(np.count_nonzero((mask > 0) & (region > 0))) / denom
 
 
+def pose_detect_padded(rgb: np.ndarray, landmarker: PoseLandmarker):
+    """Run PoseLandmarker with width padded to a multiple of 4.
+
+    MediaPipe 0.10.30+ has a native numpy_view() regression for float32
+    segmentation masks whose row stride is non-contiguous. Padding by at most
+    three right-edge pixels keeps mask width divisible by 4 and avoids the
+    uncatchable native CHECK failure. The original image is never modified.
+    """
+    h, w = rgb.shape[:2]
+    pad_right = (-w) % 4
+    if pad_right:
+        padded = cv2.copyMakeBorder(
+            np.ascontiguousarray(rgb, dtype=np.uint8),
+            0, 0, 0, pad_right,
+            cv2.BORDER_REPLICATE,
+        )
+    else:
+        padded = np.ascontiguousarray(rgb, dtype=np.uint8)
+
+    mp_image = MPImage(image_format=MPImageFormat.SRGB, data=padded)
+    result = landmarker.detect(mp_image)
+    return result, padded.shape[1], pad_right
+
+
 def propose(rgb: np.ndarray, landmarker: PoseLandmarker) -> dict:
     h, w = rgb.shape[:2]
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    mp_image = MPImage(image_format=MPImageFormat.SRGB, data=rgb)
-    result = landmarker.detect(mp_image)
+    result, pose_width, pad_right = pose_detect_padded(rgb, landmarker)
 
-    hard, pose_present, seg_present = pose_protection(result, w, h)
+    hard, pose_present, seg_present = pose_protection(result, pose_width, h)
+    if pad_right:
+        hard = hard[:, :w]
     sal = saliency_map(bgr)
     nearby_sal, remote_saliency_fraction = nearby_saliency_mask(sal, hard)
 
@@ -819,9 +844,17 @@ def self_test() -> None:
         num_poses=1,
         output_segmentation_masks=True,
     )
-    blank = np.zeros((128, 128, 3), dtype=np.uint8)
+    # 127 px deliberately reproduces the upstream float-mask stride bug unless
+    # our width-padding workaround is active.
+    blank = np.zeros((128, 127, 3), dtype=np.uint8)
     with PoseLandmarker.create_from_options(options) as landmarker:
-        landmarker.detect(MPImage(image_format=MPImageFormat.SRGB, data=blank))
+        result, pose_width, pad_right = pose_detect_padded(blank, landmarker)
+        if pose_width % 4 != 0 or pad_right != 1:
+            raise RuntimeError("pose width-padding self-test failed")
+        if result.segmentation_masks:
+            mask = np.asarray(result.segmentation_masks[0].numpy_view())
+            if mask.shape[1] != pose_width:
+                raise RuntimeError("segmentation mask width self-test failed")
 
     print("Auto Crop research harness self-test OK")
 
