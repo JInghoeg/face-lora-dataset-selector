@@ -8,7 +8,7 @@ from typing import Optional
 
 try:
     import cv2, numpy as np, onnxruntime as ort
-    from PIL import Image
+    from PIL import Image, ImageOps
     from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
@@ -1073,7 +1073,7 @@ class CompositeScanWorker(QObject):
                 with Image.open(r.path) as im:
                     try:im.seek(0)
                     except EOFError:pass
-                    image=im.convert('RGB')
+                    image=ImageOps.exif_transpose(im).convert('RGB')
                 r.composite_proposal=detect_composite_proposal(image,COMPOSITE_MODEL_CACHE)
                 r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION
                 self.progress.emit(i,total,r.path.name)
@@ -1124,6 +1124,34 @@ class CompositeSplitReviewDialog(QDialog):
     def set_decision(self,value):
         if self.current<0:return
         r=self.records[self.current];r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
+
+def unique_output_path(dst:Path,name:str):
+    out=dst/name
+    if not out.exists():return out
+    stem=out.stem;suffix=out.suffix;i=1
+    while True:
+        candidate=dst/f'{stem}_{i}{suffix}'
+        if not candidate.exists():return candidate
+        i+=1
+
+def composite_output_suffix(source:Path):
+    suffix=source.suffix.lower()
+    return suffix if suffix in ('.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff') else '.png'
+
+def save_training_crop(source:Path,box,out:Path):
+    with Image.open(source) as im:
+        try:im.seek(0)
+        except EOFError:pass
+        im=ImageOps.exif_transpose(im).convert('RGB')
+        w,h=im.size;x0,y0,x1,y1=map(int,box)
+        x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1))
+        if x1<=x0 or y1<=y0:raise ValueError(f'无效 Composite Split 裁剪框：{box}')
+        crop=im.crop((x0,y0,x1,y1))
+        suffix=out.suffix.lower()
+        if suffix in ('.jpg','.jpeg'):crop.save(out,quality=95,subsampling=0)
+        elif suffix=='.webp':crop.save(out,quality=95,method=6)
+        else:crop.save(out)
+        return crop.size
 
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
@@ -1448,17 +1476,24 @@ class Window(QMainWindow):
     def exported(self):
         sel=[r for r in self.records if r.status=='推荐']
         if not sel:QMessageBox.information(self,'没有可导出的图片','当前没有推荐图片。');return
-        x=QFileDialog.getExistingDirectory(self,'选择导出目录（只复制）')
+        pending=[r for r in sel if r.composite_proposal is not None and r.composite_proposal.decision=='pending']
+        if pending:
+            QMessageBox.warning(self,'还有 Composite Split 待复核',f'推荐图片中还有 {len(pending)} 张 Composite Split 建议未确认。\n\n请先完成 Composite Split 复核，再导出训练图片。');return
+        x=QFileDialog.getExistingDirectory(self,'选择导出目录（只写新文件）')
         if not x:return
         dst=Path(x)
         if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,'请选择新目录','导出目录不能是源目录或其子目录。');return
         try:
-            n=0
+            dst.mkdir(parents=True,exist_ok=True);originals=0;derived=0;composite_sources=0
             for r in sel:
-                out=dst/r.path.name;i=1
-                while out.exists():out=dst/f'{r.path.stem}_{i}{r.path.suffix}';i+=1
-                shutil.copy2(r.path,out);n+=1
-            QMessageBox.information(self,'导出完成',f'已复制 {n} 张推荐图片。\n源图片未被修改。')
+                proposal=r.composite_proposal
+                if proposal is not None and proposal.decision=='accepted':
+                    composite_sources+=1;suffix=composite_output_suffix(r.path);tag='group' if proposal.mode=='group_crop' else 'split'
+                    for index,box in enumerate(proposal.output_boxes,1):
+                        name=f'{r.path.stem}__{tag}_{index:02d}{suffix}';out=unique_output_path(dst,name);save_training_crop(r.path,box,out);derived+=1
+                    continue
+                out=unique_output_path(dst,r.path.name);shutil.copy2(r.path,out);originals+=1
+            QMessageBox.information(self,'导出完成',f'训练图片共 {originals+derived} 张。\n原图复制：{originals} 张\nComposite Split 派生：{derived} 张（来自 {composite_sources} 张复合图）\n\n已接受的复合图不会重复导出原图。\n源图片未被修改。')
         except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
 
 def self_test():
@@ -1481,6 +1516,11 @@ def self_test():
     ]
     composite_fake=composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
     if not composite_fake or composite_fake.mode!='split_people' or len(composite_fake.output_boxes)!=2:raise RuntimeError('Composite Split proposal self-test failed')
+    with tempfile.TemporaryDirectory() as composite_td:
+        source=Path(composite_td)/'source.png';out=Path(composite_td)/'crop.png'
+        Image.new('RGB',(100,80),(20,30,40)).save(source)
+        size=save_training_crop(source,[10,15,60,55],out)
+        if size!=(50,40) or not out.exists():raise RuntimeError('Composite Split export crop self-test failed')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
     fake=[np.array([10,10,20,20,*([0]*10),.9],dtype=np.float32),np.array([200,200,20,20,*([0]*10),.9],dtype=np.float32)]
