@@ -449,12 +449,12 @@ class QualityModels:
 
 class Analyzer(QObject):
     status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
-    def __init__(self,folder):super().__init__();self.folder=folder
+    def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0
     def run(self):
         try:
             files=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower())
             if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
+            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set()
             for i,path in enumerate(files):
                 stat=path.stat();cache=old.get(key(path))
                 if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
@@ -474,6 +474,7 @@ class Analyzer(QObject):
                     if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
                     used_sample_ids.add(restored.sample_id);result[i]=restored
                 else:todo.append((i,path,size,mtime,content_sha))
+            self.changed_count=len(todo)
             if todo:
                 self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
                 with PoseLandmarker.create_from_options(opt) as pl:
@@ -944,7 +945,7 @@ class ReviewGrid(QListWidget):
 
 class DuplicateReviewDialog(QDialog):
     def __init__(self,records,on_changed,parent=None):
-        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={r.sample_id:(r.status=='推荐') for r in records};self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
+        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={r.sample_id:(r.status=='推荐') for r in records};self.dirty=False;self.regroup_needed=False;self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
         root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
         split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(220);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(280,280));self.members.setGridSize(QSize(340,390));self.members.setWordWrap(True);self.members.itemChanged.connect(self.member_check_changed);self.members.itemDoubleClicked.connect(self.open_member);rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,1230]);root.addWidget(split,1)
         actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('完成本组：勾选推荐 / 未勾淘汰');selected.clicked.connect(self.keep_checked);all_groups=QPushButton('完成全部组');all_groups.clicked.connect(self.commit_all_groups);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
@@ -996,7 +997,10 @@ class DuplicateReviewDialog(QDialog):
         self.remember_checks();return [r for r in self.current_records() if self.draft_checks.get(r.sample_id,False)]
     def current_records(self):return self.grouped(self.current_group) if self.current_group is not None else []
     def changed(self,prefer=None,regroup=False):
-        self.on_changed(regroup);self.reload_groups(prefer)
+        self.dirty=True;self.regroup_needed=self.regroup_needed or regroup;self.reload_groups(prefer)
+    def done(self,result):
+        if self.dirty:self.on_changed(self.regroup_needed)
+        super().done(result)
     def keep_best(self):
         if self.current_group in (None,-1):return
         members=self.current_records()
@@ -1067,7 +1071,7 @@ class Window(QMainWindow):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
-        self.records=rs;self.target=self.custom.value();recommend(rs,self.target);self.page=0;self.progress.setText(f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True)
+        self.records=rs;self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'读取缓存：{len(rs)} 张，无需重新分析' if unchanged else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True)
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -1372,8 +1376,9 @@ def self_test():
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
     recommend([bad],1)
     if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
-    restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
+    probe.duplicate_reviewed=True;restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
+    if not restored.duplicate_reviewed:raise RuntimeError('duplicate review completion persistence self-test failed')
     if not restored.ai_suggestion or restored.ai_suggestion.bundle_id!='bundle_1' or restored.ai_suggestion.decision!='pending':raise RuntimeError('AI suggestion round-trip self-test failed')
     entry=manifest_entry(probe,Path('.'));flat=flat_manifest_entry(probe,Path('.'));summary=dataset_summary([probe],'test view')
     if entry['sample_id']!='img_probe' or flat['eligibility']!='REVIEW' or summary['total_samples']!=1:raise RuntimeError('AI bundle serialization self-test failed')
