@@ -1,13 +1,8 @@
 PySide6-Essentials>=6.6,<6.9
 mediapipe>=0.10.14,<0.11
 # BRISQUE 位于 OpenCV contrib；固定版本避免 Portable 中同时出现多套 OpenCV 二进制。
-# DeepGHS imgutils currently requires NumPy <2; OpenCV 4.11 is the latest
-# compatible contrib wheel across the supported Python 3.9/3.12 test matrix.
-numpy>=1.26,<2
-opencv-contrib-python==4.11.0.86
+opencv-contrib-python==4.12.0.88
 Pillow>=10,<12
 onnxruntime>=1.19,<2
 pyclipper>=1.3,<2
 
-# Mature anime person/head detection used by Composite Split.
-dghs-imgutils==0.19.0
