@@ -858,7 +858,27 @@ class ReviewWindow(QMainWindow):
         self.save_labels()
         if self.index + 1 < len(self.samples):
             self.index += 1
+            self.show_current()
+            return
+
         self.show_current()
+        if all(self.labels.get(s["path"]) for s in self.samples):
+            summary = write_summary(self.run_dir)
+            def pct(v):
+                return "N/A" if v is None else f"{v:.1%}"
+            report = (
+                f"已完成 {summary['reviewed']} / {summary['review_pack_count']} 张复核\n\n"
+                f"总分析：{summary['total_proposals']}\n"
+                f"裁剪建议：{summary['crop_suggestions']} "
+                f"({summary['auto_suggestion_coverage']:.1%})\n"
+                f"安全建议精度：{pct(summary['safe_suggestion_precision'])}\n"
+                f"关键内容切断率：{pct(summary['critical_content_cut_rate'])}\n"
+                f"需要手调率：{pct(summary['manual_adjust_rate'])}\n"
+                f"KEEP 漏裁率：{pct(summary['missed_crop_rate'])}\n"
+                f"安全裁剪中位裁减：{pct(summary['median_safe_trim_ratio'])}\n\n"
+                f"报告目录：\n{self.run_dir}"
+            )
+            QMessageBox.information(self, "Auto Crop Benchmark 报告", report)
 
     def move(self, delta: int):
         if not self.samples:
