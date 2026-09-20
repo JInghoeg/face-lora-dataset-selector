@@ -603,16 +603,14 @@ def alloc(total,names,weights):
     for x in sorted(names,key=lambda a:raw[a]-out[a],reverse=True)[:total-sum(out.values())]:out[x]+=1
     return out
 def recommend(rs,target):
+    # 自动基线与人工覆盖完全分离：manual_status 只覆盖显示/导出结果，不参与自动目标配额。
     for r in rs:
         r.recommendation_reasons=[]
-        if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-        else:r.recommendation_reasons=[f'人工状态优先：{r.manual_status}']
-    fixed=[r for r in rs if r.manual_status=='推荐'];remain=max(0,target-len(fixed))
-    eligible=[r for r in rs if r.manual_status is None and recommendation_qualified(r)]
+        r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
+    eligible=[r for r in rs if recommendation_qualified(r)]
     eligible_ids={id(r) for r in eligible}
     for r in rs:
-        if r.manual_status is None and id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
-    # 通过基础门槛 -> 每个 duplicate group 的最佳代表 -> 景别 × Yaw 覆盖分配。
+        if id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
     pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
     for r in eligible:
         if id(r) not in pool_ids:
@@ -622,7 +620,7 @@ def recommend(rs,target):
             r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已保留更优代表（组内 {gr}/{gs}）'] if r.duplicate_group else ['同类候选中已有更优代表']
     for r in pool:b[r.person_scale,r.angle_class].append(r);sc[r.person_scale].append(r)
     for x in list(b.values())+list(sc.values()):x.sort(key=rank,reverse=True)
-    sq=alloc(remain,[x for x in SCALES if sc[x]],{'近景/头肩':.35,'半身':.3,'大半身':.2,'全身':.15});used={r.duplicate_group for r in fixed if r.duplicate_group};chosen=[];ids=set();got=Counter()
+    remain=max(0,target);sq=alloc(remain,[x for x in SCALES if sc[x]],{'近景/头肩':.35,'半身':.3,'大半身':.2,'全身':.15});used=set();chosen=[];ids=set();got=Counter()
     def take(xs,n):
         for r in xs:
             if len(chosen)>=remain or n<=0:return
@@ -638,14 +636,14 @@ def recommend(rs,target):
         for s in sorted(sq,key=lambda x:got[x]/max(1,sq[x])):
             n=len(chosen);take(sc[s],1);progress|=len(chosen)>n
         if not progress:break
-    chosen_ids={id(r) for r in chosen};fixed_groups={r.duplicate_group for r in fixed if r.duplicate_group}
+    chosen_ids={id(r) for r in chosen}
     for r in chosen:
         r.auto_status='推荐';r.recommendation_reasons=[f'自动推荐：通过基础门槛，并用于补足 {r.person_scale} / {r.angle_class} 覆盖']
     for r in pool:
-        if id(r) in chosen_ids or r.recommendation_reasons:continue
-        if remain==0:r.recommendation_reasons=[f'已通过基础门槛，但人工推荐已占满目标 {target} 张']
-        elif r.duplicate_group and r.duplicate_group in fixed_groups:r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已有人工推荐代表']
-        else:r.recommendation_reasons=[f'已通过基础门槛，但当前目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
+        if id(r) not in chosen_ids and not r.recommendation_reasons:
+            r.recommendation_reasons=[f'已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
+    for r in rs:
+        if r.manual_status:r.recommendation_reasons.insert(0,f'人工状态优先：{r.manual_status}（自动基线：{r.auto_status}）')
 
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
@@ -1199,7 +1197,7 @@ class Window(QMainWindow):
             child=self.stat_layout.takeAt(0)
             if child.widget():child.widget().deleteLater()
         st=Counter(r.status for r in self.records);sel=[r for r in self.records if r.status=='推荐'];sc=Counter(r.person_scale for r in sel);yw=Counter(r.angle_class for r in sel);pt=Counter(r.pitch_class for r in sel);grp={r.duplicate_group for r in sel if r.duplicate_group};du=sum(r.status!='推荐' and r.eligibility!='REJECT' and r.duplicate_group and (self.qualified_group_rank(r)[0]>1 or r.duplicate_group in grp) for r in self.records);bad=sum(r.eligibility=='REJECT' for r in self.records);review=sum(r.eligibility=='REVIEW' for r in self.records);group_count=len({r.duplicate_group for r in self.records if r.duplicate_group})
-        auto_sel=sum(r.manual_status is None and r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records);self.stats.setText(f'自动目标 / 自动推荐：{self.target} / {auto_sel} · 人工追加：{manual_add} · 总推荐：{len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · Duplicate Group：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
+        auto_sel=sum(r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records);self.stats.setText(f'自动目标 / 自动推荐：{self.target} / {auto_sel} · 人工追加：{manual_add} · 总推荐：{len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · Duplicate Group：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
         self.stat_layout.addWidget(QLabel('状态（点击筛选）'),0,0,1,3)
         for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{value} {st[value]}','status',value,1,col)
         self.stat_layout.addWidget(QLabel('景别（推荐）'),2,0,1,3)
@@ -1373,6 +1371,9 @@ def self_test():
     if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
     recommend([front,side],2)
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
+    manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.6;manual_extra.brisque=30.;manual_extra.blur=60.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS';manual_extra.manual_status='推荐'
+    recommend([front,side,manual_extra],2)
+    if sum(r.auto_status=='推荐' for r in (front,side,manual_extra))!=2 or sum(r.status=='推荐' for r in (front,side,manual_extra))<2:raise RuntimeError('manual overlay must not consume auto recommendation target')
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
     recommend([bad],1)
     if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
