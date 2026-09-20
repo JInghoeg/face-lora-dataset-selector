@@ -4,7 +4,6 @@ cd /d "%~dp0\.."
 
 set "PY=G:\miniconda3\python.exe"
 if not exist "%PY%" set "PY=G:\miniconda3\envs\python312\python.exe"
-set "DATA=G:\ComfyUI-aki\数据集\渥尔比"
 set "LOG=%~dp0autocrop-startup.log"
 
 if not exist "%PY%" (
@@ -56,7 +55,7 @@ if errorlevel 1 (
 
 echo. >> "%LOG%"
 echo ===== Valby benchmark ===== >> "%LOG%"
-"%PY%" -u "research\auto_crop_harness.py" "%DATA%" >> "%LOG%" 2>&1
+"%PY%" -u "research\auto_crop_harness.py" >> "%LOG%" 2>&1
 set "RC=%ERRORLEVEL%"
 
 if not "%RC%"=="0" (
