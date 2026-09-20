@@ -55,6 +55,17 @@ This project uses or redistributes third-party libraries, model files, and resou
 
 Only the detection-side preprocessing / DB post-processing needed by this application is retained locally. Model inference continues to use this project's bundled PP-OCRv5 ONNX detector through ONNX Runtime.
 
+
+
+### DeepGHS imgutils
+
+- Package: `dghs-imgutils`
+- Purpose here: mature anime-style person/head detection used by Composite Split
+- License: MIT License
+- Source: https://github.com/deepghs/imgutils
+
+Composite Split detector weights are not committed to this repository and are not bundled into the Portable ZIP by the build specification. They are downloaded on first use into the application's local `models/composite_split_cache` directory from the upstream model repositories used by `dghs-imgutils`, and remain subject to their upstream terms.
+
 ## Optional model not redistributed in the public release
 
 ### MI-GAN
