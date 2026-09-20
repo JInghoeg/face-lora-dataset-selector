@@ -99,3 +99,24 @@ Candidate donors:
 Current Labelme v7 is Python >=3.12 and explicitly exposes no stable internal Python API; if chosen, vendor the required GPL-3.0 canvas/shape modules rather than importing private internals. Runtime migration/backport cost must be evaluated before adoption.
 
 UI implementation starts only after the crop backend passes the small real-data gate.
+
+
+## Stage-1 visual review result
+
+The 20-image contact sheets showed that the mature DeepGHS person detector is useful but the raw detection box is not yet safe enough to use directly as a crop.
+
+Observed:
+- person recall on the challenge set: 20/20;
+- several boxes omit extended hands/arms or other silhouette extremities;
+- one multi-person sample selected a background NPC when the review script used highest detector confidence;
+- the intended foreground subject in that sample had the largest area box;
+- at least one composition contains two comparably large character boxes, where automatic single-subject cropping should be considered ambiguous rather than forced.
+
+Action:
+- keep DeepGHS person detection;
+- review/display primary subject by largest detected person area rather than confidence;
+- if the second-largest person box is >=60% of the largest area, mark the case ambiguous for review instead of treating it as a confident single-subject crop;
+- do not solve missing hands by inventing custom geometry yet;
+- Stage 2 is now justified: test the existing ISNetIS anime-character segmentation on the same 20 challenge images to see whether it preserves full character silhouette better.
+
+The 60% ambiguity ratio is a temporary review flag only, not a production crop rule. It must be validated before production use.
