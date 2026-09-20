@@ -430,6 +430,14 @@ def filter_face_rows_by_head(rows,roi):
         inter=max(0.,min(x+w,x1)-max(x,x0))*max(0.,min(y+h,y1)-max(y,y0));area=max(1.,w*h)
         if (x0<=cx<=x1 and y0<=cy<=y1) or inter/area>=.35:out.append(f)
     return out
+def consolidate_face_rows(rows,roi):
+    rows=dedupe_face_rows(filter_face_rows_by_head(rows,roi))
+    if roi and len(rows)>1:
+        def score(f):
+            area=max(1.,float(f[2]*f[3]));confidence=float(f[-1]) if len(f)>14 else 1.
+            return area*max(.01,confidence)
+        return [max(rows,key=score)]
+    return rows
 
 class QualityModels:
     pts=np.array([[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]],np.float32)
@@ -517,9 +525,9 @@ class Analyzer(QObject):
 
         rows=[];face_fallback_used=False
         try:
-            fs=qm.faces(bgr);rows=[] if fs is None else list(fs);rows=filter_face_rows_by_head(rows,head_roi);rows=dedupe_face_rows(rows)
+            fs=qm.faces(bgr);rows=consolidate_face_rows(fs,head_roi)
             if not rows and head_roi:
-                fs=qm.faces(bgr,True);rows=[] if fs is None else list(fs);rows=filter_face_rows_by_head(rows,head_roi);rows=dedupe_face_rows(rows);face_fallback_used=bool(rows)
+                fs=qm.faces(bgr,True);rows=consolidate_face_rows(fs,head_roi);face_fallback_used=bool(rows)
         except Exception as e:
             r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
 
@@ -1370,6 +1378,8 @@ def self_test():
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
     fake=[np.array([10,10,20,20,*([0]*10),.9],dtype=np.float32),np.array([200,200,20,20,*([0]*10),.9],dtype=np.float32)]
     if len(filter_face_rows_by_head(fake,(0,0,80,80)))!=1:raise RuntimeError('pose-guided face filtering self-test failed')
+    same_head=[np.array([10,10,20,20,*([0]*10),.8],dtype=np.float32),np.array([45,15,18,18,*([0]*10),.9],dtype=np.float32)]
+    if len(consolidate_face_rows(same_head,(0,0,100,100)))!=1:raise RuntimeError('same-head face candidates must consolidate to one')
     with tempfile.TemporaryDirectory() as td:
         test_path=Path(td)/'sample.bin';test_path.write_bytes(b'face-lora-selector-v3')
         content_hash=sha256_file(test_path);sid1=new_sample_id();sid2=new_sample_id()
