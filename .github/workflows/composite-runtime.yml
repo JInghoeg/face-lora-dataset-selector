@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - feature/v0.3-composite-split
-  pull_request:
-    branches:
-      - feature/v0.3-qa-fixes-20260920
   workflow_dispatch:
 
 permissions:
