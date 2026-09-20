@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 try:
-    from imgutils.detect import detect_person
+    from imgutils.detect import detect_person, detect_heads
 except ImportError as exc:
     raise SystemExit(
         "dghs-imgutils is not installed. Run research\\运行成熟人物检测基线.bat first."
@@ -45,6 +45,9 @@ MIN_LARGEST_AREA_RATIO = 0.20
 DUPLICATE_SMALLER_COVERAGE = 0.78
 MAX_RAW_DETECTIONS = 8
 MAX_SPLITS = 6
+HEAD_MODEL_NAME = "head_detect_v2.0_s"
+HEAD_CONF_THRESHOLD = 0.4
+GROUP_OVERLAP_SMALLER_COVERAGE = 0.18
 
 
 def local_root() -> Path:
@@ -139,6 +142,79 @@ def significant_detections(
     return kept, rejected
 
 
+def box_center(box):
+    x0, y0, x1, y1 = box
+    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+
+
+def point_in_box(point, box) -> bool:
+    x, y = point
+    x0, y0, x1, y1 = box
+    return x0 <= x <= x1 and y0 <= y <= y1
+
+
+def associate_heads(person_detections, head_detections):
+    """Associate upstream head detections to upstream person boxes by head center."""
+    associations = []
+    for person in person_detections:
+        pbox = person[0]
+        heads = [
+            head
+            for head in head_detections
+            if point_in_box(box_center(head[0]), pbox)
+        ]
+        associations.append((person, heads))
+    return associations
+
+
+def suppress_same_head_people(person_detections, head_detections):
+    """If multiple person boxes contain the same detected head, keep the larger box.
+
+    This addresses duplicate/fragment person detections without inventing another
+    visual detector. Boxes with no associated head are left untouched here.
+    """
+    if not person_detections or not head_detections:
+        return person_detections, []
+
+    ordered = sorted(
+        person_detections,
+        key=lambda d: (box_area(d[0]), d[2]),
+        reverse=True,
+    )
+    kept = []
+    suppressed = []
+    claimed_head_indexes = set()
+
+    for person in ordered:
+        matching = []
+        for idx, head in enumerate(head_detections):
+            if point_in_box(box_center(head[0]), person[0]):
+                matching.append(idx)
+
+        if matching and any(idx in claimed_head_indexes for idx in matching):
+            suppressed.append(person)
+            continue
+
+        kept.append(person)
+        claimed_head_indexes.update(matching)
+
+    return kept, suppressed
+
+
+def is_group_composition(person_detections, head_detections, overlap_threshold: float) -> bool:
+    """Treat overlapping multi-head people as one composed group, not split panels."""
+    if len(person_detections) < 2 or len(head_detections) < 2:
+        return False
+
+    for i, left in enumerate(person_detections):
+        for right in person_detections[i + 1:]:
+            inter = intersection_area(left[0], right[0])
+            smaller = max(1, min(box_area(left[0]), box_area(right[0])))
+            if inter / smaller >= overlap_threshold:
+                return True
+    return False
+
+
 def reading_order(detections):
     """Order already-detected people for deterministic split filenames.
 
@@ -218,18 +294,21 @@ def make_contact_sheet(rows: list[dict], out: Path):
             ]
             ordered = reading_order(detections)
 
-            montage = Image.new("RGB", original.size, "white")
-            if ordered:
-                crops = [original.crop(tuple(d[0])).convert("RGB") for d in ordered]
-                widths = [c.width for c in crops]
-                heights = [c.height for c in crops]
-                total_w = max(1, sum(widths))
-                max_h = max(heights)
-                montage = Image.new("RGB", (total_w, max_h), "white")
-                x = 0
-                for crop in crops:
-                    montage.paste(crop, (x, (max_h - crop.height) // 2))
-                    x += crop.width
+            if item.get("mode") == "keep_whole_group":
+                montage = original.copy()
+            else:
+                montage = Image.new("RGB", original.size, "white")
+                if ordered:
+                    crops = [original.crop(tuple(d[0])).convert("RGB") for d in ordered]
+                    widths = [c.width for c in crops]
+                    heights = [c.height for c in crops]
+                    total_w = max(1, sum(widths))
+                    max_h = max(heights)
+                    montage = Image.new("RGB", (total_w, max_h), "white")
+                    x = 0
+                    for crop in crops:
+                        montage.paste(crop, (x, (max_h - crop.height) // 2))
+                        x += crop.width
 
             visuals = [
                 ("ORIGINAL", original),
@@ -246,8 +325,9 @@ def make_contact_sheet(rows: list[dict], out: Path):
             draw.text(
                 (8, row_idx * tile_h + tile_h - 24),
                 f"{Path(item['path']).name[:78]} | raw={item.get('raw_detection_count', len(detections))} "
-                f"| valid={len(detections)} | dup-={item.get('duplicate_suppressed_count', 0)} "
-                f"| small-={item.get('size_rejected_count', 0)}",
+                f"| valid={len(detections)} | heads={item.get('head_detection_count', 0)} "
+                f"| dup-={item.get('duplicate_suppressed_count', 0)} "
+                f"| mode={item.get('mode', 'split_people')}",
                 fill="black",
             )
 
@@ -264,6 +344,7 @@ def main() -> int:
     parser.add_argument("--duplicate-smaller-coverage", type=float, default=DUPLICATE_SMALLER_COVERAGE)
     parser.add_argument("--max-raw-detections", type=int, default=MAX_RAW_DETECTIONS)
     parser.add_argument("--max-splits", type=int, default=MAX_SPLITS)
+    parser.add_argument("--group-overlap", type=float, default=GROUP_OVERLAP_SMALLER_COVERAGE)
     args = parser.parse_args()
 
     folder = args.folder or default_dataset()
@@ -321,7 +402,7 @@ def main() -> int:
             )
             continue
 
-        deduped, duplicate_suppressed = suppress_duplicate_detections(
+        deduped, overlap_suppressed = suppress_duplicate_detections(
             raw_detections,
             args.duplicate_smaller_coverage,
         )
@@ -335,13 +416,58 @@ def main() -> int:
         if len(detections) < 2 or len(detections) > args.max_splits:
             continue
 
+        # Use DeepGHS' mature anime-head detector as a second upstream signal.
+        # Headless partial-body/equipment composites are not useful split targets.
+        head_detections = detect_heads(
+            image,
+            model_name=HEAD_MODEL_NAME,
+            conf_threshold=HEAD_CONF_THRESHOLD,
+        )
+        if not head_detections:
+            print("  -> skip headless partial-body composite", flush=True)
+            continue
+
+        detections, same_head_suppressed = suppress_same_head_people(
+            detections,
+            head_detections,
+        )
+        if len(detections) < 2:
+            continue
+
+        group_keep = is_group_composition(
+            detections,
+            head_detections,
+            args.group_overlap,
+        )
+
         sample_dir = split_root / f"{len(rows) + 1:02d}_{path.stem[:70]}"
-        outputs = export_splits(image, detections, sample_dir, path.stem[:70])
+        if group_keep:
+            sample_dir.mkdir(parents=True, exist_ok=True)
+            output_path = sample_dir / f"{path.stem[:70]}_group_original.jpg"
+            image.convert("RGB").save(output_path, quality=95)
+            outputs = [{
+                "index": 1,
+                "mode": "keep_whole_group",
+                "box": [0, 0, image.width, image.height],
+                "output": str(output_path),
+            }]
+            mode = "keep_whole_group"
+        else:
+            outputs = export_splits(image, detections, sample_dir, path.stem[:70])
+            for output in outputs:
+                output["mode"] = "split_person"
+            mode = "split_people"
+
+        duplicate_suppressed = overlap_suppressed + same_head_suppressed
         rows.append(
             {
                 "path": str(path),
+                "mode": mode,
                 "raw_detection_count": len(raw_detections),
+                "head_detection_count": len(head_detections),
                 "duplicate_suppressed_count": len(duplicate_suppressed),
+                "overlap_duplicate_suppressed_count": len(overlap_suppressed),
+                "same_head_suppressed_count": len(same_head_suppressed),
                 "size_rejected_count": len(size_rejected),
                 "detections": [
                     {
@@ -352,30 +478,20 @@ def main() -> int:
                     }
                     for box, kind, score in detections
                 ],
-                "suppressed_duplicates": [
+                "head_detections": [
                     {
                         "box": list(box),
                         "type": kind,
                         "score": float(score),
-                        "area": box_area(box),
                     }
-                    for box, kind, score in duplicate_suppressed
-                ],
-                "rejected_small": [
-                    {
-                        "box": list(box),
-                        "type": kind,
-                        "score": float(score),
-                        "area": box_area(box),
-                    }
-                    for box, kind, score in size_rejected
+                    for box, kind, score in head_detections
                 ],
                 "outputs": outputs,
             }
         )
         print(
             f"  -> composite candidate: raw={len(raw_detections)} "
-            f"dedup={len(deduped)} valid={len(detections)}",
+            f"valid={len(detections)} heads={len(head_detections)} mode={mode}",
             flush=True,
         )
 
@@ -394,6 +510,9 @@ def main() -> int:
             "duplicate_smaller_coverage": args.duplicate_smaller_coverage,
             "max_raw_detections": args.max_raw_detections,
             "max_splits": args.max_splits,
+            "head_model_name": HEAD_MODEL_NAME,
+            "head_conf_threshold": HEAD_CONF_THRESHOLD,
+            "group_overlap_smaller_coverage": args.group_overlap,
         },
         "scanned": scanned,
         "composite_candidates": len(rows),
@@ -409,7 +528,11 @@ def main() -> int:
     print(f"Done: {out}", flush=True)
     print(f"Scanned: {scanned}", flush=True)
     print(f"Composite candidates: {len(rows)}", flush=True)
-    print(f"Split images exported: {sum(len(r['outputs']) for r in rows)}", flush=True)
+    print(f"Output images exported: {sum(len(r['outputs']) for r in rows)}", flush=True)
+    print(
+        f"Whole-group keeps: {sum(r.get('mode') == 'keep_whole_group' for r in rows)}",
+        flush=True,
+    )
     return 0
 
 
