@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -30,12 +32,36 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest().lower()
 
 
-def ensure_model(spec: ModelSpec, cache_root: Path) -> Path:
+def ensure_model(
+    spec: ModelSpec,
+    cache_root: Path,
+    reuse_roots: Iterable[Path] = (),
+) -> Path:
     folder = Path(cache_root) / spec.name
     model = folder / spec.filename
 
     if model.exists() and sha256_file(model) == spec.sha256:
         return model
+
+    # Reuse an already-downloaded compatible model before contacting the network.
+    for root in reuse_roots:
+        root = Path(root)
+        if not root.exists():
+            continue
+        try:
+            candidates = root.rglob(spec.filename)
+        except OSError:
+            continue
+        for candidate in candidates:
+            try:
+                if candidate.is_file() and sha256_file(candidate) == spec.sha256:
+                    folder.mkdir(parents=True, exist_ok=True)
+                    tmp_reuse = model.with_suffix(model.suffix + ".reuse")
+                    shutil.copy2(candidate, tmp_reuse)
+                    tmp_reuse.replace(model)
+                    return model
+            except OSError:
+                continue
 
     folder.mkdir(parents=True, exist_ok=True)
     tmp = model.with_suffix(model.suffix + ".part")
