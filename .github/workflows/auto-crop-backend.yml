@@ -1,0 +1,85 @@
+name: Auto Crop Backend
+
+on:
+  push:
+    branches:
+      - feature/v0.3-auto-crop-backend
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/auto_crop/**"
+      - "infrastructure/**"
+      - "application/**"
+      - "requirements*.txt"
+      - ".importlinter"
+      - ".github/workflows/auto-crop-backend.yml"
+  pull_request:
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/auto_crop/**"
+      - "infrastructure/**"
+      - "application/**"
+      - "requirements*.txt"
+      - ".importlinter"
+      - ".github/workflows/auto-crop-backend.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Compile Auto Crop backend
+        shell: pwsh
+        run: |
+          python -m compileall core features/auto_crop infrastructure application
+
+      - name: Auto Crop pure backend self-test
+        shell: pwsh
+        run: |
+          python -c "from features.auto_crop.service import self_test; self_test()"
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Optional Auto Crop absence smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\\auto_crop"
+          $featureOff = "features\\auto_crop.__disabled_for_smoke__"
+          try {
+            Move-Item $feature $featureOff
+            python -c "import app; assert not app.BACKEND.feature_available('auto_crop'); print('optional Auto Crop absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Auto Crop feature" }
+          }
+          finally {
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }

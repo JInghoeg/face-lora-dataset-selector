@@ -176,6 +176,7 @@ class DatasetCache:
             "auto_status",
             "manual_status",
             "composite_scan_version",
+            "feature_state",
         )
         for name in simple:
             if name in data:
