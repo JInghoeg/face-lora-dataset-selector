@@ -1,0 +1,47 @@
+name: Auto Crop Stage 2 Research
+
+on:
+  push:
+    branches:
+      - research/auto-crop-stage2-isnetis
+    paths:
+      - "research/**"
+      - ".github/workflows/auto-crop-stage2-research.yml"
+  pull_request:
+    paths:
+      - "research/**"
+      - ".github/workflows/auto-crop-stage2-research.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Compile research harness
+        shell: pwsh
+        run: |
+          python -m compileall research
+
+      - name: Install mature upstream stack
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir "onnxruntime>=1.19,<2" "dghs-imgutils==0.19.0"
+
+      - name: Verify Stage 2 upstream imports
+        shell: pwsh
+        run: |
+          python -c "from imgutils.detect import detect_person; from imgutils.segment import get_isnetis_mask; print('Stage 2 upstream imports OK')"
