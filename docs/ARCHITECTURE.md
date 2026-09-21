@@ -61,7 +61,8 @@ Rules:
 Stable cross-layer DTOs and metadata. It must stay small.
 
 Current:
-- `core/contracts.py`
+- `core/contracts.py` — stable application/result DTOs.
+- `core/models.py` — shared dataset/domain records (`Photo`, findings, view state); no Qt/model runtime imports.
 
 Future domain records may move here only when doing so does not make Core depend on an optional feature.
 
@@ -70,8 +71,8 @@ Future domain records may move here only when doing so does not make Core depend
 Feature-first organization. Each feature owns its product-specific semantics.
 
 Current:
-- `features/ranking` — automatic quality ranking/recommendation semantics.
-- `features/composite` — Composite Split accept/materialization semantics.
+- `features/ranking` — quality-analysis engine, duplicate grouping primitives used by the ranking pipeline, and automatic recommendation semantics; analysis is Qt-free.
+- `features/composite` — Composite detector adapter and accept/materialization semantics.
 
 Planned:
 - `features/duplicates`
@@ -87,7 +88,8 @@ A feature should be removable without requiring edits inside sibling feature pac
 Generic implementation adapters.
 
 Current:
-- `infrastructure/filesystem.py`
+- `infrastructure/filesystem.py` — generic file enumeration/copy/crop/archive/hash primitives.
+- `infrastructure/cache_store.py` — versioned dataset cache serialization with feature codec injection.
 
 Planned candidates when pressure justifies extraction:
 - cache persistence;
@@ -102,7 +104,8 @@ Infrastructure APIs must remain generic. Composite-specific naming and state bel
 Workflow composition and stable in-process API consumed by UI.
 
 Current:
-- `SelectorApplication`
+- `SelectorApplication` — stable UI-facing in-process facade.
+- `DatasetRefreshService` — incremental folder/cache/analysis orchestration with callbacks, no Qt.
 - built-in `FeatureRegistry`
 
 This is not a web API. It is an in-process boundary.
@@ -196,11 +199,13 @@ https://packaging.python.org/en/latest/specifications/entry-points/
 
 The limited architecture pass stops when:
 
-1. Ranking is an independent feature.
-2. Composite product semantics are an independent feature.
-3. Generic filesystem operations are infrastructure.
-4. UI has an application facade for newly touched workflows.
-5. CI enforces feature independence / dependency direction.
-6. There is a documented recipe for adding Auto Crop as a new feature without editing Ranking/Composite internals.
+1. Shared dataset/domain records live outside Qt UI code.
+2. Ranking/quality analysis is an independent Qt-free feature backend.
+3. Composite product semantics are an independent optional feature.
+4. Generic filesystem and cache persistence are infrastructure adapters.
+5. Dataset refresh/incremental analysis are available through the Application API without importing Qt.
+6. Existing Qt workers for the main dataset are thin adapters around Application services.
+7. CI enforces feature independence, Qt-free backend packages and dependency direction.
+8. There is a documented recipe for adding Auto Crop as a new feature without editing Ranking/Composite internals.
 
 Then resume General Auto Crop Stage 2. Do not keep refactoring for aesthetics.
