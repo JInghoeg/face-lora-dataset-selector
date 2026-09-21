@@ -175,6 +175,13 @@ class SelectorApplication:
         )
 
     def refresh_dataset(self, folder: Path, status=None, progress=None):
+        organizer = self._source_organizer_module(required=False)
+        if organizer is not None:
+            recovered = organizer.recover_incomplete_transactions(folder)
+            if recovered and status is not None:
+                status(
+                    f"已恢复 {recovered} 个未完成的 Source Organizer 事务，继续刷新…"
+                )
         return self.refresh_service.refresh(
             folder, status=status, progress=progress
         )
