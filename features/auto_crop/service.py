@@ -21,7 +21,8 @@ from .runtime import get_isnetis_mask
 
 
 FEATURE_KEY = "auto_crop"
-PROPOSAL_VERSION = 1
+PROPOSAL_VERSION = 2
+SUPPORTED_STATE_VERSIONS = (1, PROPOSAL_VERSION)
 
 PRIMARY_ALPHA_MIN = 0.10
 FIXED_PADDING_PX = 32
@@ -33,13 +34,17 @@ MIN_REMOVED_AREA_RATIO = 0.05
 @dataclass
 class AutoCropProposal:
     version: int = PROPOSAL_VERSION
+    auto_box: list[int] = field(default_factory=list)
     box: list[int] = field(default_factory=list)
     decision: str = "pending"
+    auto_removed_area_ratio: float = 0.0
     removed_area_ratio: float = 0.0
     alpha_min: float = PRIMARY_ALPHA_MIN
     padding_px: int = FIXED_PADDING_PX
     mask_touches_edge: bool = False
     warnings: list[str] = field(default_factory=list)
+    manually_adjusted: bool = False
+    image_size: list[int] = field(default_factory=list)
 
     def to_dict(self):
         return asdict(self)
@@ -53,12 +58,52 @@ class AutoCropScanResult:
     skipped_existing: int = 0
 
 
+def _box_list(value):
+    try:
+        box = [int(round(float(x))) for x in value]
+    except (TypeError, ValueError):
+        return None
+    if len(box) != 4:
+        return None
+    x0, y0, x1, y1 = box
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return box
+
+
 def proposal_from_dict(value) -> Optional[AutoCropProposal]:
     if isinstance(value, AutoCropProposal):
         return value
     if not isinstance(value, dict):
         return None
-    if int(value.get("version", 0)) != PROPOSAL_VERSION:
+
+    version = int(value.get("version", 0))
+    if version == 1:
+        # v1 stored only one box. Preserve it as both immutable algorithm
+        # proposal and current editable box so existing datasets never need
+        # another model scan merely because manual ROI editing was added.
+        box = _box_list(value.get("box"))
+        if box is None:
+            return None
+        decision = value.get("decision", "pending")
+        if decision not in ("pending", "accepted", "keep_original"):
+            return None
+        removed = float(value.get("removed_area_ratio", 0.0))
+        return AutoCropProposal(
+            auto_box=list(box),
+            box=list(box),
+            decision=decision,
+            auto_removed_area_ratio=removed,
+            removed_area_ratio=removed,
+            alpha_min=float(value.get("alpha_min", PRIMARY_ALPHA_MIN)),
+            padding_px=int(value.get("padding_px", FIXED_PADDING_PX)),
+            mask_touches_edge=bool(value.get("mask_touches_edge", False)),
+            warnings=list(value.get("warnings", [])),
+            manually_adjusted=False,
+            image_size=[],
+        )
+
+    if version != PROPOSAL_VERSION:
         return None
     try:
         proposal = AutoCropProposal(**value)
@@ -66,8 +111,17 @@ def proposal_from_dict(value) -> Optional[AutoCropProposal]:
         return None
     if proposal.decision not in ("pending", "accepted", "keep_original"):
         return None
-    if len(proposal.box) != 4:
+
+    proposal.box = _box_list(proposal.box) or []
+    proposal.auto_box = _box_list(proposal.auto_box) or list(proposal.box)
+    if len(proposal.box) != 4 or len(proposal.auto_box) != 4:
         return None
+
+    proposal.manually_adjusted = proposal.box != proposal.auto_box
+    if not proposal.auto_removed_area_ratio:
+        proposal.auto_removed_area_ratio = float(proposal.removed_area_ratio)
+    if len(proposal.image_size) != 2:
+        proposal.image_size = []
     return proposal
 
 
@@ -76,11 +130,27 @@ def _state(photo):
     return value if isinstance(value, dict) else None
 
 
+def _state_is_current(state):
+    if not isinstance(state, dict):
+        return False
+    version = int(state.get("version", 0))
+    if version not in SUPPORTED_STATE_VERSIONS:
+        return False
+    proposal = state.get("proposal")
+    if proposal is None:
+        return state.get("state") in ("no_candidate", "keep_original", "scanned")
+    return proposal_from_dict(proposal) is not None
+
+
 def current_proposal(photo) -> Optional[AutoCropProposal]:
     state = _state(photo)
-    if not state or int(state.get("version", 0)) != PROPOSAL_VERSION:
+    if not _state_is_current(state):
         return None
-    return proposal_from_dict(state.get("proposal"))
+    proposal = proposal_from_dict(state.get("proposal"))
+    if proposal is not None and int(state.get("version", 0)) != PROPOSAL_VERSION:
+        # Opportunistic metadata-only migration; no model inference.
+        _write_state(photo, proposal, state_kind=state.get("state", "candidate"))
+    return proposal
 
 
 def _write_state(photo, proposal=None, state_kind="scanned"):
@@ -154,12 +224,16 @@ def proposal_from_mask(
     if touches:
         warnings.append("subject_mask_touches_source_edge")
     return AutoCropProposal(
-        box=box,
+        auto_box=list(box),
+        box=list(box),
+        auto_removed_area_ratio=removed,
         removed_area_ratio=removed,
         alpha_min=float(alpha_min),
         padding_px=int(padding_px),
         mask_touches_edge=touches,
         warnings=warnings,
+        manually_adjusted=False,
+        image_size=[int(width), int(height)],
     )
 
 
@@ -195,11 +269,7 @@ def scan_records(records, model_cache: Path, progress=None, force=False):
 
     for index, record in enumerate(targets, 1):
         state = _state(record)
-        if (
-            not force
-            and state
-            and int(state.get("version", 0)) == PROPOSAL_VERSION
-        ):
+        if not force and _state_is_current(state):
             result.skipped_existing += 1
             progress(index, len(targets), record.path.name)
             continue
@@ -223,7 +293,7 @@ def scan_todo(records):
         if record.status != "推荐":
             continue
         state = _state(record)
-        if not state or int(state.get("version", 0)) != PROPOSAL_VERSION:
+        if not _state_is_current(state):
             count += 1
     return count
 
@@ -247,6 +317,49 @@ def pending_records(records):
         if proposal is not None and proposal.decision == "pending":
             output.append(record)
     return output
+
+
+def _clamp_box(box, image_size):
+    current = _box_list(box)
+    if current is None:
+        raise ValueError(f"Invalid Auto Crop box: {box!r}")
+    width, height = map(int, image_size)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid image size: {image_size!r}")
+    x0, y0, x1, y1 = current
+    x0 = max(0, min(width - 1, x0))
+    y0 = max(0, min(height - 1, y0))
+    x1 = max(x0 + 1, min(width, x1))
+    y1 = max(y0 + 1, min(height, y1))
+    return [x0, y0, x1, y1]
+
+
+def set_manual_box(photo, box, image_size):
+    proposal = current_proposal(photo)
+    if proposal is None:
+        raise ValueError("No current Auto Crop proposal.")
+    current = _clamp_box(box, image_size)
+    proposal.box = current
+    proposal.image_size = [int(image_size[0]), int(image_size[1])]
+    proposal.manually_adjusted = current != proposal.auto_box
+    proposal.removed_area_ratio = _removed_area_ratio(current, image_size)
+    # Any box edit invalidates a previous acceptance until the user explicitly
+    # accepts the new current ROI.
+    proposal.decision = "pending"
+    _write_state(photo, proposal, state_kind="candidate")
+    return proposal
+
+
+def reset_box_to_auto(photo):
+    proposal = current_proposal(photo)
+    if proposal is None:
+        raise ValueError("No current Auto Crop proposal.")
+    proposal.box = list(proposal.auto_box)
+    proposal.manually_adjusted = False
+    proposal.removed_area_ratio = float(proposal.auto_removed_area_ratio)
+    proposal.decision = "pending"
+    _write_state(photo, proposal, state_kind="candidate")
+    return proposal
 
 
 def accept_proposal(photo):
@@ -320,5 +433,52 @@ def self_test():
     restored = proposal_from_dict(proposal.to_dict())
     if restored is None or restored.box != proposal.box:
         raise RuntimeError("Auto Crop proposal persistence self-test failed.")
+    if restored.auto_box != proposal.box or restored.manually_adjusted:
+        raise RuntimeError("Auto Crop automatic-box persistence self-test failed.")
+
+    legacy = proposal_from_dict(
+        {
+            "version": 1,
+            "box": [12, 2, 78, 68],
+            "decision": "accepted",
+            "removed_area_ratio": proposal.removed_area_ratio,
+            "alpha_min": .10,
+            "padding_px": 8,
+            "mask_touches_edge": False,
+            "warnings": [],
+        }
+    )
+    if (
+        legacy is None
+        or legacy.version != PROPOSAL_VERSION
+        or legacy.auto_box != legacy.box
+        or legacy.decision != "accepted"
+    ):
+        raise RuntimeError("Auto Crop v1 proposal migration self-test failed.")
+
+    class _Photo:
+        def __init__(self, value):
+            self.feature_state = {
+                FEATURE_KEY: {
+                    "version": PROPOSAL_VERSION,
+                    "state": "candidate",
+                    "proposal": value.to_dict(),
+                }
+            }
+
+    photo = _Photo(restored)
+    edited = set_manual_box(photo, [-20, 4, 95, 120], (100, 80))
+    if edited.box != [0, 4, 95, 80] or not edited.manually_adjusted:
+        raise RuntimeError(f"Auto Crop manual-box clamp self-test failed: {edited.box}")
+    if edited.decision != "pending":
+        raise RuntimeError("Auto Crop box edit must invalidate prior acceptance.")
+
+    accept_proposal(photo)
+    if accepted_box(photo) != [0, 4, 95, 80]:
+        raise RuntimeError("Auto Crop accepted edited box self-test failed.")
+
+    reset = reset_box_to_auto(photo)
+    if reset.box != reset.auto_box or reset.manually_adjusted or reset.decision != "pending":
+        raise RuntimeError("Auto Crop reset-to-auto self-test failed.")
 
     print("Auto Crop backend self-test OK")
