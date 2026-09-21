@@ -1,4 +1,5 @@
 name: Composite Runtime Compatibility
+# Consolidated v0.3 QA checkpoint workflow.
 
 on:
   push:
