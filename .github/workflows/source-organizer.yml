@@ -1,0 +1,81 @@
+name: Source Organizer
+
+on:
+  push:
+    branches:
+      - feature/v0.3-source-organizer
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/source_organizer/**"
+      - "application/**"
+      - ".importlinter"
+      - ".github/workflows/source-organizer.yml"
+  pull_request:
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/source_organizer/**"
+      - "application/**"
+      - ".importlinter"
+      - ".github/workflows/source-organizer.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  source-organizer:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Compile Source Organizer
+        shell: pwsh
+        run: |
+          python -m compileall core features/source_organizer application
+
+      - name: Source Organizer transaction self-test
+        shell: pwsh
+        run: |
+          python -c "from features.source_organizer.service import self_test; self_test()"
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Optional Source Organizer absence smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\source_organizer"
+          $featureOff = "features\source_organizer.__disabled_for_smoke__"
+          try {
+            Move-Item $feature $featureOff
+            python -c "import app; assert not app.BACKEND.feature_available('source_organizer'); print('optional Source Organizer absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Source Organizer feature" }
+          }
+          finally {
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
