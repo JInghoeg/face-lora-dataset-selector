@@ -6,11 +6,14 @@ features without a dynamic-plugin system.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend
 from infrastructure.filesystem import active_image_files, copy_file
+from infrastructure.cache_store import DatasetCache
+from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
 
@@ -25,6 +28,22 @@ except ImportError:
 class SelectorApplication:
     def __init__(self, registry=None):
         self.registry = registry or default_registry()
+        project_root = Path(__file__).resolve().parents[1]
+        user_data_root = Path(
+            os.environ.get("LOCALAPPDATA")
+            or (Path.home() / "AppData" / "Local")
+        ) / "Face LoRA Dataset Selector"
+        self.cache = DatasetCache(
+            cache_root=user_data_root / "cache",
+            legacy_cache_root=project_root / "cache",
+            analysis_version=4,
+            proposal_loader=self.composite_proposal_from_dict,
+            proposal_version_getter=lambda: self.composite_proposal_version,
+        )
+        self.cache.migrate_legacy()
+        self.refresh_service = DatasetRefreshService(
+            self.cache, self.active_image_files
+        )
 
     def _composite_modules(self, required=True):
         modules = (
@@ -83,6 +102,53 @@ class SelectorApplication:
             folder,
             excluded_dir_names=self.registry.excluded_source_dirs(),
         )
+
+    @property
+    def cache_root(self):
+        return self.cache.cache_root
+
+    def load_dataset_state(self, folder: Path):
+        return self.cache.load_data(folder)
+
+    def saved_views(self, folder: Path):
+        return self.cache.saved_views_from_data(folder)
+
+    def decode_view_spec(self, value):
+        return self.cache.view_spec_from_dict(value)
+
+    def save_dataset_state(
+        self,
+        folder: Path,
+        records,
+        target,
+        saved_views=None,
+        bundle_ids=None,
+        last_view=None,
+        pending_composite_outputs=None,
+    ):
+        return self.cache.save_data(
+            folder,
+            records,
+            target,
+            saved_views,
+            bundle_ids,
+            last_view,
+            pending_composite_outputs,
+        )
+
+    def refresh_dataset(self, folder: Path, status=None, progress=None):
+        return self.refresh_service.refresh(
+            folder, status=status, progress=progress
+        )
+
+    def analyze_generated(self, items, progress=None):
+        records = self.refresh_service.analyze_generated(
+            items, progress=progress
+        )
+        for record in records:
+            record.composite_scan_version = self.composite_proposal_version
+            record.composite_proposal = None
+        return records
 
     def recompute_recommendations(self, records, target):
         return recommend(records, target)
