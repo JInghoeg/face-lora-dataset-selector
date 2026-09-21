@@ -137,6 +137,9 @@ class DatasetCache:
             return value
         return AISuggestion(**value) if isinstance(value, dict) else None
 
+    def ai_suggestion_from_dict(self, value):
+        return self._ai_suggestion_from_dict(value)
+
     @staticmethod
     def photo_to_dict(photo: Photo):
         data = asdict(photo)
