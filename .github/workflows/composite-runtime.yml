@@ -6,7 +6,18 @@ on:
       - feature/v0.3-composite-split
       - feature/v0.3-workflow-recovery
       - refactor/v0.3-architecture-boundaries
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "portable.spec"
+      - "build_portable.ps1"
+      - ".github/workflows/composite-runtime.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -44,7 +55,6 @@ jobs:
         shell: pwsh
         run: |
           python app.py --self-test
-
 
   detector-parity:
     needs: runtime
