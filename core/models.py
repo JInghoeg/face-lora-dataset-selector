@@ -93,6 +93,7 @@ class Photo:
     ai_suggestion: Optional[AISuggestion] = None
     composite_proposal: Optional[object] = None
     composite_scan_version: int = 0
+    feature_state: dict = field(default_factory=dict)
 
     @property
     def status(self):
