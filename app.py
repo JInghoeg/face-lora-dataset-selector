@@ -18,6 +18,7 @@ try:
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
     from application import SelectorApplication
+    from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -52,62 +53,6 @@ MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
 PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
 BACKEND=SelectorApplication()
-
-@dataclass
-class AnalysisFinding:
-    code:str; source:str; value:Optional[float]=None; threshold:Optional[float]=None; detail:Optional[str]=None
-
-@dataclass
-class FaceDetection:
-    detection_id:str; bbox_xywh:list[float]=field(default_factory=list); confidence:float=0.; area_ratio:float=0.; face_px:int=0; is_primary:bool=False; detector:str='yunet'
-
-@dataclass
-class AISuggestion:
-    patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False; decision:str='pending'
-
-@dataclass
-class ViewSpec:
-    name:str=''; filters:dict=field(default_factory=dict); sort_field:str='默认顺序'; sort_direction:str='优先顺序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
-
-def view_field_value(photo,field_name):
-    aliases={
-        'status':lambda r:r.status,
-        'person_scale':lambda r:r.person_scale,
-        'angle_class':lambda r:r.angle_class,
-        'pitch_class':lambda r:r.pitch_class,
-        'eligibility':lambda r:r.eligibility,
-        'duplicate_group':lambda r:r.duplicate_group,
-        'source':lambda r:r.source,
-        'face_quality':lambda r:r.face_quality,
-        'brisque':lambda r:r.brisque,
-        'blur':lambda r:r.blur,
-        'face_px':lambda r:r.face_px,
-    }
-    fn=aliases.get(field_name)
-    return fn(photo) if fn else getattr(photo,field_name,None)
-
-def photo_matches_filters(photo,filters):
-    for field_name,expected in filters.items():
-        if view_field_value(photo,field_name)!=expected:return False
-    return True
-
-@dataclass
-class Photo:
-    path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0
-    sample_id:str=''; content_sha256:str=''
-    faces:int=0; face_detections:list[FaceDetection]=field(default_factory=list); primary_face_id:Optional[str]=None
-    face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False; duplicate_reviewed:bool=False
-    analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'; recommendation_reasons:list[str]=field(default_factory=list)
-    reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
-    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[object]=None; composite_scan_version:int=0
-    @property
-    def status(self): return self.manual_status or self.auto_status
-    @property
-    def source(self): return self.path.stem.split('_frame_',1)[0] if '_frame_' in self.path.stem else str(self.path.parent.resolve())
-
-@dataclass
-class TextPhoto:
-    path:Path; file_size:int; mtime_ns:int; boxes:list=field(default_factory=list); selected:list=field(default_factory=list); manual:list=field(default_factory=list); scores:list=field(default_factory=list); suggested:list=field(default_factory=list); width:int=0; height:int=0
 
 def key(path): return str(path.resolve()).casefold()
 def human_bytes(value):
@@ -214,9 +159,6 @@ def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=N
     CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'analysis_version':ANALYSIS_VERSION,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'pending_composite_outputs':list(pending_composite_outputs or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
 def finding_text(f):
     return f.detail or f.code
-def derive_eligibility(r):
-    r.eligibility='REJECT' if r.hard_rejects else ('REVIEW' if r.review_flags else 'PASS')
-    return r.eligibility
 AI_BUNDLE_SCHEMA=1
 
 def relative_export_path(path,root):
