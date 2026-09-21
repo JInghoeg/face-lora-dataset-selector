@@ -10,7 +10,10 @@ from .service import (
     pending_records,
     proposal_from_dict,
     reset_decision,
+    restore_pending,
+    review_records,
     scan_records,
+    scan_todo,
 )
 
 __all__ = [
@@ -25,5 +28,8 @@ __all__ = [
     "pending_records",
     "proposal_from_dict",
     "reset_decision",
+    "restore_pending",
+    "review_records",
     "scan_records",
+    "scan_todo",
 ]
