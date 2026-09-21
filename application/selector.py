@@ -7,12 +7,13 @@ features without a dynamic-plugin system.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend
 from features.ranking.analysis import group_duplicates
-from infrastructure.filesystem import active_image_files, copy_file
+from infrastructure.filesystem import active_image_files, copy_file, save_crop, unique_output_path
 from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
 
@@ -25,11 +26,28 @@ except ImportError:
     _composite_adapter = None
     _composite_service = None
 
+try:
+    from features.auto_crop import service as _auto_crop_service
+except ImportError:
+    _auto_crop_service = None
+
 
 class SelectorApplication:
     def __init__(self, registry=None):
         self.registry = registry or default_registry()
         project_root = Path(__file__).resolve().parents[1]
+        if os.environ.get("FACE_LORA_MODEL_CACHE_ROOT"):
+            self.model_cache_root = Path(
+                os.environ["FACE_LORA_MODEL_CACHE_ROOT"]
+            ).resolve()
+        elif getattr(sys, "frozen", False):
+            self.model_cache_root = (
+                Path(sys.executable).resolve().parent.parent
+                / "_FaceLoRA_ModelCache"
+            )
+        else:
+            self.model_cache_root = project_root.parent / "_FaceLoRA_ModelCache"
+
         user_data_root = Path(
             os.environ.get("LOCALAPPDATA")
             or (Path.home() / "AppData" / "Local")
@@ -46,6 +64,11 @@ class SelectorApplication:
             self.cache, self.active_image_files
         )
 
+    def _auto_crop_module(self, required=True):
+        if _auto_crop_service is None and required:
+            raise RuntimeError("Auto Crop feature is not available.")
+        return _auto_crop_service
+
     def _composite_modules(self, required=True):
         modules = (
             (_composite_service, _composite_adapter)
@@ -61,6 +84,8 @@ class SelectorApplication:
             return False
         if feature_id == "composite":
             return self._composite_modules(required=False) is not None
+        if feature_id == "auto_crop":
+            return self._auto_crop_module(required=False) is not None
         return True
 
     def excluded_source_dirs(self):
@@ -163,11 +188,57 @@ class SelectorApplication:
             folder, source, proposal, keep_mask
         )
 
+    @property
+    def auto_crop_model_cache(self):
+        return self.model_cache_root / "auto_crop"
+
+    def scan_auto_crop(self, records, progress=None, force=False):
+        unresolved = [
+            r for r in records
+            if r.status == "推荐"
+            and r.composite_proposal is not None
+            and getattr(r.composite_proposal, "decision", None) == "pending"
+        ]
+        if unresolved:
+            raise RuntimeError(
+                f"仍有 {len(unresolved)} 张推荐图等待 Composite Split 复核，"
+                "请先完成 Composite，再进入 Auto Crop。"
+            )
+        service = self._auto_crop_module(required=True)
+        return service.scan_records(
+            records,
+            self.auto_crop_model_cache,
+            progress=progress,
+            force=force,
+        )
+
+    def pending_auto_crop(self, records):
+        return self._auto_crop_module(required=True).pending_records(records)
+
+    def accept_auto_crop(self, photo):
+        return self._auto_crop_module(required=True).accept_proposal(photo)
+
+    def keep_original_auto_crop(self, photo):
+        return self._auto_crop_module(required=True).keep_original(photo)
+
+    def reset_auto_crop(self, photo):
+        return self._auto_crop_module(required=True).reset_decision(photo)
+
+    def auto_crop_proposal(self, photo):
+        return self._auto_crop_module(required=True).current_proposal(photo)
+
     def export_recommended(self, records, dst: Path):
         written = 0
+        auto_crop = self._auto_crop_module(required=False)
         for record in records:
             if record.status != "推荐":
                 continue
-            copy_file(record.path, dst)
+            box = auto_crop.accepted_box(record) if auto_crop is not None else None
+            if box:
+                dst.mkdir(parents=True, exist_ok=True)
+                out = unique_output_path(dst, record.path.name)
+                save_crop(record.path, box, out)
+            else:
+                copy_file(record.path, dst)
             written += 1
         return ExportResult(written=written)
