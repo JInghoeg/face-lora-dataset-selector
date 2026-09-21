@@ -43,7 +43,7 @@ def legacy_review_root() -> Path:
     return legacy_research_root() / "auto_crop"
 
 
-def find_latest_stage1_result() -> Path | None:
+def find_latest_stage1_result():
     root = legacy_research_root() / "mature_person_v1_3_s"
     candidates = list(root.rglob("results.json")) if root.exists() else []
     if not candidates:
