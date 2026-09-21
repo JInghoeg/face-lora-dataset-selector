@@ -9,6 +9,7 @@ are supplied by the application layer.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import uuid
 from dataclasses import dataclass, field
@@ -169,6 +170,159 @@ def build_plan(root: Path, records, excluded_dir_names=()) -> OrganizerPlan:
     return plan
 
 
+def _write_manifest(path: Path, payload: dict):
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+
+
+def _transaction_manifest(plan: OrganizerPlan, txn_root: Path):
+    return {
+        "version": 1,
+        "root": str(Path(plan.root).resolve()),
+        "moves": [
+            {
+                "source": str(move.source.resolve()),
+                "destination": str(move.destination.resolve()),
+                "stage": str((txn_root / f"{index:06d}{move.source.suffix}").resolve()),
+                "state": "source",
+            }
+            for index, move in enumerate(plan.moves)
+        ],
+    }
+
+
+def _recover_transaction(txn_root: Path):
+    manifest_path = txn_root / "manifest.json"
+    if not manifest_path.exists():
+        # execute_plan writes the journal before moving any source. An empty
+        # orphan transaction directory is therefore safe to discard.
+        try:
+            txn_root.rmdir()
+            return
+        except OSError as exc:
+            raise RuntimeError(
+                f"发现没有 journal 的 Source Organizer 事务目录：{txn_root}"
+            ) from exc
+
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(
+            f"Source Organizer journal 无法读取：{manifest_path}"
+        ) from exc
+
+    moves = payload.get("moves")
+    if not isinstance(moves, list):
+        raise RuntimeError(f"Source Organizer journal 格式无效：{manifest_path}")
+
+    recovery_root = txn_root / "_recovery"
+    recovery_root.mkdir(exist_ok=True)
+    restore_items = []
+    errors = []
+
+    # Extract every moved file to a neutral recovery location first. This is
+    # required for path swaps/cycles.
+    for index, item in enumerate(moves):
+        try:
+            source = Path(item["source"])
+            destination = Path(item["destination"])
+            stage = Path(item["stage"])
+            state = str(item.get("state", "source"))
+        except Exception as exc:
+            errors.append(f"journal item {index}: {exc}")
+            continue
+
+        recovery = recovery_root / f"{index:06d}{source.suffix}"
+        location = None
+        already_source = False
+
+        if state == "source":
+            # Crash may happen after source->stage but before journal update.
+            if stage.exists() and not source.exists():
+                location = stage
+            elif source.exists():
+                already_source = True
+            else:
+                errors.append(f"找不到原文件或暂存文件：{source}")
+        elif state == "staged":
+            # Crash may happen after stage->destination but before journal update.
+            if stage.exists():
+                location = stage
+            elif destination.exists():
+                location = destination
+            else:
+                errors.append(f"找不到暂存或目标文件：{source}")
+        elif state == "completed":
+            if destination.exists():
+                location = destination
+            elif stage.exists():
+                location = stage
+            else:
+                errors.append(f"找不到已完成事务文件：{source}")
+        else:
+            errors.append(f"未知 journal state {state!r}: {source}")
+
+        if already_source:
+            restore_items.append((source, None))
+            continue
+        if location is None:
+            continue
+
+        try:
+            if recovery.exists():
+                recovery.unlink()
+            shutil.move(str(location), str(recovery))
+            restore_items.append((source, recovery))
+        except Exception as exc:
+            errors.append(f"恢复暂存失败 {location}: {exc}")
+
+    if errors:
+        raise RuntimeError(
+            "Source Organizer 自动恢复前置检查失败：\n" + "\n".join(errors)
+        )
+
+    # All moved contents are neutralized; original source paths can now be
+    # restored without swap/cycle collisions.
+    for source, recovery in restore_items:
+        if recovery is None:
+            continue
+        try:
+            source.parent.mkdir(parents=True, exist_ok=True)
+            if source.exists():
+                raise FileExistsError(f"原路径已被占用：{source}")
+            shutil.move(str(recovery), str(source))
+        except Exception as exc:
+            errors.append(f"恢复原路径失败 {source}: {exc}")
+
+    if errors:
+        raise RuntimeError(
+            "Source Organizer 自动恢复失败：\n" + "\n".join(errors)
+        )
+
+    try:
+        shutil.rmtree(txn_root)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Source Organizer 已恢复文件，但清理事务目录失败：{txn_root}: {exc}"
+        ) from exc
+
+
+def recover_incomplete_transactions(root: Path) -> int:
+    root = Path(root).resolve()
+    pattern = f".{root.name}_source_organizer_txn_*"
+    recovered = 0
+    for txn_root in sorted(root.parent.glob(pattern), key=lambda p: str(p).lower()):
+        if not txn_root.is_dir():
+            continue
+        _recover_transaction(txn_root)
+        recovered += 1
+    return recovered
+
+
 def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
     progress = progress or (lambda _current, _total, _message: None)
     root = Path(plan.root).resolve()
@@ -177,11 +331,12 @@ def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
     txn_root = root.parent / (
         f".{root.name}_source_organizer_txn_{uuid.uuid4().hex}"
     )
-    staged = []
-    completed = []
+    manifest_path = txn_root / "manifest.json"
 
     try:
         txn_root.mkdir(parents=True, exist_ok=False)
+        manifest = _transaction_manifest(plan, txn_root)
+        _write_manifest(manifest_path, manifest)
 
         # Phase 1: move every changing source out of the way. This makes swaps
         # and cycles safe and prevents accidental overwrite.
@@ -190,28 +345,30 @@ def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
                 raise FileNotFoundError(
                     f"Organizer 执行前源文件消失：{move.source}"
                 )
-            staged_path = txn_root / f"{index:06d}{move.source.suffix}"
+            staged_path = Path(manifest["moves"][index]["stage"])
             shutil.move(str(move.source), str(staged_path))
-            staged.append((move, staged_path))
+            manifest["moves"][index]["state"] = "staged"
+            _write_manifest(manifest_path, manifest)
             step += 1
             progress(step, total_steps, f"暂存：{move.source.name}")
 
         # Phase 2: materialize final destinations.
-        for move, staged_path in staged:
+        for index, move in enumerate(plan.moves):
+            staged_path = Path(manifest["moves"][index]["stage"])
             move.destination.parent.mkdir(parents=True, exist_ok=True)
             if move.destination.exists():
                 raise FileExistsError(
                     f"Organizer 目标在执行期间出现冲突：{move.destination}"
                 )
             shutil.move(str(staged_path), str(move.destination))
-            completed.append(move)
+            manifest["moves"][index]["state"] = "completed"
+            _write_manifest(manifest_path, manifest)
             step += 1
             progress(step, total_steps, f"整理：{move.destination.name}")
 
         # Only after every filesystem move succeeds do we mutate Photo paths
         # and persistent feature state.
         updates = getattr(plan, "_record_updates", [])
-        by_source = {_key(move.source): move for move in plan.moves}
         for record, move, origin_rel, origin_source in updates:
             if move is not None:
                 record.path = move.destination
@@ -220,10 +377,7 @@ def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
                 "origin_source": str(origin_source),
             }
 
-        try:
-            txn_root.rmdir()
-        except OSError:
-            pass
+        shutil.rmtree(txn_root)
         return OrganizerResult(
             moved=len(plan.moves),
             unchanged=plan.unchanged,
@@ -231,58 +385,18 @@ def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
         )
 
     except Exception as original_error:
-        rollback_errors = []
-
-        # Completed destinations can form swaps/cycles. Stage them again before
-        # restoring any original source path so rollback itself cannot collide.
-        rollback_completed = []
-        for index, move in enumerate(completed):
-            try:
-                if move.destination.exists():
-                    rollback_path = txn_root / (
-                        f"rollback_{index:06d}{move.destination.suffix}"
-                    )
-                    shutil.move(str(move.destination), str(rollback_path))
-                    rollback_completed.append((move, rollback_path))
-            except Exception as exc:
-                rollback_errors.append(
-                    f"回滚暂存失败 {move.destination}: {exc}"
-                )
-
-        for move, rollback_path in reversed(rollback_completed):
-            try:
-                if rollback_path.exists():
-                    move.source.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(rollback_path), str(move.source))
-            except Exception as exc:
-                rollback_errors.append(
-                    f"{rollback_path} -> {move.source}: {exc}"
-                )
-
-        completed_keys = {_key(move.source) for move in completed}
-        for move, staged_path in reversed(staged):
-            if _key(move.source) in completed_keys:
-                continue
-            try:
-                if staged_path.exists():
-                    move.source.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(staged_path), str(move.source))
-            except Exception as exc:
-                rollback_errors.append(
-                    f"{staged_path} -> {move.source}: {exc}"
-                )
-
+        rollback_error = None
         try:
             if txn_root.exists():
-                shutil.rmtree(txn_root)
+                _recover_transaction(txn_root)
         except Exception as exc:
-            rollback_errors.append(f"清理事务目录失败：{exc}")
+            rollback_error = exc
 
-        if rollback_errors:
+        if rollback_error is not None:
             raise RuntimeError(
                 f"Source Organizer 失败：{original_error}\n"
-                "自动回滚也有失败项：\n"
-                + "\n".join(rollback_errors)
+                f"自动回滚也失败：{rollback_error}\n"
+                f"事务目录保留在：{txn_root}"
             ) from original_error
         raise RuntimeError(
             f"Source Organizer 失败，已完整回滚：{original_error}"
@@ -420,4 +534,28 @@ def self_test():
             raise RuntimeError("Organizer rollback did not restore source content.")
         if p1.path!=one or p2.path!=two:
             raise RuntimeError("Organizer rollback mutated Photo paths.")
+    # Simulate a process crash with a persisted journal after one source was
+    # staged. Recovery on the next app refresh must restore the original file.
+    with TemporaryDirectory() as td:
+        root = Path(td) / "dataset"
+        root.mkdir()
+        original = root / "crash.jpg"
+        original.write_bytes(b"crash-safe")
+        photo = Photo(original);photo.sample_id="crash";photo.manual_status="推荐"
+        crash_plan = build_plan(root,[photo])
+        txn_root = root.parent / f".{root.name}_source_organizer_txn_crash_test"
+        txn_root.mkdir()
+        manifest = _transaction_manifest(crash_plan, txn_root)
+        _write_manifest(txn_root / "manifest.json", manifest)
+        stage = Path(manifest["moves"][0]["stage"])
+        shutil.move(str(original), str(stage))
+        manifest["moves"][0]["state"] = "staged"
+        _write_manifest(txn_root / "manifest.json", manifest)
+        if original.exists() or not stage.exists():
+            raise RuntimeError("Organizer crash setup self-test failed.")
+        if recover_incomplete_transactions(root) != 1:
+            raise RuntimeError("Organizer crash recovery count self-test failed.")
+        if not original.exists() or original.read_bytes()!=b"crash-safe":
+            raise RuntimeError("Organizer crash recovery content self-test failed.")
+
     print("Source Organizer backend self-test OK")
