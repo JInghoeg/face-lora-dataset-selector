@@ -16,6 +16,9 @@ set "HF_HOME=%RESEARCH_ROOT%\hf_home"
 set "HF_HUB_CACHE=%HF_HOME%\hub"
 set "HUGGINGFACE_HUB_CACHE=%HF_HUB_CACHE%"
 set "XDG_CACHE_HOME=%RESEARCH_ROOT%\xdg_cache"
+set "PIP_CACHE_DIR=%RESEARCH_ROOT%\pip_cache"
+set "PIP_DEFAULT_TIMEOUT=180"
+set "PIP_RETRIES=12"
 set "TEMP=%RESEARCH_ROOT%\temp"
 set "TMP=%RESEARCH_ROOT%\temp"
 
@@ -28,6 +31,7 @@ if not exist "%BASEPY%" (
 if not exist "%RESEARCH_ROOT%" mkdir "%RESEARCH_ROOT%"
 if not exist "%HF_HOME%" mkdir "%HF_HOME%"
 if not exist "%TEMP%" mkdir "%TEMP%"
+if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
 
 echo ============================================================
 echo Auto Crop Stage 2 - ISNetIS raw mask validation
@@ -43,13 +47,16 @@ if not exist "%PY%" (
     echo Creating isolated environment...
     "%BASEPY%" -m venv "%VENV%"
     if errorlevel 1 goto :failed
-
-    echo Installing mature upstream stack with pip cache disabled...
-    "%PY%" -m pip install --disable-pip-version-check --no-cache-dir ^
-        "onnxruntime>=1.19,<2" ^
-        "dghs-imgutils==0.19.0"
-    if errorlevel 1 goto :failed
 )
+
+echo Installing / repairing mature upstream stack...
+echo Pip cache:
+echo   %PIP_CACHE_DIR%
+echo Network policy:
+echo   timeout=%PIP_DEFAULT_TIMEOUT%s, retries=%PIP_RETRIES%
+echo.
+call :install_stack
+if errorlevel 1 goto :failed
 
 echo Verifying upstream imports...
 "%PY%" -c "from imgutils.detect import detect_person; from imgutils.segment import get_isnetis_mask; print('dghs-imgutils Stage 2 imports OK')"
@@ -75,4 +82,21 @@ exit /b 0
 echo.
 echo Stage 2 failed. The terminal output above is the diagnostic source.
 pause
+exit /b 1
+
+:install_stack
+for /L %%A in (1,1,3) do (
+    echo Pip install attempt %%A/3...
+    "%PY%" -m pip install ^
+        --disable-pip-version-check ^
+        --prefer-binary ^
+        --timeout %PIP_DEFAULT_TIMEOUT% ^
+        --retries %PIP_RETRIES% ^
+        "onnxruntime>=1.19,<2" ^
+        "dghs-imgutils==0.19.0"
+    if not errorlevel 1 exit /b 0
+    echo.
+    echo Pip attempt %%A failed. Waiting 5 seconds before retry...
+    timeout /t 5 /nobreak >nul
+)
 exit /b 1
