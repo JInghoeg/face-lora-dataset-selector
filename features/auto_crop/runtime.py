@@ -64,6 +64,40 @@ def _session_for(model_path: Path):
         return item
 
 
+def _reuse_roots(model_cache: Path):
+    roots = []
+    explicit = os.environ.get("FACE_LORA_MODEL_REUSE_ROOTS", "")
+    for value in explicit.split(os.pathsep):
+        value = value.strip()
+        if value:
+            roots.append(Path(value))
+
+    # Source/research layout convenience:
+    # G:\AI_Research\_FaceLoRA_ModelCache\auto_crop
+    # -> G:\AI_Research\_shared_cache\face-lora-dataset-selector
+    cache = Path(model_cache).resolve()
+    try:
+        shared = (
+            cache.parent.parent
+            / "_shared_cache"
+            / "face-lora-dataset-selector"
+        )
+        roots.append(shared)
+    except Exception:
+        pass
+
+    # Preserve order while removing duplicates.
+    result = []
+    seen = set()
+    for root in roots:
+        key = str(root.resolve()) if root.exists() else str(root)
+        if key.casefold() in seen:
+            continue
+        seen.add(key.casefold())
+        result.append(root)
+    return result
+
+
 def get_isnetis_mask(
     image: Image.Image,
     model_cache: Path,
@@ -91,7 +125,11 @@ def get_isnetis_mask(
     canvas[y0 : y0 + h, x0 : x0 + w] = resized
     tensor = np.transpose(canvas, (2, 0, 1))[None, ...]
 
-    model_path = ensure_model(ISNETIS_SPEC, Path(model_cache))
+    model_path = ensure_model(
+        ISNETIS_SPEC,
+        Path(model_cache),
+        reuse_roots=_reuse_roots(Path(model_cache)),
+    )
     session, exec_lock = _session_for(model_path)
     with exec_lock:
         output = session.run(None, {"img": tensor})[0]
