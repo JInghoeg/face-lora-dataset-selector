@@ -5,6 +5,7 @@ on:
     branches:
       - feature/v0.3-composite-split
       - feature/v0.3-workflow-recovery
+      - refactor/v0.3-architecture-boundaries
   workflow_dispatch:
 
 permissions:
