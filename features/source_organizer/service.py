@@ -449,10 +449,22 @@ def self_test():
             raise RuntimeError("Organizer move count self-test failed.")
         if not pa.path.exists() or not pb.path.exists():
             raise RuntimeError("Organizer destination self-test failed.")
-        if pa.path != root / "推荐" / "sourceA" / "a.jpg":
-            raise RuntimeError(f"Organizer 推荐 path failed: {pa.path}")
-        if pb.path != root / "淘汰" / "sourceB" / "b.jpg":
-            raise RuntimeError(f"Organizer 淘汰 path failed: {pb.path}")
+        expected_pa = (root / "推荐" / "sourceA" / "a.jpg").resolve()
+        expected_pb = (root / "淘汰" / "sourceB" / "b.jpg").resolve()
+        if pa.path.resolve() != expected_pa:
+            raise RuntimeError(
+                "Organizer 推荐 path failed: "
+                f"actual={pa.path!r} parts={pa.path.parts!r} "
+                f"expected={expected_pa!r} expected_parts={expected_pa.parts!r} "
+                f"status={pa.status!r}"
+            )
+        if pb.path.resolve() != expected_pb:
+            raise RuntimeError(
+                "Organizer 淘汰 path failed: "
+                f"actual={pb.path!r} parts={pb.path.parts!r} "
+                f"expected={expected_pb!r} expected_parts={expected_pb.parts!r} "
+                f"status={pb.status!r}"
+            )
         if not archived.exists():
             raise RuntimeError("Organizer touched Composite archive.")
         if pa.source != str(a_dir.resolve()):
