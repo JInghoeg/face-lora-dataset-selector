@@ -49,14 +49,18 @@ All **new** research artifacts stay beside the repository:
 _research_output/
   auto_crop_stage2/
     .venv-imgutils/
-    hf_home/
-    xdg_cache/
     temp/
     challenge_manifest.json
     runs/
 ```
 
 `_research_output/` is gitignored.
+
+Reusable downloads are shared across future research clones under:
+
+`G:\\AI_Research\\_shared_cache\\face-lora-dataset-selector\\`
+
+This shared cache contains pip wheels, Hugging Face/model files and XDG caches, so a later branch/clone does not download the same artifacts again.
 
 Prior LocalAppData Stage 1/review files are read-only legacy input. New model/download/temp/output data must not default to C:.
 
@@ -71,9 +75,9 @@ research\运行AutoCrop Stage2 ISNetIS.bat
 or run it from a terminal.
 
 The launcher:
-1. creates an isolated environment under `_research_output`;
-2. installs only the mature upstream research stack;
-3. redirects Hugging Face/model/temp caches to `_research_output`;
+1. reuses the existing isolated environment when the pinned upstream stack is already installed;
+2. contacts pip only when that environment is missing/incomplete;
+3. shares reusable pip/Hugging Face/model caches on G: across future research clones;
 4. freezes/reuses the exact 20 challenge images;
 5. runs raw ISNetIS masks;
 6. creates five contact sheets.
@@ -123,3 +127,17 @@ If repeated meaningful weapon/prop/accessory content is absent from the mask:
 - no automatic final crop;
 - no model bundling decision;
 - no source modification.
+
+
+## Recovery when old C: research metadata was cleaned
+
+The prior Stage 1 execution log preserved the exact 20 filenames that were actually benchmarked.
+
+Challenge recovery priority is:
+
+1. existing frozen `challenge_manifest.json`;
+2. historical Stage 1 `results.json`;
+3. historical completed review metadata;
+4. exact Stage 1 executed filename list, resolved recursively against the current Valby dataset.
+
+Filename recovery requires all 20 names to exist and each name to resolve uniquely. It refuses to guess when a name is missing or ambiguous.
