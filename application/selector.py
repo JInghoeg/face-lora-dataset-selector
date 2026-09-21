@@ -31,6 +31,11 @@ try:
 except ImportError:
     _auto_crop_service = None
 
+try:
+    from features.source_organizer import service as _source_organizer_service
+except ImportError:
+    _source_organizer_service = None
+
 
 class SelectorApplication:
     def __init__(self, registry=None):
@@ -64,6 +69,11 @@ class SelectorApplication:
             self.cache, self.active_image_files
         )
 
+    def _source_organizer_module(self, required=True):
+        if _source_organizer_service is None and required:
+            raise RuntimeError("Source Organizer feature is not available.")
+        return _source_organizer_service
+
     def _auto_crop_module(self, required=True):
         if _auto_crop_service is None and required:
             raise RuntimeError("Auto Crop feature is not available.")
@@ -86,6 +96,8 @@ class SelectorApplication:
             return self._composite_modules(required=False) is not None
         if feature_id == "auto_crop":
             return self._auto_crop_module(required=False) is not None
+        if feature_id == "source_organizer":
+            return self._source_organizer_module(required=False) is not None
         return True
 
     def excluded_source_dirs(self):
@@ -163,6 +175,13 @@ class SelectorApplication:
         )
 
     def refresh_dataset(self, folder: Path, status=None, progress=None):
+        organizer = self._source_organizer_module(required=False)
+        if organizer is not None:
+            recovered = organizer.recover_incomplete_transactions(folder)
+            if recovered and status is not None:
+                status(
+                    f"已恢复 {recovered} 个未完成的 Source Organizer 事务，继续刷新…"
+                )
         return self.refresh_service.refresh(
             folder, status=status, progress=progress
         )
@@ -235,6 +254,44 @@ class SelectorApplication:
 
     def auto_crop_proposal(self, photo):
         return self._auto_crop_module(required=True).current_proposal(photo)
+
+    def build_source_organizer_plan(self, folder: Path, records):
+        if _auto_crop_service is not None:
+            unscanned = self.auto_crop_scan_todo(records)
+            if unscanned:
+                raise RuntimeError(
+                    f"还有 {unscanned} 张推荐图未完成 Auto Crop 扫描，"
+                    "请先完成 Auto Crop，再整理源文件。"
+                )
+            pending = self.pending_auto_crop(records)
+            if pending:
+                raise RuntimeError(
+                    f"还有 {len(pending)} 张 Auto Crop 候选待复核，"
+                    "请先处理后再整理源文件。"
+                )
+
+        composite_pending = [
+            r for r in records
+            if r.status == "推荐"
+            and r.composite_proposal is not None
+            and getattr(r.composite_proposal, "decision", None) == "pending"
+        ]
+        if composite_pending:
+            raise RuntimeError(
+                f"还有 {len(composite_pending)} 张 Composite Split 候选待复核，"
+                "请先处理后再整理源文件。"
+            )
+
+        return self._source_organizer_module(required=True).build_plan(
+            folder,
+            records,
+            excluded_dir_names=self.excluded_source_dirs(),
+        )
+
+    def execute_source_organizer(self, plan, progress=None):
+        return self._source_organizer_module(required=True).execute_plan(
+            plan, progress=progress
+        )
 
     def export_recommended(self, records, dst: Path):
         written = 0

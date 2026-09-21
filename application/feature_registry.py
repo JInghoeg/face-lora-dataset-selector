@@ -50,5 +50,6 @@ def default_registry():
             FeatureSpec('text_detection', '字幕 / 水印检测标注'),
             FeatureSpec('text_repair', '字幕 / 水印修复'),
             FeatureSpec('auto_crop', 'General Auto Crop'),
+            FeatureSpec('source_organizer', 'Source Organizer'),
         )
     )

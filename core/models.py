@@ -101,6 +101,9 @@ class Photo:
 
     @property
     def source(self):
+        organizer = self.feature_state.get("source_organizer")
+        if isinstance(organizer, dict) and organizer.get("origin_source"):
+            return str(organizer["origin_source"])
         if "_frame_" in self.path.stem:
             return self.path.stem.split("_frame_", 1)[0]
         return str(self.path.parent.resolve())
