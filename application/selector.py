@@ -212,6 +212,12 @@ class SelectorApplication:
             force=force,
         )
 
+    def auto_crop_scan_todo(self, records):
+        return self._auto_crop_module(required=True).scan_todo(records)
+
+    def auto_crop_review_records(self, records):
+        return self._auto_crop_module(required=True).review_records(records)
+
     def pending_auto_crop(self, records):
         return self._auto_crop_module(required=True).pending_records(records)
 
@@ -220,6 +226,9 @@ class SelectorApplication:
 
     def keep_original_auto_crop(self, photo):
         return self._auto_crop_module(required=True).keep_original(photo)
+
+    def restore_pending_auto_crop(self, photo):
+        return self._auto_crop_module(required=True).restore_pending(photo)
 
     def reset_auto_crop(self, photo):
         return self._auto_crop_module(required=True).reset_decision(photo)
