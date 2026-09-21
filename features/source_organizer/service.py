@@ -81,9 +81,16 @@ def _origin_state(record, root: Path):
 
     rel = _relative(record.path, root)
     # Organizer status directories are reserved roots. If the dataset was
-    # already organized before this version, avoid status/status nesting.
+    # already organized before metadata was persisted (legacy/manual layout or
+    # a crash after filesystem commit but before cache save), reconstruct the
+    # original provenance from the path below the status root.
     if len(rel.parts) > 1 and rel.parts[0] in STATUS_DIRS:
         rel = Path(*rel.parts[1:])
+        if "_frame_" in rel.stem:
+            origin_source = rel.stem.split("_frame_", 1)[0]
+        else:
+            origin_source = str((root / rel.parent).resolve())
+        return rel, origin_source
     return rel, str(record.source)
 
 
@@ -472,6 +479,17 @@ def self_test():
             raise RuntimeError("Organizer status-change self-test failed.")
         if pa.source != str(a_dir.resolve()):
             raise RuntimeError("Organizer provenance changed after rerun.")
+
+        # Metadata-loss fallback: an already-organized file without feature
+        # state must reconstruct provenance below the reserved status root.
+        legacy = Photo(pa.path);legacy.sample_id="legacy";legacy.manual_status="备选"
+        legacy.feature_state = {}
+        legacy_plan = build_plan(root,[legacy])
+        legacy_state = getattr(legacy_plan,"_record_updates")[0]
+        if str(legacy_state[2]) != str(Path("sourceA") / "a.jpg"):
+            raise RuntimeError("Organizer legacy relative provenance failed.")
+        if legacy_state[3] != str(a_dir.resolve()):
+            raise RuntimeError("Organizer legacy source provenance failed.")
 
     # True status-root swap: both files use the same stable origin path, so
     # each destination is the other file's current source path.
