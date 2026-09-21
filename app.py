@@ -34,7 +34,7 @@ MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cf
 MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
-PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
+PAGE=120; PRESET_TARGETS=(40,50,60,70,80); COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
 
 def key(path): return str(path.resolve()).casefold()
 def human_bytes(value):
@@ -50,6 +50,13 @@ def set_combo_value(combo,value):
     if i<0:i=combo.findText(value)
     if i>=0:combo.setCurrentIndex(i)
 
+def clamp_page(page,item_count,page_size=PAGE):
+    pages=max(1,math.ceil(max(0,item_count)/page_size))
+    return max(0,min(int(page),pages-1)),pages
+def infer_target_mode(target,saved_mode=None):
+    if saved_mode in ('preset','custom'):return saved_mode
+    return 'preset' if int(target) in PRESET_TARGETS else 'custom'
+
 def load_data(folder): return BACKEND.load_dataset_state(folder)
 def load_cached(folder): return BACKEND.cache.load_cached(folder)
 def load_cached_by_hash(folder): return BACKEND.cache.load_cached_by_hash(folder)
@@ -62,8 +69,9 @@ def photo_to_dict(photo): return BACKEND.cache.photo_to_dict(photo)
 def photo_from_dict(data,path,size,mtime): return BACKEND.cache.photo_from_dict(data,path,size,mtime)
 def view_spec_from_dict(value): return BACKEND.decode_view_spec(value)
 def saved_views_from_data(folder): return BACKEND.saved_views(folder)
-def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None,pending_composite_outputs=None):
-    return BACKEND.save_dataset_state(folder,records,target,saved_views,bundle_ids,last_view,pending_composite_outputs)
+def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None,pending_composite_outputs=None,target_mode=None):
+    return BACKEND.save_dataset_state(folder,records,target,saved_views,bundle_ids,last_view,pending_composite_outputs,target_mode)
+
 
 def finding_text(f):
     return f.detail or f.code
@@ -829,12 +837,14 @@ class AutoCropReviewDialog(QDialog):
         self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
         tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
-        rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
-        for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);rec.addWidget(b)
-        self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setPrefix('自定义 ');ap=QPushButton('应用');ap.clicked.connect(lambda:self.run_rec(self.custom.value()));rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
+        rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self);self.group.setExclusive(True)
+        for n in PRESET_TARGETS:
+            b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
+        self.custom_mode=QPushButton('自定义');self.custom_mode.setCheckable(True);self.custom_mode.clicked.connect(self.apply_custom_target);self.group.addButton(self.custom_mode,0);rec.addWidget(self.custom_mode)
+        self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setToolTip('仅输入数字；点击“应用”后切换到自定义目标。');ap=QPushButton('应用');ap.clicked.connect(self.apply_custom_target);rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
         self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('Auto Crop 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
@@ -860,12 +870,12 @@ class Window(QMainWindow):
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
         if x:
-            self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
+            self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.target_mode=infer_target_mode(self.target,d.get('target_mode'));self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
             for item in d.get('pending_composite_outputs',[]):
                 if isinstance(item,dict) and isinstance(item.get('path'),str) and item.get('status') in ('推荐','淘汰'):self.pending_composite_outputs[key(Path(item['path']))]={'path':item['path'],'status':item['status']}
             for legacy in d.get('pending_composite_recommend_paths',[]):
                 if isinstance(legacy,str):self.pending_composite_outputs.setdefault(key(Path(legacy)),{'path':legacy,'status':'推荐'})
-            self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.folder_label.setText(x);self.start()
+            self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.grid.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
@@ -877,7 +887,7 @@ class Window(QMainWindow):
                 k=key(r.path);item=self.pending_composite_outputs.get(k)
                 if item:r.manual_status=item['status'];r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;found.append(k)
             for k in found:self.pending_composite_outputs.pop(k,None)
-        self.target=self.custom.value();BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button()
+        BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -1015,10 +1025,11 @@ class Window(QMainWindow):
         self.stat_layout.addWidget(QLabel('俯仰（推荐）'),9,0,1,3)
         for n,value in enumerate(PITCHES):self.stat_button(f'{value} {pt[value]}','pitch',value,10+n//2,n%2)
     def refresh(self):
-        base=self.indices(False);visible=self.indices(True);self.grid.clear();self.visible_item_map={};self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE]
+        base=self.indices(False);visible=self.indices(True);old_page=self.page;scroll=self.grid.verticalScrollBar().value();self.page,pages=clamp_page(self.page,len(visible));self.grid.clear();self.visible_item_map={};self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE]
         for i in page_indices:
             r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);reason=r.recommendation_reasons[0] if r.recommendation_reasons else '无';it=QListWidgetItem(QIcon(pix),r.path.name);it.setData(Qt.UserRole,i);it.setToolTip(f'{r.status} · {r.eligibility} · AI {r.ai_suggestion.decision if r.ai_suggestion else "无"} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}\n推荐/备选原因：{reason}');it.setBackground(QColor(COLORS[r.status]));self.grid.addItem(it);self.visible_item_map[i]=it
-        pages=max(1,math.ceil(len(visible)/PAGE));self.page=min(self.page,pages-1);self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图\n{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
+        self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图\n{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
+        if self.page==old_page:QTimer.singleShot(0,lambda v=scroll:self.grid.verticalScrollBar().setValue(v))
     def change(self,d):
         n=self.page+d
         if 0<=n<math.ceil(len(self.indices())/PAGE):self.page=n;self.refresh()
@@ -1111,15 +1122,24 @@ class Window(QMainWindow):
     def restore(self):
         r=self.selected()
         if r:r.manual_status=None;BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
-    def run_rec(self,n):self.target=n;self.custom.setValue(n);BACKEND.recompute_recommendations(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
+    def sync_target_mode_ui(self):
+        if self.target_mode=='custom':
+            self.custom_mode.setChecked(True);return
+        button=self.group.button(int(self.target))
+        if button is not None:button.setChecked(True)
+        else:self.target_mode='custom';self.custom_mode.setChecked(True)
+    def apply_custom_target(self,*_):
+        self.run_rec(self.custom.value(),'custom')
+    def run_rec(self,n,mode='preset'):
+        self.target=max(1,int(n));self.target_mode='custom' if mode=='custom' else 'preset';self.custom.blockSignals(True);self.custom.setValue(self.target);self.custom.blockSignals(False);self.sync_target_mode_ui();BACKEND.recompute_recommendations(self.records,self.target) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
     def quick_toggle_item(self,it):
         r=self.records[it.data(Qt.UserRole)]
         if r.status=='推荐':r.manual_status='备选'
         elif r.status=='备选':r.manual_status='推荐'
         else:r.manual_status='备选'
-        BACKEND.recompute_recommendations(self.records,self.target);self.page=0;self.refresh();self.save()
+        BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
     def quick_reject_item(self,it):
-        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';BACKEND.recompute_recommendations(self.records,self.target);self.page=0;self.refresh();self.save()
+        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
     def source_organizer_busy(self):
         return any((
             self.thread and self.thread.isRunning(),
@@ -1290,7 +1310,7 @@ class Window(QMainWindow):
         except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
     def save(self):
         if self.folder and self.records:
-            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()))
+            try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()),self.target_mode)
             except Exception:self.progress.setText('缓存保存失败')
     def closeEvent(self,e):self.save();self.sub.save();e.accept()
     def exported(self):
@@ -1335,6 +1355,9 @@ def self_test():
         pose_smoke_test,
     )
     from infrastructure.filesystem import sha256_file
+    if clamp_page(2,250,120)!=(2,3):raise RuntimeError('pagination clamp valid-page self-test failed')
+    if clamp_page(2,121,120)!=(1,2):raise RuntimeError('pagination clamp shrink self-test failed')
+    if infer_target_mode(60,None)!='preset' or infer_target_mode(61,None)!='custom' or infer_target_mode(60,'custom')!='custom':raise RuntimeError('target mode inference self-test failed')
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     qm=QualityModels()
     gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
