@@ -5,7 +5,10 @@ on:
     branches:
       - research/auto-crop-stage2-isnetis
     paths:
-      - "research/**"
+      - "research/auto_crop_stage2_common.py"
+      - "research/auto_crop_stage2_isnetis.py"
+      - "research/AUTO_CROP_STAGE2.md"
+      - "research/运行AutoCrop Stage2 ISNetIS.bat"
       - ".github/workflows/auto-crop-stage2-research.yml"
   pull_request:
     paths:
