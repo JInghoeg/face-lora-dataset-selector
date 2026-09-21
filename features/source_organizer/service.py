@@ -359,8 +359,8 @@ def self_test():
         if pa.source != str(a_dir.resolve()):
             raise RuntimeError("Organizer provenance changed after rerun.")
 
-    # Status-root swap/cycle must plan without treating the other moving source
-    # as a collision.
+    # True status-root swap: both files use the same stable origin path, so
+    # each destination is the other file's current source path.
     with TemporaryDirectory() as td:
         root = Path(td) / "dataset"
         left = root / "推荐" / "same.jpg"
@@ -369,21 +369,55 @@ def self_test():
         right.parent.mkdir(parents=True)
         left.write_bytes(b"left")
         right.write_bytes(b"right")
+
         pl = Photo(left);pl.sample_id="left";pl.manual_status="备选"
         pr = Photo(right);pr.sample_id="right";pr.manual_status="推荐"
-        pl.feature_state[FEATURE_KEY] = {
-            "origin_relative_path": "left/same.jpg",
-            "origin_source": "source-left",
-        }
-        pr.feature_state[FEATURE_KEY] = {
-            "origin_relative_path": "right/same.jpg",
-            "origin_source": "source-right",
-        }
+        for record, origin_source in ((pl, "source-left"), (pr, "source-right")):
+            record.feature_state[FEATURE_KEY] = {
+                "origin_relative_path": "same.jpg",
+                "origin_source": origin_source,
+            }
+
         cycle = build_plan(root, [pl, pr])
         if len(cycle.moves) != 2:
-            raise RuntimeError("Organizer cycle plan self-test failed.")
+            raise RuntimeError("Organizer true-cycle plan self-test failed.")
         execute_plan(cycle)
-        if not pl.path.exists() or not pr.path.exists():
-            raise RuntimeError("Organizer cycle execution self-test failed.")
+        if pl.path != root / "备选" / "same.jpg":
+            raise RuntimeError("Organizer cycle destination A failed.")
+        if pr.path != root / "推荐" / "same.jpg":
+            raise RuntimeError("Organizer cycle destination B failed.")
+        if pl.path.read_bytes() != b"left" or pr.path.read_bytes() != b"right":
+            raise RuntimeError("Organizer cycle content identity failed.")
 
+    # Force a failure after one final move and ensure rollback restores both
+    # original paths/content without mutating Photo paths.
+    with TemporaryDirectory() as td:
+        root = Path(td) / "dataset"
+        root.mkdir()
+        one = root / "one.jpg";one.write_bytes(b"one")
+        two = root / "two.jpg";two.write_bytes(b"two")
+        p1 = Photo(one);p1.sample_id="one";p1.manual_status="推荐"
+        p2 = Photo(two);p2.sample_id="two";p2.manual_status="备选"
+        rollback_plan = build_plan(root,[p1,p2])
+        raised = False
+        final_seen = [0]
+        def fail_progress(_n,_total,message):
+            if message.startswith("整理："):
+                final_seen[0] += 1
+                if final_seen[0] == 1:
+                    raise RuntimeError("intentional rollback test")
+        try:
+            execute_plan(rollback_plan,progress=fail_progress)
+        except RuntimeError as exc:
+            raised = True
+            if "已完整回滚" not in str(exc):
+                raise RuntimeError(f"Organizer rollback report failed: {exc}")
+        if not raised:
+            raise RuntimeError("Organizer rollback injection did not fail.")
+        if not one.exists() or not two.exists():
+            raise RuntimeError("Organizer rollback did not restore source paths.")
+        if one.read_bytes()!=b"one" or two.read_bytes()!=b"two":
+            raise RuntimeError("Organizer rollback did not restore source content.")
+        if p1.path!=one or p2.path!=two:
+            raise RuntimeError("Organizer rollback mutated Photo paths.")
     print("Source Organizer backend self-test OK")
