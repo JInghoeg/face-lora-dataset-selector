@@ -682,7 +682,9 @@ class TextCleanupService:
 
 def self_test():
     with TemporaryDirectory() as td:
-        root = Path(td)
+        sandbox = Path(td)
+        root = sandbox / "source"
+        root.mkdir()
         image_path = root / "sample.png"
         image = np.full((100, 160, 3), 180, np.uint8)
         cv2.rectangle(image, (20, 75), (140, 88), (10, 10, 10), -1)
@@ -760,7 +762,7 @@ def self_test():
         if telea.shape != source.shape or ns.shape != source.shape:
             raise RuntimeError("Text Cleanup inpaint smoke failed.")
 
-        output = root.parent / (root.name + "_batch")
+        output = sandbox / "batch"
         result = service.batch_process(
             folder=root,
             output=output,
