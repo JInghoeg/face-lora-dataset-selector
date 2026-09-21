@@ -169,8 +169,11 @@ def build_plan(root: Path, records, excluded_dir_names=()) -> OrganizerPlan:
     return plan
 
 
-def execute_plan(plan: OrganizerPlan) -> OrganizerResult:
+def execute_plan(plan: OrganizerPlan, progress=None) -> OrganizerResult:
+    progress = progress or (lambda _current, _total, _message: None)
     root = Path(plan.root).resolve()
+    total_steps = max(1, len(plan.moves) * 2)
+    step = 0
     txn_root = root.parent / (
         f".{root.name}_source_organizer_txn_{uuid.uuid4().hex}"
     )
@@ -190,6 +193,8 @@ def execute_plan(plan: OrganizerPlan) -> OrganizerResult:
             staged_path = txn_root / f"{index:06d}{move.source.suffix}"
             shutil.move(str(move.source), str(staged_path))
             staged.append((move, staged_path))
+            step += 1
+            progress(step, total_steps, f"暂存：{move.source.name}")
 
         # Phase 2: materialize final destinations.
         for move, staged_path in staged:
@@ -200,6 +205,8 @@ def execute_plan(plan: OrganizerPlan) -> OrganizerResult:
                 )
             shutil.move(str(staged_path), str(move.destination))
             completed.append(move)
+            step += 1
+            progress(step, total_steps, f"整理：{move.destination.name}")
 
         # Only after every filesystem move succeeds do we mutate Photo paths
         # and persistent feature state.
@@ -226,15 +233,30 @@ def execute_plan(plan: OrganizerPlan) -> OrganizerResult:
     except Exception as original_error:
         rollback_errors = []
 
-        # Restore completed destinations first.
-        for move in reversed(completed):
+        # Completed destinations can form swaps/cycles. Stage them again before
+        # restoring any original source path so rollback itself cannot collide.
+        rollback_completed = []
+        for index, move in enumerate(completed):
             try:
                 if move.destination.exists():
-                    move.source.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(move.destination), str(move.source))
+                    rollback_path = txn_root / (
+                        f"rollback_{index:06d}{move.destination.suffix}"
+                    )
+                    shutil.move(str(move.destination), str(rollback_path))
+                    rollback_completed.append((move, rollback_path))
             except Exception as exc:
                 rollback_errors.append(
-                    f"{move.destination} -> {move.source}: {exc}"
+                    f"回滚暂存失败 {move.destination}: {exc}"
+                )
+
+        for move, rollback_path in reversed(rollback_completed):
+            try:
+                if rollback_path.exists():
+                    move.source.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(rollback_path), str(move.source))
+            except Exception as exc:
+                rollback_errors.append(
+                    f"{rollback_path} -> {move.source}: {exc}"
                 )
 
         completed_keys = {_key(move.source) for move in completed}
@@ -336,5 +358,32 @@ def self_test():
             raise RuntimeError("Organizer status-change self-test failed.")
         if pa.source != str(a_dir.resolve()):
             raise RuntimeError("Organizer provenance changed after rerun.")
+
+    # Status-root swap/cycle must plan without treating the other moving source
+    # as a collision.
+    with TemporaryDirectory() as td:
+        root = Path(td) / "dataset"
+        left = root / "推荐" / "same.jpg"
+        right = root / "备选" / "same.jpg"
+        left.parent.mkdir(parents=True)
+        right.parent.mkdir(parents=True)
+        left.write_bytes(b"left")
+        right.write_bytes(b"right")
+        pl = Photo(left);pl.sample_id="left";pl.manual_status="备选"
+        pr = Photo(right);pr.sample_id="right";pr.manual_status="推荐"
+        pl.feature_state[FEATURE_KEY] = {
+            "origin_relative_path": "left/same.jpg",
+            "origin_source": "source-left",
+        }
+        pr.feature_state[FEATURE_KEY] = {
+            "origin_relative_path": "right/same.jpg",
+            "origin_source": "source-right",
+        }
+        cycle = build_plan(root, [pl, pr])
+        if len(cycle.moves) != 2:
+            raise RuntimeError("Organizer cycle plan self-test failed.")
+        execute_plan(cycle)
+        if not pl.path.exists() or not pr.path.exists():
+            raise RuntimeError("Organizer cycle execution self-test failed.")
 
     print("Source Organizer backend self-test OK")
