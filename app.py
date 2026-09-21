@@ -13,10 +13,6 @@ try:
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
-    from mediapipe.tasks.python.core.base_options import BaseOptions
-    from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
-    from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
-    from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
     from application import SelectorApplication
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best
@@ -54,29 +50,6 @@ def set_combo_value(combo,value):
     if i<0:i=combo.findText(value)
     if i>=0:combo.setCurrentIndex(i)
 
-def phash_int(image):
-    """64-bit pHash compatible with ImageHash's historical scipy DCT implementation."""
-    gray=image.convert('L').resize((32,32),Image.Resampling.LANCZOS)
-    dct=cv2.dct(np.asarray(gray,dtype=np.float32))
-    # scipy.fftpack.dct(..., norm=None), used by ImageHash, differs from
-    # OpenCV's orthonormal DCT only by positive per-frequency scale factors.
-    # Apply those factors so old cached hashes and newly analysed hashes remain
-    # comparable instead of silently creating two incompatible hash spaces.
-    scale=np.full(32,math.sqrt(64.0),dtype=np.float32);scale[0]=2.0*math.sqrt(32.0)
-    low=(dct*scale[:,None]*scale[None,:])[:8,:8]
-    bits=(low>np.median(low)).reshape(-1)
-    value=0
-    for bit in bits:value=(value<<1)|int(bit)
-    return value
-def sha256_file(path):
-    h=hashlib.sha256()
-    with path.open('rb') as f:
-        while True:
-            chunk=f.read(1024*1024)
-            if not chunk:break
-            h.update(chunk)
-    return h.hexdigest()
-def new_sample_id(): return 'img_'+uuid.uuid4().hex[:20]
 def load_data(folder): return BACKEND.load_dataset_state(folder)
 def load_cached(folder): return BACKEND.cache.load_cached(folder)
 def load_cached_by_hash(folder): return BACKEND.cache.load_cached_by_hash(folder)
@@ -233,13 +206,6 @@ def write_contact_sheets(records,out_dir,prefix):
         p.end();path=out_dir/f'{prefix}_{page_no:03d}.jpg';page.save(str(path),'JPG',88);written.append(path.name)
     return written
 
-def ensure_pose():
-    if not POSE.exists():
-        POSE.parent.mkdir(exist_ok=True); urllib.request.urlretrieve(POSE_URL,POSE)
-    run=Path(tempfile.gettempdir())/'face_lora_selector'/POSE.name; run.parent.mkdir(exist_ok=True)
-    if not run.exists() or run.stat().st_size!=POSE.stat().st_size:shutil.copy2(POSE,run)
-    return run
-
 def ensure_migan():
     """首次使用时从上游下载 MI-GAN，并在落盘前校验大小与 SHA-256。"""
     if MIGAN.exists() and MIGAN.stat().st_size==MIGAN_SIZE:
@@ -264,91 +230,9 @@ def ensure_migan():
         except Exception:pass
         raise
     return MIGAN
-def native_model(path):
-    """OpenCV Windows 原生层不能稳定打开中文路径，给它 ASCII 运行时副本。"""
-    run=Path(tempfile.gettempdir())/'face_lora_selector'/path.name;run.parent.mkdir(exist_ok=True)
-    if not run.exists() or run.stat().st_size!=path.stat().st_size:shutil.copy2(path,run)
-    return run
 def required(paths):
     missing=[str(x) for x in paths if not x.exists()]
     if missing:raise RuntimeError('缺少模型文件：\n'+'\n'.join(missing))
-def yaw_class(y): return '正脸' if abs(y)<15 else ('左' if y>0 else '右')+('3/4' if abs(y)<45 else '侧脸')
-def pitch_class(p): return '仰头' if p>=22 else ('低头' if p<=-12 else '正常')
-def person_scale(points):
-    if not points:return '近景/头肩'
-    good=lambda ids:any(0<=points[i].x<=1 and 0<=points[i].y<=1 and getattr(points[i],'visibility',0)>=.45 for i in ids)
-    return '全身' if good((27,28)) else '大半身' if good((25,26)) else '半身' if good((23,24)) else '近景/头肩'
-
-def face_box_intersection(a,b):
-    ax,ay,aw,ah=map(float,a[:4]);bx,by,bw,bh=map(float,b[:4]);x0=max(ax,bx);y0=max(ay,by);x1=min(ax+aw,bx+bw);y1=min(ay+ah,by+bh)
-    return max(0.,x1-x0)*max(0.,y1-y0)
-def dedupe_face_rows(rows):
-    rows=[] if rows is None else list(rows)
-    if len(rows)<2:return rows
-    ordered=sorted(rows,key=lambda f:float(f[2]*f[3]),reverse=True);kept=[]
-    for f in ordered:
-        area=max(1.,float(f[2]*f[3]));drop=False
-        for k in kept:
-            karea=max(1.,float(k[2]*k[3]));inter=face_box_intersection(f,k);small=min(area,karea);union=area+karea-inter;iou=inter/max(1.,union);contain=inter/max(1.,small)
-            if iou>=.45 or contain>=.82:
-                drop=True;break
-        if not drop:kept.append(f)
-    return kept
-
-def pose_head_roi(points,width,height):
-    if not points:return None
-    def valid(i,min_vis=.25):
-        p=points[i];return 0<=p.x<=1 and 0<=p.y<=1 and getattr(p,'visibility',1)>=min_vis
-    head=[points[i] for i in range(0,11) if i<len(points) and valid(i)]
-    if len(head)<2:return None
-    xs=[p.x*width for p in head];ys=[p.y*height for p in head];cx=sum(xs)/len(xs);cy=sum(ys)/len(ys)
-    span_x=max(xs)-min(xs);span_y=max(ys)-min(ys);shoulder=0.
-    if len(points)>12 and valid(11,.2) and valid(12,.2):
-        dx=(points[11].x-points[12].x)*width;dy=(points[11].y-points[12].y)*height;shoulder=math.hypot(dx,dy)
-    rw=max(70.,span_x*2.4,shoulder*.9);rh=max(90.,span_y*3.2,shoulder*1.05)
-    return (max(0.,cx-rw*.5),max(0.,cy-rh*.55),min(float(width),cx+rw*.5),min(float(height),cy+rh*.45))
-def filter_face_rows_by_head(rows,roi):
-    rows=[] if rows is None else list(rows)
-    if not roi:return rows
-    x0,y0,x1,y1=roi;out=[]
-    for f in rows:
-        x,y,w,h=map(float,f[:4]);cx=x+w*.5;cy=y+h*.5
-        inter=max(0.,min(x+w,x1)-max(x,x0))*max(0.,min(y+h,y1)-max(y,y0));area=max(1.,w*h)
-        if (x0<=cx<=x1 and y0<=cy<=y1) or inter/area>=.35:out.append(f)
-    return out
-def consolidate_face_rows(rows,roi):
-    rows=dedupe_face_rows(filter_face_rows_by_head(rows,roi))
-    if roi and len(rows)>1:
-        def score(f):
-            area=max(1.,float(f[2]*f[3]));confidence=float(f[-1]) if len(f)>14 else 1.
-            return area*max(.01,confidence)
-        return [max(rows,key=score)]
-    return rows
-
-class Analyzer(QObject):
-    status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
-    def __init__(self,folder):
-        super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
-    def run(self):
-        try:
-            result=BACKEND.refresh_dataset(
-                self.folder,
-                status=self.status.emit,
-                progress=self.progress.emit,
-            )
-            self.had_v3_cache=result.had_v3_cache
-            self.changed_count=result.changed_count
-            self.added_count=result.added_count
-            self.modified_count=result.modified_count
-            self.deleted_count=result.deleted_count
-            self.unchanged_count=result.unchanged_count
-            self.finished.emit(result.records)
-        except Exception:
-            self.failed.emit(traceback.format_exc())
-    @staticmethod
-    def groups(records,threshold=8,adjacent=16):
-        return BACKEND.regroup_duplicates(records,threshold,adjacent)
-
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
     progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
@@ -1219,7 +1103,16 @@ class Window(QMainWindow):
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
-    from features.ranking.analysis import QualityModels
+    from features.ranking.analysis import (
+        QualityModels,
+        phash_int,
+        dedupe_face_rows,
+        filter_face_rows_by_head,
+        consolidate_face_rows,
+        new_sample_id,
+        pose_smoke_test,
+    )
+    from infrastructure.filesystem import sha256_file
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     qm=QualityModels()
     gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
@@ -1308,15 +1201,7 @@ def self_test():
     cv2.putText(ocr_test,'TEST 123',(70,350),cv2.FONT_HERSHEY_SIMPLEX,3.0,(0,0,0),8,cv2.LINE_AA)
     ocr_boxes,_=TextScan.detected(detector,ocr_test)
     if not ocr_boxes:raise RuntimeError('PP-OCR text detector self-test found no text')
-    options=PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=str(ensure_pose())),
-        running_mode=VisionTaskRunningMode.IMAGE,
-        num_poses=1,
-        min_pose_detection_confidence=.5,
-        min_pose_presence_confidence=.5,
-    )
-    landmarker=PoseLandmarker.create_from_options(options)
-    landmarker.close()
+    pose_smoke_test()
     return 0
 
 if __name__=='__main__':
