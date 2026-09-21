@@ -5,6 +5,7 @@ from .service import (
     OrganizerResult,
     build_plan,
     execute_plan,
+    recover_incomplete_transactions,
     self_test,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "OrganizerResult",
     "build_plan",
     "execute_plan",
+    "recover_incomplete_transactions",
     "self_test",
 ]
