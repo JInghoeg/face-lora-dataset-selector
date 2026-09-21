@@ -19,83 +19,59 @@ Some recent interaction fixes are AUTO PASS but HUMAN UNVERIFIED; see Issue #17.
 
 ## Current
 
-### Limited architecture boundary pass
+### Text Cleanup frontend/backend separation
 
-Goal: prepare for Auto Crop, Organizer and later UX/UI work without a rewrite.
+Detection + repair remain one mature product module:
 
-Implemented in the current pass:
-- feature-first Ranking and Composite boundaries;
-- shared domain models outside Qt;
-- generic filesystem + dataset cache infrastructure;
-- Qt-free quality analysis engine;
-- Qt-free incremental dataset refresh service;
-- stable `SelectorApplication` facade for touched workflows;
-- architecture CI + optional-Composite startup smoke;
-- project/update/QA workflow documentation.
+```
+features/text_cleanup
+```
 
-Stop conditions are defined in `docs/ARCHITECTURE.md`. After the final automated architecture/runtime/Portable checks pass, this refactor stops and Stage 2 Auto Crop research resumes.
+Scope:
+- preserve PP-OCR / suggestion heuristics / manual region workflow;
+- preserve MI-GAN / TELEA / Navier-Stokes;
+- move model, cache, repair and batch filesystem work behind `SelectorApplication`;
+- keep Qt presentation/interaction behavior stable.
 
-Draft PR: #18
-Tracking Issue: #17
+Tracking Issue: #26
+Draft PR: #27
 
-## Next
+### Known remaining product gap
 
-### General Auto Crop Stage 2 research
+General Auto Crop automatic proposal/review is implemented and AUTO PASS, but the planned manual ROI edit/reset workflow is still missing.
 
-Resume the previously frozen research:
-1. exact prior challenge cases;
-2. ISNetIS raw mask validation;
-3. inspect hair/hands/feet/skirt/weapons/accessories protection;
-4. if sufficient, research/reuse a mature mask-to-safe-crop implementation;
-5. if insufficient on props/weapons, escalate to GroundingDINO + SAM as previously planned;
-6. no production Auto Crop algorithm before real-data PASS.
+Required before declaring feature complete:
+- draggable/resizable manual crop ROI;
+- persist manually edited crop box;
+- reset to automatic proposal;
+- final export must use the accepted current box.
 
-### Auto Crop production module
+### Architecture state
 
-Only after research PASS:
-- `features/auto_crop`
-- background task
-- persisted proposal/decision state
-- Auto Crop Review UI
-- final export application
+The main product path now has real backend boundaries:
+- Ranking
+- Composite
+- Auto Crop
+- Source Organizer
+- Text Cleanup
 
-### Source Organizer
+Still deferred:
+- Duplicate as its own independent feature package;
+- dedicated `ui/qt` package / Qt Model-View migration.
 
-Separate optional module:
-- organize active source images into 推荐 / 备选 / 淘汰;
-- never modify pixels;
-- never touch Composite source archive;
-- preserve cache/sample identity across moves.
+Do not rewrite stable algorithms merely to satisfy architecture aesthetics.
 
-### UX/UI quality upgrade
+### Human QA checkpoint
 
-After backend/application boundaries are stable:
-- migrate dataset presentation toward Qt Model/View;
-- preserve state across local updates;
-- reuse mature/open-source Qt components when appropriate;
-- UI depends on application/DTOs, not filesystem/model runtimes.
+Issue #17 remains the authoritative batched HUMAN UNVERIFIED queue.
 
-## Deferred UI backlog
-
-Issue #16:
-- page reset on status changes;
-- explicit custom-target state;
-- custom numeric input prefix/edit behavior;
-- broader explicit background progress.
-
-## Human QA checkpoint
-
-Issue #17 accumulates non-fatal unverified fixes.
-
-Do not force a new manual QA build after each minor correction.
+The consolidated Portable AUTO PASS is not equivalent to release completion.
 
 ## v0.3 release gate
 
 v0.3 is not final until:
-- architecture pass stops at its defined boundary;
-- General Auto Crop backend passes real-data validation;
-- Auto Crop Review integrated;
-- Source Organizer integrated;
-- final export applies Auto Crop over active recommended images;
+- Text Cleanup frontend/backend separation passes automated + Portable regression;
+- General Auto Crop manual ROI edit/reset is implemented;
 - accumulated human-QA checkpoint passes;
-- final local Valby workflow QA passes.
+- Source Organizer is human-tested on a disposable copied dataset;
+- final local Valby end-to-end workflow QA passes.
