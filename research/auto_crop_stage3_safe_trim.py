@@ -30,8 +30,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STAGE2_ROOT = PROJECT_ROOT / "_research_output" / "auto_crop_stage2"
 STAGE3_ROOT = PROJECT_ROOT / "_research_output" / "auto_crop_stage3"
 
-CANONICAL_SCALE = 1024
-REFERENCE_PAD_AT_1024 = 32
+PRIMARY_ALPHA_MIN = 0.10
+DIAGNOSTIC_ALPHA_MIN = 0.20
+FIXED_PADDING_PX = 32
 
 
 def _latest_stage2_run() -> Path:
@@ -54,15 +55,19 @@ def _latest_stage2_run() -> Path:
 
 
 def mask_bbox(mask: Image.Image):
-    """Foreground support bbox using every non-zero saved ISNetIS alpha pixel."""
+    """Raw soft-mask support bbox; diagnostic only."""
     return mask.convert("L").getbbox()
 
 
-def canonical_padding(image_size, pad_at_1024=REFERENCE_PAD_AT_1024):
-    """Map a reference padding at 1024-long-side back to source pixels."""
-    w, h = image_size
-    long_side = max(w, h)
-    return max(1, int(round(float(pad_at_1024) * long_side / CANONICAL_SCALE)))
+def thresholded_mask(mask: Image.Image, alpha_min: float) -> Image.Image:
+    """Drop low-confidence soft-alpha responses before bbox extraction."""
+    threshold = max(0, min(255, int(math.ceil(float(alpha_min) * 255.0))))
+    lut = [0 if value < threshold else 255 for value in range(256)]
+    return mask.convert("L").point(lut)
+
+
+def thresholded_bbox(mask: Image.Image, alpha_min: float):
+    return thresholded_mask(mask, alpha_min).getbbox()
 
 
 def expand_box(box, image_size, pad):
@@ -135,8 +140,8 @@ def overlay_box(image, box, label, color):
 
 
 def make_contact_sheets(rows, out_dir):
-    tile_w, tile_h = 330, 360
-    cols = 5
+    tile_w, tile_h = 300, 350
+    cols = 6
     rows_per_page = 4
 
     for page_no, start in enumerate(range(0, len(rows), rows_per_page), 1):
@@ -153,23 +158,32 @@ def make_contact_sheets(rows, out_dir):
             source = ImageOps.exif_transpose(source).convert("RGB")
 
             person = tuple(row["person_box"]) if row["person_box"] else None
-            raw = tuple(row["mask_bbox"]) if row["mask_bbox"] else None
-            padded = tuple(row["padded_bbox"]) if row["padded_bbox"] else None
+            raw = tuple(row["raw_mask_bbox"]) if row["raw_mask_bbox"] else None
+            primary = tuple(row["primary_bbox"]) if row["primary_bbox"] else None
+            diagnostic = tuple(row["diagnostic_bbox"]) if row["diagnostic_bbox"] else None
+            padded = tuple(row["primary_padded_bbox"]) if row["primary_padded_bbox"] else None
 
-            if padded:
-                crop = source.crop(padded)
-            else:
-                crop = source
+            crop = source.crop(padded) if padded else source
 
             visuals = [
                 ("ORIGINAL", source),
                 ("STAGE1 PERSON BBOX", overlay_box(source, person, "person", "red")),
-                ("RAW MASK BBOX", overlay_box(source, raw, "mask", "blue")),
+                ("RAW SOFT MASK BBOX", overlay_box(source, raw, "raw", "blue")),
                 (
-                    f"MASK BBOX + PAD {row['pad_px']}px",
-                    overlay_box(source, padded, "safe-trim candidate", "green"),
+                    "ALPHA>=0.10 + PAD32",
+                    overlay_box(source, padded, "primary", "green"),
                 ),
-                ("PADDED CROP PREVIEW", crop),
+                (
+                    "ALPHA>=0.20 + PAD32",
+                    overlay_box(
+                        source,
+                        expand_box(diagnostic, source.size, FIXED_PADDING_PX)
+                        if diagnostic else None,
+                        "diagnostic",
+                        "orange",
+                    ),
+                ),
+                ("PRIMARY CROP PREVIEW", crop),
             ]
 
             y = row_i * tile_h
@@ -181,11 +195,11 @@ def make_contact_sheets(rows, out_dir):
             draw.text(
                 (8, y + tile_h - 26),
                 (
-                    f"{Path(row['path']).name[:70]} | "
-                    f"remove raw={row['raw_removed_ratio']:.1%} | "
-                    f"pad={row['padded_removed_ratio']:.1%} | "
-                    f"pad_px={row['pad_px']} | "
-                    f"mask_edge={row['mask_touches_edge']}"
+                    f"{Path(row['path']).name[:62]} | "
+                    f"raw={row['raw_removed_ratio']:.1%} | "
+                    f"a0.10+32={row['primary_removed_ratio']:.1%} | "
+                    f"a0.20+32={row['diagnostic_removed_ratio']:.1%} | "
+                    f"edge0.10={row['primary_touches_edge']}"
                 ),
                 fill="black",
             )
@@ -219,8 +233,10 @@ def build(stage2_run: Path, out_dir: Path):
                 mask = mask.resize(image_size, Image.Resampling.BILINEAR)
 
         raw = mask_bbox(mask)
-        pad_px = canonical_padding(image_size)
-        padded = expand_box(raw, image_size, pad_px)
+        primary = thresholded_bbox(mask, PRIMARY_ALPHA_MIN)
+        diagnostic = thresholded_bbox(mask, DIAGNOSTIC_ALPHA_MIN)
+        primary_padded = expand_box(primary, image_size, FIXED_PADDING_PX)
+        diagnostic_padded = expand_box(diagnostic, image_size, FIXED_PADDING_PX)
 
         rows.append(
             {
@@ -228,20 +244,29 @@ def build(stage2_run: Path, out_dir: Path):
                 "path": str(path),
                 "stage2_mask": str(mask_path),
                 "person_box": item.get("primary_box"),
-                "mask_bbox": list(raw) if raw else None,
-                "padded_bbox": list(padded) if padded else None,
-                "pad_reference": {
-                    "pad_at_1024": REFERENCE_PAD_AT_1024,
-                    "canonical_scale": CANONICAL_SCALE,
-                },
-                "pad_px": pad_px,
+                "raw_mask_bbox": list(raw) if raw else None,
+                "primary_alpha_min": PRIMARY_ALPHA_MIN,
+                "primary_bbox": list(primary) if primary else None,
+                "primary_padded_bbox": list(primary_padded) if primary_padded else None,
+                "diagnostic_alpha_min": DIAGNOSTIC_ALPHA_MIN,
+                "diagnostic_bbox": list(diagnostic) if diagnostic else None,
+                "diagnostic_padded_bbox": list(diagnostic_padded) if diagnostic_padded else None,
+                "padding_px": FIXED_PADDING_PX,
                 "raw_removed_ratio": removed_ratio(raw, image_size) if raw else 0.0,
-                "padded_removed_ratio": (
-                    removed_ratio(padded, image_size) if padded else 0.0
+                "primary_removed_ratio": (
+                    removed_ratio(primary_padded, image_size)
+                    if primary_padded else 0.0
+                ),
+                "diagnostic_removed_ratio": (
+                    removed_ratio(diagnostic_padded, image_size)
+                    if diagnostic_padded else 0.0
                 ),
                 "raw_side_trims": side_trims(raw, image_size),
-                "padded_side_trims": side_trims(padded, image_size),
-                "mask_touches_edge": touches_source_edge(raw, image_size),
+                "primary_side_trims": side_trims(primary_padded, image_size),
+                "diagnostic_side_trims": side_trims(diagnostic_padded, image_size),
+                "raw_touches_edge": touches_source_edge(raw, image_size),
+                "primary_touches_edge": touches_source_edge(primary, image_size),
+                "diagnostic_touches_edge": touches_source_edge(diagnostic, image_size),
             }
         )
 
@@ -260,11 +285,12 @@ def build(stage2_run: Path, out_dir: Path):
         },
         "adaptation": {
             "reason": (
-                "source resolutions vary; normalize ADetailer-like 32px padding "
-                "to ISNetIS canonical 1024 long-side scale"
+                "ISNetIS returns soft alpha. Stage 3.1 drops weak responses before "
+                "bbox extraction and returns to mature fixed-pixel bbox padding."
             ),
-            "pad_at_1024": REFERENCE_PAD_AT_1024,
-            "canonical_scale": CANONICAL_SCALE,
+            "primary_alpha_min": PRIMARY_ALPHA_MIN,
+            "diagnostic_alpha_min": DIAGNOSTIC_ALPHA_MIN,
+            "fixed_padding_px": FIXED_PADDING_PX,
             "production_status": "NOT FROZEN",
         },
         "samples": rows,
@@ -283,7 +309,12 @@ def self_test():
     box = mask_bbox(mask)
     if box != (20, 10, 70, 60):
         raise RuntimeError(f"mask bbox self-test failed: {box}")
-    padded = expand_box(box, mask.size, 8)
+    soft = Image.new("L", (100, 80), 5)
+    ImageDraw.Draw(soft).rectangle((20, 10, 69, 59), fill=255)
+    primary = thresholded_bbox(soft, 0.10)
+    if primary != (20, 10, 70, 60):
+        raise RuntimeError(f"alpha-floor bbox self-test failed: {primary}")
+    padded = expand_box(primary, soft.size, 8)
     if padded != (12, 2, 78, 68):
         raise RuntimeError(f"padding self-test failed: {padded}")
     if not math.isclose(removed_ratio((0, 0, 100, 80), (100, 80)), 0.0):
@@ -312,6 +343,8 @@ def main():
     print(f"Stage 3 output: {out_dir}")
     print(f"Samples: {len(rows)}")
     print("No model inference was run. Existing Stage 2 masks were reused.")
+    print("Stage 3.1 primary geometry: alpha>=0.10 support + fixed 32px padding.")
+    print("Stage 3.1 diagnostic geometry: alpha>=0.20 support + fixed 32px padding.")
     print("No production crop policy was frozen.")
     return 0
 
