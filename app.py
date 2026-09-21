@@ -325,159 +325,29 @@ def consolidate_face_rows(rows,roi):
         return [max(rows,key=score)]
     return rows
 
-class QualityModels:
-    pts=np.array([[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]],np.float32)
-    def __init__(self):
-        required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM]); self.yunet_path=native_model(YUNET);self.brisque_model=native_model(BRISQUE);self.brisque_range=native_model(BRISQUE_RANGE);self.det=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.7,.3,5000);self.det_fallback=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.45,.3,5000); self.fq=ort.InferenceSession(str(EDIFF),providers=['CPUExecutionProvider']); self.fqin=self.fq.get_inputs()[0].name; self.pose=ort.InferenceSession(str(DDDFA),providers=['CPUExecutionProvider']); self.posein=self.pose.get_inputs()[0].name
-        with DDDFA_NORM.open('rb') as f:n=pickle.load(f)
-        self.mean=n['mean'].astype(np.float32); self.std=n['std'].astype(np.float32)
-    def faces(self,img,fallback=False):
-        det=self.det_fallback if fallback else self.det;det.setInputSize((img.shape[1],img.shape[0]));return det.detect(img)[1]
-    @staticmethod
-    def crop(img,roi):
-        sx,sy,ex,ey=map(lambda x:int(round(x)),roi); out=np.zeros((max(1,ey-sy),max(1,ex-sx),3),np.uint8); h,w=img.shape[:2];x0,x1=max(0,sx),min(w,ex);y0,y1=max(0,sy),min(h,ey)
-        if x1>x0 and y1>y0:out[y0-sy:y1-sy,x0-sx:x1-sx]=img[y0:y1,x0:x1]
-        return out
-    def quality(self,img,face):
-        m,_=cv2.estimateAffinePartial2D(face[4:14].reshape(5,2).astype(np.float32),self.pts,method=cv2.LMEDS)
-        if m is None:return 0.
-        rgb=cv2.cvtColor(cv2.warpAffine(img,m,(112,112)),cv2.COLOR_BGR2RGB).astype(np.float32); x=np.transpose((rgb/255-.5)/.5,(2,0,1))[None].astype(np.float32);return float(np.squeeze(self.fq.run(None,{self.fqin:x})[0]))
-    def brisque(self,img):
-        r=cv2.quality.QualityBRISQUE_compute(img,str(self.brisque_model),str(self.brisque_range));return float(r[0] if isinstance(r,tuple) else r[0])
-    def head(self,img,f):
-        x,y,w,h=map(float,f[:4]); old=(w+h)/2; cx=x+w/2;cy=y+h/2+old*.14;s=int(old*1.58); c=cv2.resize(self.crop(img,(cx-s/2,cy-s/2,cx+s/2,cy+s/2)),(120,120)).astype(np.float32); out=self.pose.run(None,{self.posein:((c-127.5)/128).transpose(2,0,1)[None]})[0][0]*self.std+self.mean; r=out[:12].reshape(3,4)[:,:3];r1=r[0]/np.linalg.norm(r[0]);r2=r[1]/np.linalg.norm(r[1]);r=np.stack((r1,r2,np.cross(r1,r2))); yaw=math.degrees(math.asin(np.clip(r[2,0],-1,1)));cs=max(1e-6,math.cos(math.radians(yaw)));return yaw,math.degrees(math.atan2(r[2,1]/cs,r[2,2]/cs)),math.degrees(math.atan2(r[1,0]/cs,r[0,0]/cs))
-
 class Analyzer(QObject):
     status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
-    def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
+    def __init__(self,folder):
+        super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
     def run(self):
         try:
-            files=BACKEND.active_image_files(self.folder)
-            if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set();current_keys={key(p) for p in files};self.deleted_count=sum(1 for k in old if k not in current_keys)
-            for i,path in enumerate(files):
-                stat=path.stat();cache=old.get(key(path))
-                if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
-                    restored=photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns)
-                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
-                    used_sample_ids.add(restored.sample_id);result[i]=restored;self.unchanged_count+=1
-                else:
-                    pending.append((i,path,stat.st_size,stat.st_mtime_ns,cache))
-                    if cache:self.modified_count+=1
-                    else:self.added_count+=1
-            todo=[]
-            for i,path,size,mtime,path_cache in pending:
-                content_sha=sha256_file(path);same=None
-                if path_cache and path_cache.get('content_sha256')==content_sha and path_cache.get('sample_id') not in used_sample_ids:same=path_cache
-                else:
-                    candidates=[x for x in old_by_hash.get(content_sha,[]) if x.get('sample_id') and x.get('sample_id') not in used_sample_ids]
-                    if len(candidates)==1:same=candidates[0]
-                if same:
-                    restored=photo_from_dict(same,path,size,mtime);restored.content_sha256=content_sha
-                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
-                    used_sample_ids.add(restored.sample_id);result[i]=restored
-                    if path_cache:self.modified_count=max(0,self.modified_count-1);self.unchanged_count+=1
-                else:todo.append((i,path,size,mtime,content_sha))
-            self.changed_count=len(todo)
-            if todo:
-                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
-                with PoseLandmarker.create_from_options(opt) as pl:
-                    for n,(i,p,s,m,h) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m,h);self.progress.emit(n,len(todo),p.name)
-            rec=[x for x in result if x]
-            for r in rec:
-                hist=history.get(key(r.path))
-                same_content=bool(hist and hist.get('content_sha256') and hist.get('content_sha256')==r.content_sha256)
-                if same_content:
-                    if hist.get('sample_id'):r.sample_id=hist['sample_id']
-                    r.manual_status=hist.get('manual_status')
-                    r.duplicate_ignore=bool(hist.get('duplicate_ignore',False))
-                    r.duplicate_reviewed=bool(hist.get('duplicate_reviewed',False))
-                    r.ai_suggestion=ai_suggestion_from_dict(hist.get('ai_suggestion'))
-                elif not r.manual_status:r.manual_status=legacy_manual.get(key(r.path))
-                derive_eligibility(r)
-            self.groups(rec);self.base(rec);self.finished.emit(rec)
-        except Exception:self.failed.emit(traceback.format_exc())
+            result=BACKEND.refresh_dataset(
+                self.folder,
+                status=self.status.emit,
+                progress=self.progress.emit,
+            )
+            self.had_v3_cache=result.had_v3_cache
+            self.changed_count=result.changed_count
+            self.added_count=result.added_count
+            self.modified_count=result.modified_count
+            self.deleted_count=result.deleted_count
+            self.unchanged_count=result.unchanged_count
+            self.finished.emit(result.records)
+        except Exception:
+            self.failed.emit(traceback.format_exc())
     @staticmethod
-    def one(path,qm,pl,size,mtime,content_sha=None):
-        r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=new_sample_id()
-        try:
-            with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean())
-        except Exception as e:
-            r.hard_rejects.append(AnalysisFinding('read_error','image',detail=f'无法读取图片：{e}'));derive_eligibility(r);return r
-
-        pose_points=None;head_roi=None
-        try:
-            po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));pose_points=po.pose_landmarks[0] if po.pose_landmarks else None;r.person_scale=person_scale(pose_points);head_roi=pose_head_roi(pose_points,r.width,r.height)
-            if head_roi:r.analysis_metrics['pose_head_roi']=[round(float(v),2) for v in head_roi]
-        except Exception as e:
-            r.review_flags.append(AnalysisFinding('pose_analysis_error','mediapipe',detail=f'景别/姿态分析失败：{e}'))
-
-        rows=[];face_fallback_used=False
-        try:
-            fs=qm.faces(bgr);rows=consolidate_face_rows(fs,head_roi)
-            if not rows and head_roi:
-                fs=qm.faces(bgr,True);rows=consolidate_face_rows(fs,head_roi);face_fallback_used=bool(rows)
-        except Exception as e:
-            r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
-
-        for n,f in enumerate(rows):
-            x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
-            r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet_fallback' if face_fallback_used else 'yunet'))
-        r.faces=len(r.face_detections)
-
-        if rows:
-            primary_index=max(range(len(rows)),key=lambda i:r.face_detections[i].area_ratio*max(.01,r.face_detections[i].confidence))
-            r.face_detections[primary_index].is_primary=True;r.primary_face_id=r.face_detections[primary_index].detection_id
-            f=rows[primary_index];d=r.face_detections[primary_index];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=d.area_ratio;r.face_px=d.face_px
-            try:
-                crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.
-            except Exception as e:r.review_flags.append(AnalysisFinding('face_sharpness_error','opencv',detail=f'主脸清晰度分析失败：{e}'))
-            try:r.face_quality=qm.quality(bgr,f)
-            except Exception as e:r.review_flags.append(AnalysisFinding('face_quality_error','ediffiqa',detail=f'eDifFIQA 分析失败：{e}'))
-            try:r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
-            except Exception as e:r.review_flags.append(AnalysisFinding('head_pose_error','3ddfa',detail=f'头部姿态分析失败：{e}'))
-        else:
-            try:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var())
-            except Exception:pass
-
-        try:r.brisque=qm.brisque(bgr)
-        except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
-
-        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics.update({'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces,'face_detector_fallback':face_fallback_used})
-        if r.faces==0:
-            if r.person_scale=='全身':r.review_flags.append(AnalysisFinding('no_face_full_body_review','yunet',detail='未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认'))
-            else:r.hard_rejects.append(AnalysisFinding('no_face_not_full_body','yunet',detail='两个检测阈值均未找到人脸，且不是全身图'))
-        elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'去重后仍检测到 {r.faces} 张独立人脸，需确认是否多人'))
-        if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
-        if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
-        if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
-        if rows and r.blur<25:r.review_flags.append(AnalysisFinding('severe_face_blur','primary_face',r.blur,25.,'主脸明显模糊'))
-        if rows and r.face_quality<.25:r.review_flags.append(AnalysisFinding('low_face_quality','ediffiqa',r.face_quality,.25,'eDifFIQA 人脸质量偏低'))
-        if r.brisque>80:r.review_flags.append(AnalysisFinding('high_brisque','brisque',r.brisque,80.,'BRISQUE 整图质量偏低'))
-        if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.review_flags.append(AnalysisFinding('extreme_exposure','image',r.brightness,None,'图像疑似严重欠曝或过曝'))
-        derive_eligibility(r);return r
-    @staticmethod
-    def groups(rs,threshold=8,adjacent=16):
-        """以组内质量最佳图为锚点分组，避免 A≈B≈C 的无限传递合并。"""
-        for r in rs:r.duplicate_group=0
-        remaining=set(i for i,r in enumerate(rs) if r.phash and not r.duplicate_ignore)
-        group_no=1
-        while remaining:
-            anchor=max(remaining,key=lambda i:rank(rs[i]));remaining.remove(anchor);members=[anchor]
-            for candidate in list(remaining):
-                a,b=rs[anchor],rs[candidate];distance=bin(a.phash^b.phash).count('1')
-                same_source=a.source==b.source
-                # 连续帧只能在同源、同景别、姿态相近时放宽；每张都直接比较锚点。
-                close=distance<=threshold or (same_source and distance<=adjacent and a.person_scale==b.person_scale and abs(a.yaw-b.yaw)<=25 and abs(a.pitch-b.pitch)<=25)
-                if close:members.append(candidate);remaining.remove(candidate)
-            if len(members)>1:
-                for i in members:rs[i].duplicate_group=group_no
-                group_no+=1
-    @staticmethod
-    def base(rs):
-        for r in rs:
-            if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
+    def groups(records,threshold=8,adjacent=16):
+        return BACKEND.regroup_duplicates(records,threshold,adjacent)
 
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
