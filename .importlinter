@@ -1,0 +1,40 @@
+[importlinter]
+root_packages =
+    core
+    features
+    infrastructure
+    application
+
+[importlinter:contract:core-no-upward-dependencies]
+name = Core has no upward dependencies
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    features
+    infrastructure
+    application
+
+[importlinter:contract:infrastructure-no-product-dependencies]
+name = Infrastructure is product-agnostic
+type = forbidden
+source_modules =
+    infrastructure
+forbidden_modules =
+    features
+    application
+
+[importlinter:contract:features-no-application-dependency]
+name = Features do not depend on application orchestration
+type = forbidden
+source_modules =
+    features
+forbidden_modules =
+    application
+
+[importlinter:contract:feature-independence]
+name = Feature packages are independent siblings
+type = independence
+modules =
+    features.ranking
+    features.composite
