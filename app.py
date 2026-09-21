@@ -1,15 +1,14 @@
 """本地 LoRA 数据集筛选与批量字幕清理。"""
 from __future__ import annotations
-import csv, hashlib, json, math, os, pickle, shutil, sys, tempfile, time, traceback, urllib.request, uuid
+import csv, hashlib, json, math, os, pickle, shutil, sys, tempfile, time, traceback, uuid
 from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
 try:
-    import cv2, numpy as np, onnxruntime as ort
+    import cv2, numpy as np
     from PIL import Image, ImageOps
-    from text_detector import TextDetector
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
@@ -28,11 +27,8 @@ except ImportError as exc:
 APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'
 BACKEND=SelectorApplication()
 CACHE=BACKEND.cache_root;THUMB_CACHE=CACHE/'thumbnails'
-POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; TEXT=MODELS/'ppocrv5_mobile_det'/'inference.onnx'; MIGAN=MODELS/'migan_pipeline_v2.onnx'; COMPOSITE_MODEL_CACHE=MODELS/'composite_split_cache'
+POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; COMPOSITE_MODEL_CACHE=MODELS/'composite_split_cache'
 POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
-MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
-MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
-MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
 PAGE=120; PRESET_TARGETS=(40,50,60,70,80); COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
 
@@ -214,30 +210,6 @@ def write_contact_sheets(records,out_dir,prefix):
         p.end();path=out_dir/f'{prefix}_{page_no:03d}.jpg';page.save(str(path),'JPG',88);written.append(path.name)
     return written
 
-def ensure_migan():
-    """首次使用时从上游下载 MI-GAN，并在落盘前校验大小与 SHA-256。"""
-    if MIGAN.exists() and MIGAN.stat().st_size==MIGAN_SIZE:
-        return MIGAN
-    MIGAN.parent.mkdir(parents=True,exist_ok=True)
-    tmp=MIGAN.with_suffix(MIGAN.suffix+'.part')
-    try:
-        if tmp.exists():tmp.unlink()
-        req=urllib.request.Request(MIGAN_URL,headers={'User-Agent':'Face-LoRA-Dataset-Selector/0.1'})
-        h=hashlib.sha256();size=0
-        with urllib.request.urlopen(req,timeout=60) as src,tmp.open('wb') as dst:
-            while True:
-                chunk=src.read(1024*1024)
-                if not chunk:break
-                dst.write(chunk);h.update(chunk);size+=len(chunk)
-        if size!=MIGAN_SIZE or h.hexdigest().lower()!=MIGAN_SHA256:
-            raise RuntimeError(f'MI-GAN 下载校验失败：{size} bytes / {h.hexdigest()}')
-        tmp.replace(MIGAN)
-    except Exception:
-        try:
-            if tmp.exists():tmp.unlink()
-        except Exception:pass
-        raise
-    return MIGAN
 def required(paths):
     missing=[str(x) for x in paths if not x.exists()]
     if missing:raise RuntimeError('缺少模型文件：\n'+'\n'.join(missing))
@@ -265,53 +237,35 @@ class Analyzer(QObject):
     def groups(records,threshold=8,adjacent=16):
         return BACKEND.regroup_duplicates(records,threshold,adjacent)
 
-def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
     progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
     def __init__(self,folder,cached):super().__init__();self.folder=folder;self.cached=cached
-    @staticmethod
-    def detected(det, image):
-        """使用本项目保留的 PP-OCR DB 后处理，同时取回检测置信度。"""
-        shape=image.shape[:2];det.preprocess_op=det.get_preprocess(max(shape));x=det.preprocess_op(image)
-        if x is None:return [],[]
-        boxes,scores=det.postprocess_op(det.infer(x)[0],shape);boxes=det.filter_tag_det_res(boxes,shape)
-        boxes=np.asarray(boxes).astype(int).tolist() if len(boxes) else []
-        scores=[float(v) for v in np.asarray(scores).reshape(-1)]
-        return boxes,(scores if len(scores)==len(boxes) else [1.0]*len(boxes))
-    @staticmethod
-    def source_name(path): return path.stem.split('_frame_',1)[0] if '_frame_' in path.stem else str(path.parent.resolve())
-    @staticmethod
-    def suggest(records,targets=None):
-        """保留全部文字框；只把典型字幕/overlay 结构默认选入修复。"""
-        repeats=defaultdict(int)
-        for r in (targets or records):
-            try:
-                im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_GRAYSCALE);h,w=im.shape[:2]
-                for b in r.boxes:
-                    a=np.asarray(b); repeats[(TextScan.source_name(r.path),round(float(a[:,0].mean())/w,1),round(float(a[:,1].mean())/h,1))]+=1
-            except Exception:pass
-        for r in records:
-            try:
-                im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_GRAYSCALE);h,w=im.shape[:2]
-                values=[]
-                for b in r.boxes:
-                    a=np.asarray(b);bw=max(1,a[:,0].max()-a[:,0].min());bh=max(1,a[:,1].max()-a[:,1].min());cx=float(a[:,0].mean())/w;cy=float(a[:,1].mean())/h
-                    edge=cy<.18 or cy>.70; line=bw/w>=.12 and bw/bh>=1.35; repeated=repeats[(TextScan.source_name(r.path),round(cx,1),round(cy,1))]>=2
-                    values.append(bool((edge and line) or (repeated and edge and bw/w>=.06)))
-                r.suggested=values;r.selected=list(values);r.manual=[False]*len(values)
-            except Exception:r.suggested=[False]*len(r.boxes);r.selected=[False]*len(r.boxes);r.manual=[False]*len(r.boxes)
     def run(self):
         try:
-            fs=sorted((x for x in self.folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT),key=lambda x:str(x).lower());det=None;out=[];fresh=[]
-            for i,p in enumerate(fs,1):
-                st=p.stat();old=self.cached.get(key(p))
-                if old and old.get('file_size')==st.st_size and old.get('mtime_ns')==st.st_mtime_ns:
-                    boxes=list(old.get('boxes',[]));selected=list(old.get('selected',[]));manual=list(old.get('manual',[False]*len(boxes)));scores=list(old.get('scores',[1.0]*len(boxes)));suggested=list(old.get('suggested',selected));selected=(selected+[False]*len(boxes))[:len(boxes)];manual=(manual+[False]*len(boxes))[:len(boxes)];scores=(scores+[1.0]*len(boxes))[:len(boxes)];suggested=(suggested+[False]*len(boxes))[:len(boxes)];out.append(TextPhoto(p,st.st_size,st.st_mtime_ns,boxes,selected,manual,scores,suggested,int(old.get('width',0)),int(old.get('height',0))))
-                else:
-                    required([TEXT]);det=det or TextDetector(det_config());im=cv2.imdecode(np.fromfile(str(p),np.uint8),cv2.IMREAD_COLOR);boxes,scores=([],[]) if im is None else self.detected(det,im);h,w=im.shape[:2] if im is not None else (0,0);r=TextPhoto(p,st.st_size,st.st_mtime_ns,boxes,[False]*len(boxes),[False]*len(boxes),scores,[],w,h);out.append(r);fresh.append(r)
-                self.progress.emit(i,len(fs),p.name)
-            if fresh:self.suggest(out,fresh)
-            self.finished.emit(out)
+            records=BACKEND.scan_text_cleanup(
+                self.folder,
+                cached=self.cached,
+                progress=self.progress.emit,
+            )
+            self.finished.emit(records)
+        except Exception:self.failed.emit(traceback.format_exc())
+
+class TextCleanupBatchWorker(QObject):
+    progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
+    def __init__(self,folder,output,records,method,expand,radius):
+        super().__init__();self.folder=folder;self.output=output;self.records=list(records);self.method=method;self.expand=expand;self.radius=radius
+    def run(self):
+        try:
+            result=BACKEND.batch_text_cleanup(
+                folder=self.folder,
+                output=self.output,
+                records=self.records,
+                method=self.method,
+                expand=self.expand,
+                radius=self.radius,
+                progress=self.progress.emit,
+            )
+            self.finished.emit(result)
         except Exception:self.failed.emit(traceback.format_exc())
 
 class ImagePreview(QLabel):
@@ -339,30 +293,13 @@ class ImagePreview(QLabel):
         if x1-x0>8 and y1-y0>8:self.drawn.emit([[int((x0-ox)/s),int((y0-oy)/s)],[int((x1-ox)/s),int((y0-oy)/s)],[int((x1-ox)/s),int((y1-oy)/s)],[int((x0-ox)/s),int((y1-oy)/s)]])
         self.update()
 
-class MIRepair:
-    """官方 MI-GAN ONNX pipeline；每个连通字幕区域独立取上下文后修复。"""
-    def __init__(self): self.session=ort.InferenceSession(str(ensure_migan()),providers=['CPUExecutionProvider'])
-    def run(self,image,mask):
-        joined=cv2.dilate(mask,cv2.getStructuringElement(cv2.MORPH_RECT,(25,13)))
-        contours,_=cv2.findContours(joined,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE);result=image.copy();h,w=mask.shape
-        for c in contours:
-            x,y,bw,bh=cv2.boundingRect(c);pad=max(48,int(max(bw,bh)*.55));x0=max(0,x-pad);y0=max(0,y-pad);x1=min(w,x+bw+pad);y1=min(h,y+bh+pad)
-            local_mask=mask[y0:y1,x0:x1]
-            if not np.any(local_mask):continue
-            rgb=cv2.cvtColor(image[y0:y1,x0:x1],cv2.COLOR_BGR2RGB);known=255-local_mask
-            feeds={'image':np.ascontiguousarray(rgb.transpose(2,0,1)[None]),'mask':np.ascontiguousarray(known[None,None])}
-            out=self.session.run(None,feeds)[0][0]
-            if out.shape[0]==3:out=out.transpose(1,2,0)
-            fixed=cv2.cvtColor(out,cv2.COLOR_RGB2BGR);area=result[y0:y1,x0:x1];area[local_mask>0]=fixed[local_mask>0]
-        return result
-
 class SubtitleTab(QWidget):
     PAGE_SIZE=80
     def __init__(self):
-        super().__init__();self.folder=None;self.output=None;self.records=[];self.current=-1;self.thread=None;self.worker=None;self.page=0;self.visible=[];self.thumb_memory=OrderedDict();self.thumb_threads=[];self.thumb_token=0;self.item_by_record={};self.repair_model=None;self.save_timer=QTimer(self);self.save_timer.setSingleShot(True);self.save_timer.timeout.connect(self.save);self.ui();self.restore()
+        super().__init__();self.folder=None;self.output=None;self.records=[];self.current=-1;self.thread=None;self.worker=None;self.page=0;self.visible=[];self.thumb_memory=OrderedDict();self.thumb_threads=[];self.thumb_token=0;self.item_by_record={};self.save_timer=QTimer(self);self.save_timer.setSingleShot(True);self.save_timer.timeout.connect(self.save);self.ui();self.restore()
     def ui(self):
         l=QVBoxLayout(self);p=QGridLayout();self.input=QLabel('未选择输入目录');self.output_label=QLabel('未选择输出目录');a=QPushButton('选择输入目录');b=QPushButton('选择输出目录');a.clicked.connect(self.pick_input);b.clicked.connect(self.pick_output);p.addWidget(a,0,0);p.addWidget(self.input,0,1);p.addWidget(b,1,0);p.addWidget(self.output_label,1,1);l.addLayout(p)
-        c=QHBoxLayout();self.scan=QPushButton('扫描文字');self.scan.clicked.connect(self.start_scan);self.add=QPushButton('添加区域：关');self.add.setCheckable(True);self.add.toggled.connect(lambda x:(self.preview.__setattr__('add',x),self.add.setText('添加区域：开' if x else '添加区域：关')));dele=QPushButton('删除选中区域');dele.clicked.connect(self.delete);self.method=QComboBox();self.method.addItems(['AI 修复（MI-GAN）','快速修复（TELEA）','Navier-Stokes']);self.expand=QSpinBox();self.expand.setRange(0,40);self.expand.setValue(5);self.expand.setPrefix('Mask 扩张 ');self.radius=QSpinBox();self.radius.setRange(1,30);self.radius.setValue(4);self.radius.setPrefix('修复半径 ');pre=QPushButton('预览修复');pre.clicked.connect(self.preview_repair);batch=QPushButton('批量处理到新目录');batch.clicked.connect(self.batch)
+        c=QHBoxLayout();self.scan=QPushButton('扫描文字');self.scan.clicked.connect(self.start_scan);self.add=QPushButton('添加区域：关');self.add.setCheckable(True);self.add.toggled.connect(lambda x:(self.preview.__setattr__('add',x),self.add.setText('添加区域：开' if x else '添加区域：关')));dele=QPushButton('删除选中区域');dele.clicked.connect(self.delete);self.method=QComboBox();self.method.addItems(['AI 修复（MI-GAN）','快速修复（TELEA）','Navier-Stokes']);self.expand=QSpinBox();self.expand.setRange(0,40);self.expand.setValue(5);self.expand.setPrefix('Mask 扩张 ');self.radius=QSpinBox();self.radius.setRange(1,30);self.radius.setValue(4);self.radius.setPrefix('修复半径 ');pre=QPushButton('预览修复');pre.clicked.connect(self.preview_repair);batch=QPushButton('批量处理到新目录');batch.clicked.connect(self.start_batch)
         for x in (self.scan,self.add,dele,QLabel('方式'),self.method,self.expand,self.radius,pre,batch):c.addWidget(x)
         l.addLayout(c)
         f=QHBoxLayout();self.view=QComboBox();self.view.addItems(['全部图片','仅显示需要修复','仅显示有文字','仅显示人工修改']);self.view.currentTextChanged.connect(self.filter_changed);all_s=QPushButton('全选建议修复');all_s.clicked.connect(self.select_suggested);none=QPushButton('取消当前页全部');none.clicked.connect(self.clear_page);self.min_height=QSpinBox();self.min_height.setRange(2,80);self.min_height.setValue(6);self.min_height.setPrefix('最小高 ');self.min_area=QSpinBox();self.min_area.setRange(4,5000);self.min_area.setValue(36);self.min_area.setPrefix('最小面积 ');self.min_conf=QDoubleSpinBox();self.min_conf.setRange(0,.99);self.min_conf.setSingleStep(.05);self.min_conf.setValue(.0);self.min_conf.setPrefix('最低置信度 ')
@@ -377,8 +314,7 @@ class SubtitleTab(QWidget):
         x=QFileDialog.getExistingDirectory(self,'选择输出目录（只写新文件）',str(self.output or APP_DIR))
         if x:self.output=Path(x);self.output_label.setText(x);self.schedule_save()
     def state_records(self):
-        try:
-            d=json.loads((CACHE/'subtitle_cleaner.json').read_text(encoding='utf-8'));return {x['path'].casefold():x for x in d.get('records',[])} if self.folder and d.get('folder','').casefold()==key(self.folder) else {}
+        try:return BACKEND.text_cleanup_state_records(self.folder) if self.folder else {}
         except Exception:return {}
     def start_scan(self):
         if not self.folder or self.thread and self.thread.isRunning():return
@@ -387,13 +323,11 @@ class SubtitleTab(QWidget):
     def scanned(self,rs):self.records=rs;self.current=-1;self.page=0;self.refresh();self.schedule_save();self.bar.setFormat(f'扫描完成：{len(rs)} 张')
     def done(self):self.scan.setEnabled(True);self.worker=None;self.thread.deleteLater();self.thread=None
     def eligible(self,r):
-        h,w=self.current_size(r);return [i for i,b in enumerate(r.boxes) if max(1,np.ptp(np.asarray(b)[:,1]))>=max(self.min_height.value(),h*.004) and abs(cv2.contourArea(np.asarray(b,np.float32)))>=max(self.min_area.value(),h*w*.00001) and (r.scores[i] if i<len(r.scores) else 1)>=self.min_conf.value()]
+        return BACKEND.text_cleanup_eligible(r,min_height=self.min_height.value(),min_area=self.min_area.value(),min_conf=self.min_conf.value())
     def current_size(self,r):
-        if r.height and r.width:return r.height,r.width
-        if self.current>=0 and self.records[self.current] is r and self.preview.img is not None:r.height,r.width=self.preview.img.shape[:2];return r.height,r.width
-        # 旧缓存缺少尺寸时只补读一次，随后保存在 JSON；正常勾选不会再读原图。
-        im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_GRAYSCALE)
-        r.height,r.width=im.shape[:2] if im is not None else (1,1);return r.height,r.width
+        if self.current>=0 and self.records[self.current] is r and self.preview.img is not None:
+            r.height,r.width=self.preview.img.shape[:2];return r.height,r.width
+        return BACKEND.text_cleanup_ensure_size(r)
     def filtered(self):
         mode=self.view.currentText();out=[]
         for i,r in enumerate(self.records):
@@ -431,7 +365,7 @@ class SubtitleTab(QWidget):
         while len(self.thumb_memory)>600:self.thumb_memory.popitem(last=False)
         if token==self.thumb_token and index in self.item_by_record:self.item_by_record[index].setIcon(QIcon(QPixmap.fromImage(image)))
     def show(self,item):
-        self.current=item.data(Qt.UserRole);r=self.records[self.current];im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR);self.preview.set_data(im,r.boxes,r.selected,r.manual);self.refresh_boxes()
+        self.current=item.data(Qt.UserRole);r=self.records[self.current];im=BACKEND.text_cleanup_load_image(r.path);self.preview.set_data(im,r.boxes,r.selected,r.manual);self.refresh_boxes()
     def move_image(self,d):
         if not self.visible:return
         try:p=self.visible.index(self.current)
@@ -476,53 +410,51 @@ class SubtitleTab(QWidget):
         self.update_summary();self.schedule_save()
     def update_summary(self):
         detected=sum(len(self.eligible(r)) for r in self.records);selected=sum(sum(r.selected[i] for i in self.eligible(r)) for r in self.records);manual=sum(any(r.manual) for r in self.records);self.summary.setText(f'检测到文字：{detected} · 建议修复：{selected} · 人工修改：{manual}')
-    def mask(self,r,im):
-        m=np.zeros(im.shape[:2],np.uint8)
-        for b,on in zip(r.boxes,r.selected):
-            if on:cv2.fillPoly(m,[np.asarray(b,np.int32)],255)
-        e=self.expand.value();return cv2.dilate(m,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(e*2+1,e*2+1))) if e else m
-    def repaired_image(self,r,im):
-        m=self.mask(r,im)
-        if not np.any(m):return im.copy()
-        if self.method.currentText()=='AI 修复（MI-GAN）':
-            self.repair_model=self.repair_model or MIRepair();return self.repair_model.run(im,m)
-        return cv2.inpaint(im,m,self.radius.value(),cv2.INPAINT_TELEA if self.method.currentText()=='快速修复（TELEA）' else cv2.INPAINT_NS)
-    def repaired(self,r):
-        im=cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR);return None if im is None else self.repaired_image(r,im)
     def preview_repair(self):
-        if self.current>=0:
-            try:
-                if self.method.currentText()=='AI 修复（MI-GAN）' and not MIGAN.exists():
-                    QMessageBox.information(self,'首次使用 MI-GAN','首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。下载完成后会自动校验文件。')
-                im=self.repaired(self.records[self.current]);self.preview.set_data(im,[],[],[])
-            except Exception as e:QMessageBox.critical(self,'预览修复失败',str(e))
-    def batch(self):
-        if not self.folder or not self.output or not self.records:QMessageBox.information(self,'缺少内容','请先选择输入、输出目录并扫描文字。');return
-        if self.output.resolve()==self.folder.resolve() or self.folder.resolve() in self.output.resolve().parents:QMessageBox.warning(self,'输出目录无效','输出目录必须是源目录以外的新目录。');return
+        if self.current<0:return
         try:
-            self.output.mkdir(parents=True,exist_ok=True)
-            for i,r in enumerate(self.records,1):
-                dst=self.output/r.path.relative_to(self.folder);dst.parent.mkdir(parents=True,exist_ok=True);im=self.repaired(r) if any(r.selected) else cv2.imdecode(np.fromfile(str(r.path),np.uint8),cv2.IMREAD_COLOR)
-                if im is not None:ok,x=cv2.imencode('.webp' if r.path.suffix.lower()=='.webp' else r.path.suffix,im);x.tofile(str(dst)) if ok else None
-                self.bar.setRange(0,len(self.records));self.bar.setValue(i);self.bar.setFormat(f'批量处理 {i}/{len(self.records)}');QApplication.processEvents()
-            QMessageBox.information(self,'批量处理完成',f'已写入新目录：\n{self.output}\n\n源图片未被修改。')
-        except Exception as e:QMessageBox.critical(self,'批量处理失败',str(e))
+            if self.method.currentText()=='AI 修复（MI-GAN）' and not BACKEND.text_cleanup_migan_ready():
+                QMessageBox.information(self,'首次使用 MI-GAN','首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。下载完成后会自动校验文件。')
+            image=BACKEND.text_cleanup_repair(
+                self.records[self.current],
+                method=self.method.currentText(),
+                expand=self.expand.value(),
+                radius=self.radius.value(),
+            )
+            self.preview.set_data(image,[],[],[])
+        except Exception as e:QMessageBox.critical(self,'预览修复失败',str(e))
+    def start_batch(self):
+        if not self.folder or not self.output or not self.records:
+            QMessageBox.information(self,'缺少内容','请先选择输入、输出目录并扫描文字。');return
+        if self.thread and self.thread.isRunning():return
+        if self.output.resolve()==self.folder.resolve() or self.folder.resolve() in self.output.resolve().parents:
+            QMessageBox.warning(self,'输出目录无效','输出目录必须是源目录以外的新目录。');return
+        self.scan.setEnabled(False);self.bar.setRange(0,len(self.records));self.bar.setValue(0);self.bar.setFormat('批量处理准备中…')
+        self.thread=QThread(self);self.worker=TextCleanupBatchWorker(self.folder,self.output,self.records,self.method.currentText(),self.expand.value(),self.radius.value());self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.progress.connect(self.batch_progress);self.worker.finished.connect(self.batch_done);self.worker.failed.connect(self.batch_failed);self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.done);self.thread.start()
+    def batch_progress(self,n,t,name):self.bar.setRange(0,t);self.bar.setValue(n);self.bar.setFormat(f'批量处理 {n}/{t}: {name}')
+    def batch_done(self,result):
+        self.bar.setFormat(f'批量处理完成：{result.written} 张');QMessageBox.information(self,'批量处理完成',f'已写入 {result.written} 张图片到新目录：\n{self.output}\n\n源图片未被修改。')
+    def batch_failed(self,error):
+        self.bar.setFormat('批量处理失败');QMessageBox.critical(self,'批量处理失败',error)
     def restore(self):
         try:
-            d=json.loads((CACHE/'subtitle_cleaner.json').read_text(encoding='utf-8'));f=d.get('folder');o=d.get('output');self.folder=Path(f) if f and Path(f).exists() else None;self.output=Path(o) if o else None;self.input.setText(f or '未选择输入目录');self.output_label.setText(o or '未选择输出目录');self.method.setCurrentText(d.get('method','AI 修复（MI-GAN）'));self.expand.setValue(int(d.get('expand',5)));self.radius.setValue(int(d.get('radius',4)));q=d.get('filters',{});self.min_height.setValue(int(q.get('min_height',6)));self.min_area.setValue(int(q.get('min_area',36)));self.min_conf.setValue(float(q.get('min_conf',0)))
-            restored=[]
-            for x in d.get('records',[]):
-                p=Path(x.get('path',''))
-                if not p.exists():continue
-                st=p.stat()
-                if st.st_size!=x.get('file_size') or st.st_mtime_ns!=x.get('mtime_ns'):continue
-                boxes=list(x.get('boxes',[]));sel=(list(x.get('selected',[]))+[False]*len(boxes))[:len(boxes)];man=(list(x.get('manual',[]))+[False]*len(boxes))[:len(boxes)];scores=(list(x.get('scores',[]))+[1.0]*len(boxes))[:len(boxes)];sug=(list(x.get('suggested',sel))+[False]*len(boxes))[:len(boxes)]
-                restored.append(TextPhoto(p,st.st_size,st.st_mtime_ns,boxes,sel,man,scores,sug,int(x.get('width',0)),int(x.get('height',0))))
-            if restored:self.records=restored;self.refresh(False)
+            state=BACKEND.text_cleanup_load_state();self.folder=state.folder;self.output=state.output;self.input.setText(str(self.folder) if self.folder else '未选择输入目录');self.output_label.setText(str(self.output) if self.output else '未选择输出目录');self.method.setCurrentText(state.method);self.expand.setValue(state.expand);self.radius.setValue(state.radius);self.min_height.setValue(state.min_height);self.min_area.setValue(state.min_area);self.min_conf.setValue(state.min_conf);self.records=list(state.records)
+            if self.records:self.refresh(False)
         except Exception:pass
     def schedule_save(self):self.save_timer.start(450)
     def save(self):
-        try:CACHE.mkdir(exist_ok=True);(CACHE/'subtitle_cleaner.json').write_text(json.dumps({'version':2,'folder':key(self.folder) if self.folder else '','output':str(self.output) if self.output else '','method':self.method.currentText(),'expand':self.expand.value(),'radius':self.radius.value(),'filters':{'min_height':self.min_height.value(),'min_area':self.min_area.value(),'min_conf':self.min_conf.value()},'records':[{'path':key(r.path),'file_size':r.file_size,'mtime_ns':r.mtime_ns,'boxes':r.boxes,'selected':r.selected,'manual':r.manual,'scores':r.scores,'suggested':r.suggested,'width':r.width,'height':r.height} for r in self.records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+        try:
+            BACKEND.text_cleanup_save_state(
+                folder=self.folder,
+                output=self.output,
+                records=self.records,
+                method=self.method.currentText(),
+                expand=self.expand.value(),
+                radius=self.radius.value(),
+                min_height=self.min_height.value(),
+                min_area=self.min_area.value(),
+                min_conf=self.min_conf.value(),
+            )
         except Exception:pass
 
 class ThumbnailWorker(QObject):
@@ -839,7 +771,9 @@ class AutoCropReviewDialog(QDialog):
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
-        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab();tabs.addTab(self.sub,'批量去字幕 / 水印');l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
+        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab() if BACKEND.feature_available('text_cleanup') else None
+        if self.sub is not None:tabs.addTab(self.sub,'批量去字幕 / 水印')
+        l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self);self.group.setExclusive(True)
         for n in PRESET_TARGETS:
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
@@ -1312,7 +1246,7 @@ class Window(QMainWindow):
         if self.folder and self.records:
             try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()),self.target_mode)
             except Exception:self.progress.setText('缓存保存失败')
-    def closeEvent(self,e):self.save();self.sub.save();e.accept()
+    def closeEvent(self,e):self.save();self.sub.save() if self.sub is not None else None;e.accept()
     def exported(self):
         sel=[r for r in self.records if r.status=='推荐']
         if not sel:QMessageBox.information(self,'没有可导出的图片','当前没有推荐图片。');return
@@ -1358,7 +1292,7 @@ def self_test():
     if clamp_page(2,250,120)!=(2,3):raise RuntimeError('pagination clamp valid-page self-test failed')
     if clamp_page(2,121,120)!=(1,2):raise RuntimeError('pagination clamp shrink self-test failed')
     if infer_target_mode(60,None)!='preset' or infer_target_mode(61,None)!='custom' or infer_target_mode(60,'custom')!='custom':raise RuntimeError('target mode inference self-test failed')
-    required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
+    required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE])
     qm=QualityModels()
     gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
     test_bgr=cv2.merge((gradient,gradient,gradient))
@@ -1447,11 +1381,8 @@ def self_test():
     if restored.eligibility!='REJECT':raise RuntimeError('eligibility REJECT self-test failed')
     ok,encoded=cv2.imencode('.jpg',test_bgr)
     if not ok or encoded.size==0:raise RuntimeError('OpenCV image codec self-test failed')
-    detector=TextDetector(det_config())
-    ocr_test=np.full((640,640,3),255,dtype=np.uint8)
-    cv2.putText(ocr_test,'TEST 123',(70,350),cv2.FONT_HERSHEY_SIMPLEX,3.0,(0,0,0),8,cv2.LINE_AA)
-    ocr_boxes,_=TextScan.detected(detector,ocr_test)
-    if not ocr_boxes:raise RuntimeError('PP-OCR text detector self-test found no text')
+    if not BACKEND.feature_available('text_cleanup'):raise RuntimeError('Text Cleanup feature registry self-test failed')
+    BACKEND.text_cleanup_detector_smoke_test()
     with tempfile.TemporaryDirectory() as auto_crop_td:
         root=Path(auto_crop_td);src=root/'source.png';dst=root/'export'
         Image.new('RGB',(100,80),(120,80,40)).save(src)
