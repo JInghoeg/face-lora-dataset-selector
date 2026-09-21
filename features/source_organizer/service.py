@@ -487,8 +487,10 @@ def self_test():
             excluded_dir_names=("_CompositeSplit_Originals",),
         )
         execute_plan(changed)
-        if pa.path != root / "备选" / "sourceA" / "a.jpg":
-            raise RuntimeError("Organizer status-change self-test failed.")
+        if pa.path.resolve() != (root / "备选" / "sourceA" / "a.jpg").resolve():
+            raise RuntimeError(
+                f"Organizer status-change self-test failed: {pa.path!r}"
+            )
         if pa.source != str(a_dir.resolve()):
             raise RuntimeError("Organizer provenance changed after rerun.")
 
@@ -526,10 +528,14 @@ def self_test():
         if len(cycle.moves) != 2:
             raise RuntimeError("Organizer true-cycle plan self-test failed.")
         execute_plan(cycle)
-        if pl.path != root / "备选" / "same.jpg":
-            raise RuntimeError("Organizer cycle destination A failed.")
-        if pr.path != root / "推荐" / "same.jpg":
-            raise RuntimeError("Organizer cycle destination B failed.")
+        if pl.path.resolve() != (root / "备选" / "same.jpg").resolve():
+            raise RuntimeError(
+                f"Organizer cycle destination A failed: {pl.path!r}"
+            )
+        if pr.path.resolve() != (root / "推荐" / "same.jpg").resolve():
+            raise RuntimeError(
+                f"Organizer cycle destination B failed: {pr.path!r}"
+            )
         if pl.path.read_bytes() != b"left" or pr.path.read_bytes() != b"right":
             raise RuntimeError("Organizer cycle content identity failed.")
 
