@@ -273,6 +273,14 @@ class SelectorApplication:
     def pending_auto_crop(self, records):
         return self._auto_crop_module(required=True).pending_records(records)
 
+    def update_auto_crop_box(self, photo, box, image_size):
+        return self._auto_crop_module(required=True).set_manual_box(
+            photo, box, image_size
+        )
+
+    def reset_auto_crop_box(self, photo):
+        return self._auto_crop_module(required=True).reset_box_to_auto(photo)
+
     def accept_auto_crop(self, photo):
         return self._auto_crop_module(required=True).accept_proposal(photo)
 
