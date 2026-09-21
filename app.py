@@ -17,9 +17,7 @@ try:
     from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
-    from composite_split import CompositeProposal, Detection as CompositeDetection, PROPOSAL_VERSION as COMPOSITE_PROPOSAL_VERSION, proposal_from_dict as composite_proposal_from_dict, proposal_from_detections as composite_proposal_from_detections, detect_proposal as detect_composite_proposal
     from application import SelectorApplication
-    from features.composite import COMPOSITE_ARCHIVE_DIR
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -101,7 +99,7 @@ class Photo:
     face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False; duplicate_reviewed:bool=False
     analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'; recommendation_reasons:list[str]=field(default_factory=list)
     reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
-    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[CompositeProposal]=None; composite_scan_version:int=0
+    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[object]=None; composite_scan_version:int=0
     @property
     def status(self): return self.manual_status or self.auto_status
     @property
@@ -193,8 +191,8 @@ def photo_from_dict(d,path,size,mtime):
     p.recommendation_reasons=list(d.get('recommendation_reasons',[]))
     p.reasons=list(d.get('reasons',[]))
     p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
-    proposal=composite_proposal_from_dict(d.get('composite_proposal'))
-    if proposal is not None and proposal.version==COMPOSITE_PROPOSAL_VERSION:p.composite_proposal=proposal
+    proposal=BACKEND.composite_proposal_from_dict(d.get('composite_proposal'))
+    if proposal is not None and proposal.version==BACKEND.composite_proposal_version:p.composite_proposal=proposal
     else:
         p.composite_proposal=None
         if proposal is not None:p.composite_scan_version=0
@@ -998,15 +996,15 @@ class CompositeScanWorker(QObject):
     def __init__(self,records):super().__init__();self.records=records
     def run(self):
         try:
-            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION]
+            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version]
             total=len(todo)
             for i,r in enumerate(todo,1):
                 with Image.open(r.path) as im:
                     try:im.seek(0)
                     except EOFError:pass
                     image=ImageOps.exif_transpose(im).convert('RGB')
-                r.composite_proposal=detect_composite_proposal(image,COMPOSITE_MODEL_CACHE)
-                r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION
+                r.composite_proposal=BACKEND.composite_detect_proposal(image,COMPOSITE_MODEL_CACHE)
+                r.composite_scan_version=BACKEND.composite_proposal_version
                 self.progress.emit(i,total,r.path.name)
             self.finished.emit(self.records)
         except Exception:self.failed.emit(traceback.format_exc())
@@ -1023,7 +1021,7 @@ class IncrementalAnalysisWorker(QObject):
                 total=len(self.items)
                 for i,(path,status) in enumerate(self.items,1):
                     stat=path.stat();r=Analyzer.one(path,qm,pl,stat.st_size,stat.st_mtime_ns)
-                    r.manual_status=status;r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;derive_eligibility(r);out.append(r)
+                    r.manual_status=status;r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;derive_eligibility(r);out.append(r)
                     self.progress.emit(i,total,path.name)
             self.finished.emit(out)
         except Exception:self.failed.emit(traceback.format_exc())
@@ -1103,7 +1101,7 @@ class Window(QMainWindow):
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
         for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);rec.addWidget(b)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setPrefix('自定义 ');ap=QPushButton('应用');ap.clicked.connect(lambda:self.run_rec(self.custom.value()));rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);rec.addWidget(self.composite_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -1143,7 +1141,7 @@ class Window(QMainWindow):
             found=[]
             for r in rs:
                 k=key(r.path);item=self.pending_composite_outputs.get(k)
-                if item:r.manual_status=item['status'];r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.append(k)
+                if item:r.manual_status=item['status'];r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;found.append(k)
             for k in found:self.pending_composite_outputs.pop(k,None)
         self.target=self.custom.value();BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
@@ -1394,9 +1392,10 @@ class Window(QMainWindow):
         pending=sum(p.decision=='pending' for p in proposals)
         self.composite_btn.setText(f'Composite Split 复核… ({len(proposals)} / 待定 {pending})' if proposals else 'Composite Split 复核…')
     def open_composite_review(self):
+        if not BACKEND.feature_available('composite'):return
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         if self.composite_thread and self.composite_thread.isRunning():return
-        todo=sum(r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION for r in self.records)
+        todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
             if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。');return
@@ -1487,21 +1486,21 @@ def self_test():
     test_image=Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB))
     if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
     composite_fake_people=[
-        CompositeDetection([10,10,110,230],.95,'person'),
-        CompositeDetection([150,12,250,232],.93,'person'),
+        BACKEND.make_composite_detection([10,10,110,230],.95,'person'),
+        BACKEND.make_composite_detection([150,12,250,232],.93,'person'),
     ]
     composite_fake_heads=[
-        CompositeDetection([35,20,75,65],.9,'head'),
-        CompositeDetection([175,22,215,67],.88,'head'),
+        BACKEND.make_composite_detection([35,20,75,65],.9,'head'),
+        BACKEND.make_composite_detection([175,22,215,67],.88,'head'),
     ]
-    composite_fake=composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
+    composite_fake=BACKEND.composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
     if not composite_fake or composite_fake.mode!='split_people' or len(composite_fake.output_boxes)!=2:raise RuntimeError('Composite Split proposal self-test failed')
     with tempfile.TemporaryDirectory() as composite_td:
-        root=Path(composite_td);source=root/'source.png';archive=root/COMPOSITE_ARCHIVE_DIR;archive.mkdir()
+        root=Path(composite_td);source=root/'source.png';archive=root/BACKEND.composite_archive_dir;archive.mkdir()
         Image.new('RGB',(100,80),(20,30,40)).save(source);Image.new('RGB',(20,20),(1,2,3)).save(archive/'archived.png')
         active={p.name for p in BACKEND.active_image_files(root)}
         if 'archived.png' in active or 'source.png' not in active:raise RuntimeError('Composite archive exclusion self-test failed')
-        proposal=CompositeProposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
+        proposal=BACKEND.make_composite_proposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
         materialized=BACKEND.accept_composite(root,source,proposal,[True,False]);outputs=[item.path for item in materialized.outputs];archived=materialized.archived_source
         if source.exists() or not archived.exists() or len(outputs)!=2 or any(not p.exists() for p in outputs):raise RuntimeError('Composite materialization self-test failed')
         if [item.status for item in materialized.outputs]!=['推荐','淘汰']:raise RuntimeError('Composite per-output status self-test failed')
