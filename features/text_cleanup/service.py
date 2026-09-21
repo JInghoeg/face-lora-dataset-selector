@@ -192,6 +192,32 @@ class TextCleanupService:
         except Exception:
             return {}
 
+    def detector_smoke_test(self):
+        if not self.ocr_model_path.exists():
+            raise RuntimeError(
+                f"缺少文字检测模型：{self.ocr_model_path}"
+            )
+        detector = TextDetector(
+            detector_config(self.ocr_model_path)
+        )
+        image = np.full((640, 640, 3), 255, dtype=np.uint8)
+        cv2.putText(
+            image,
+            "TEST 123",
+            (70, 350),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            3.0,
+            (0, 0, 0),
+            8,
+            cv2.LINE_AA,
+        )
+        boxes, _ = _detected(detector, image)
+        if not boxes:
+            raise RuntimeError(
+                "PP-OCR text detector self-test found no text"
+            )
+        return len(boxes)
+
     def state_records(self, folder: Path):
         data = self._raw_state()
         if (
