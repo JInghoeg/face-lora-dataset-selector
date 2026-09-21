@@ -18,6 +18,8 @@ try:
     from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
     from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
     from composite_split import CompositeProposal, Detection as CompositeDetection, PROPOSAL_VERSION as COMPOSITE_PROPOSAL_VERSION, proposal_from_dict as composite_proposal_from_dict, proposal_from_detections as composite_proposal_from_detections, detect_proposal as detect_composite_proposal
+    from services.dataset_files import IMAGE_EXTENSIONS as EXT, COMPOSITE_ARCHIVE_DIR, active_image_files, unique_output_path, composite_output_suffix, save_training_crop, composite_output_statuses, materialize_composite_source
+    from services.recommendation import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best, recommend
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
     print(msg)
@@ -48,14 +50,7 @@ MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cf
 MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
-EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff','.gif'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
-COMPOSITE_ARCHIVE_DIR='_CompositeSplit_Originals'
-def is_composite_archive_path(path,folder):
-    try:rel=path.resolve().relative_to(folder.resolve())
-    except Exception:return False
-    archive=COMPOSITE_ARCHIVE_DIR.casefold();return any(part.casefold()==archive for part in rel.parts[:-1])
-def active_image_files(folder):
-    return sorted((x for x in folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT and not is_composite_archive_path(x,folder)),key=lambda x:str(x).lower())
+PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
 
 @dataclass
 class AnalysisFinding:
@@ -606,84 +601,6 @@ class Analyzer(QObject):
         for r in rs:
             if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
 
-def rank(r):
-    """透明的字典序质量排序：FIQA 优先，其次 BRISQUE，最后清晰度；不是综合加权分数。"""
-    return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_full_body_review','secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
-def recommendation_blockers(r):
-    out=[]
-    if r.hard_rejects:out.extend('硬淘汰：'+finding_text(x) for x in r.hard_rejects)
-    out.extend('需先复核：'+finding_text(x) for x in r.review_flags if x.code in AUTO_RECOMMEND_BLOCKING_FLAGS)
-    for x in r.review_flags:
-        if x.code=='low_face_quality' and r.angle_class not in ('左侧脸','右侧脸'):out.append('需先复核：'+finding_text(x))
-    if r.brisque>70:out.append(f'BRISQUE {r.brisque:.1f} > 70')
-    if r.blur<40:out.append(f'主脸清晰度 {r.blur:.1f} < 40')
-    return out
-def recommendation_qualified(r):
-    """FIQA 不再使用统一生杀线；侧脸低 FIQA 只警告，正脸/3⁄4 极低 FIQA 仍先复核。"""
-    return not recommendation_blockers(r)
-def group_entries(rs,group,qualified=False):
-    entries=[r for r in rs if r.duplicate_group==group]
-    if qualified:
-        good=[r for r in entries if recommendation_qualified(r)]
-        entries=good or entries
-    return sorted(entries,key=rank,reverse=True)
-def group_best(rs):
-    """质量门槛后的唯一组代表；同组其余图保持备选，绝不参与后续桶补位。"""
-    result=[];seen=set()
-    for r in sorted(rs,key=rank,reverse=True):
-        if r.duplicate_group and r.duplicate_group in seen:continue
-        result.append(r)
-        if r.duplicate_group:seen.add(r.duplicate_group)
-    return result
-def alloc(total,names,weights):
-    if not names:return {x:0 for x in names}
-    w=sum(weights[x] for x in names);raw={x:total*weights[x]/w for x in names};out={x:int(raw[x]) for x in names}
-    for x in sorted(names,key=lambda a:raw[a]-out[a],reverse=True)[:total-sum(out.values())]:out[x]+=1
-    return out
-def recommend(rs,target):
-    # 自动基线与人工覆盖完全分离：manual_status 只覆盖最终状态，绝不改变算法自己的推荐结果。
-    for r in rs:
-        r.recommendation_reasons=[]
-        r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-    eligible=[r for r in rs if recommendation_qualified(r)]
-    eligible_ids={id(r) for r in eligible}
-    for r in rs:
-        if id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
-    pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
-    for r in eligible:
-        if id(r) not in pool_ids:
-            gr,gs=(1,1)
-            if r.duplicate_group:
-                entries=group_entries(eligible,r.duplicate_group);gr=entries.index(r)+1 if r in entries else 0;gs=len(entries)
-            r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已保留更优代表（组内 {gr}/{gs}）'] if r.duplicate_group else ['同类候选中已有更优代表']
-    for r in pool:b[r.person_scale,r.angle_class].append(r);sc[r.person_scale].append(r)
-    for x in list(b.values())+list(sc.values()):x.sort(key=rank,reverse=True)
-    remain=max(0,target);sq=alloc(remain,[x for x in SCALES if sc[x]],{'近景/头肩':.35,'半身':.3,'大半身':.2,'全身':.15});used=set();chosen=[];ids=set();got=Counter()
-    def take(xs,n):
-        for r in xs:
-            if len(chosen)>=remain or n<=0:return
-            if id(r) in ids or (r.duplicate_group and r.duplicate_group in used):continue
-            chosen.append(r);ids.add(id(r));got[r.person_scale]+=1;n-=1
-            if r.duplicate_group:used.add(r.duplicate_group)
-    for s in [x for x in SCALES if sc[x]]:
-        yn=[x for x in YAWS if b[s,x]]
-        for y,n in alloc(sq[s],yn,{'正脸':.35,'左3/4':.2,'右3/4':.2,'左侧脸':.125,'右侧脸':.125}).items():take(b[s,y],n)
-        take(sc[s],max(0,sq[s]-got[s]))
-    while len(chosen)<remain:
-        progress=False
-        for s in sorted(sq,key=lambda x:got[x]/max(1,sq[x])):
-            n=len(chosen);take(sc[s],1);progress|=len(chosen)>n
-        if not progress:break
-    chosen_ids={id(r) for r in chosen}
-    for r in chosen:
-        r.auto_status='推荐';r.recommendation_reasons=[f'自动推荐：通过基础门槛，并用于补足 {r.person_scale} / {r.angle_class} 覆盖']
-    for r in pool:
-        if id(r) not in chosen_ids and not r.recommendation_reasons:
-            r.recommendation_reasons=[f'已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
-    for r in rs:
-        if r.manual_status:r.recommendation_reasons.insert(0,f'人工状态优先：{r.manual_status}（自动基线：{r.auto_status}）')
-
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
     progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
@@ -1175,56 +1092,6 @@ class CompositeSplitReviewDialog(QDialog):
                 self.current=-1;self.items.clear();self.outputs.clear();self.info.setText('当前没有待复核的 Composite Split 推荐图');self.preview.set_data(None,[],[],[])
             return
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
-
-def unique_output_path(dst:Path,name:str):
-    out=dst/name
-    if not out.exists():return out
-    stem=out.stem;suffix=out.suffix;i=1
-    while True:
-        candidate=dst/f'{stem}_{i}{suffix}'
-        if not candidate.exists():return candidate
-        i+=1
-
-def composite_output_suffix(source:Path):
-    suffix=source.suffix.lower()
-    return suffix if suffix in ('.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff') else '.png'
-
-def save_training_crop(source:Path,box,out:Path):
-    with Image.open(source) as im:
-        try:im.seek(0)
-        except EOFError:pass
-        im=ImageOps.exif_transpose(im).convert('RGB')
-        w,h=im.size;x0,y0,x1,y1=map(int,box)
-        x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1))
-        if x1<=x0 or y1<=y0:raise ValueError(f'无效 Composite Split 裁剪框：{box}')
-        crop=im.crop((x0,y0,x1,y1))
-        suffix=out.suffix.lower()
-        if suffix in ('.jpg','.jpeg'):crop.save(out,quality=95,subsampling=0)
-        elif suffix=='.webp':crop.save(out,quality=95,method=6)
-        else:crop.save(out)
-        return crop.size
-
-def composite_output_statuses(outputs,keep_mask):
-    if len(outputs)!=len(keep_mask):raise ValueError('Composite 输出选择数量与生成结果不一致')
-    return [(path,'推荐' if keep else '淘汰') for path,keep in zip(outputs,keep_mask)]
-
-def materialize_composite_source(folder:Path,source:Path,proposal:CompositeProposal):
-    outputs=[]
-    suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
-    try:
-        for index,box in enumerate(proposal.output_boxes,1):
-            out=unique_output_path(source.parent,f'{source.stem}__{tag}_{index:02d}{suffix}');save_training_crop(source,box,out);outputs.append(out)
-        try:relative=source.resolve().relative_to(folder.resolve())
-        except Exception:relative=Path(source.name)
-        archive=folder/COMPOSITE_ARCHIVE_DIR/relative;archive.parent.mkdir(parents=True,exist_ok=True);archive=unique_output_path(archive.parent,archive.name)
-        shutil.move(str(source),str(archive))
-        return outputs,archive
-    except Exception:
-        for out in outputs:
-            try:
-                if out.exists():out.unlink()
-            except OSError:pass
-        raise
 
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
