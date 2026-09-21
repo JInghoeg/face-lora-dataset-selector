@@ -74,19 +74,27 @@ Pillow:
 - optional conservative padding;
 - clip to source image bounds.
 
-## Stage 3 candidate
+## Stage 3.1 correction
 
-Two views are evaluated:
+The first Stage 3 benchmark exposed two implementation mistakes.
 
-1. **Raw soft-mask support bbox**
-   - every non-zero pixel in the saved 8-bit ISNetIS mask counts as protected;
-   - intentionally conservative around soft/uncertain edges.
+1. ISNetIS produces a soft alpha mask. Treating every non-zero 8-bit pixel as
+   protected foreground caused faint background responses to expand the bbox
+   toward the full image.
+2. The previous 32/1024 normalized padding was our own adaptation. It inflated
+   to 108/120 px on some high-resolution samples and was visibly too loose.
 
-2. **Reference padded bbox**
-   - bbox above + ADetailer-inspired 32 px reference padding;
-   - because sources have very different resolution, 32 px is normalized against
-     the same 1024 long-side canonical scale used by ISNetIS;
-   - this normalization is a research adaptation, NOT a frozen production rule.
+Stage 3.1 therefore evaluates:
+
+1. **Raw soft-mask bbox** — diagnostic only.
+2. **Primary candidate** — alpha >= 0.10 support bbox + fixed 32 px padding.
+3. **Diagnostic candidate** — alpha >= 0.20 support bbox + fixed 32 px padding.
+
+The 0.10 / 0.20 alpha floors come from mature ISNetIS downstream practice
+(CharacterGen-style background removal), while fixed 32 px returns to the
+ADetailer-style mature padding convention.
+
+These remain research candidates, not production thresholds.
 
 No fixed aspect ratio.
 
@@ -106,13 +114,14 @@ It does not:
 
 ## Output
 
-Five-column contact sheets:
+Six-column contact sheets:
 
 1. original;
 2. Stage 1 person bbox reference;
-3. raw ISNetIS mask bbox;
-4. padded mask bbox candidate;
-5. padded crop preview.
+3. raw soft ISNetIS mask bbox;
+4. alpha >= 0.10 bbox + fixed 32 px padding;
+5. alpha >= 0.20 bbox + fixed 32 px padding;
+6. primary alpha >= 0.10 crop preview.
 
 Each row also records:
 - raw removed-area ratio;
