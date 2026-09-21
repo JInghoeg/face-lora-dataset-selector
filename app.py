@@ -1279,6 +1279,9 @@ def self_test():
     from features.source_organizer.service import (
         self_test as source_organizer_backend_self_test,
     )
+    from features.text_cleanup.service import (
+        self_test as text_cleanup_backend_self_test,
+    )
     from features.ranking.analysis import (
         QualityModels,
         phash_int,
@@ -1347,6 +1350,8 @@ def self_test():
     auto_crop_backend_self_test()
     if not BACKEND.feature_available('source_organizer'):raise RuntimeError('Source Organizer feature registry self-test failed')
     source_organizer_backend_self_test()
+    if not BACKEND.feature_available('text_cleanup'):raise RuntimeError('Text Cleanup feature registry self-test failed')
+    text_cleanup_backend_self_test()
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS'
     baseline=[front,side,manual_extra];BACKEND.recompute_recommendations(baseline,2);before=[r.auto_status for r in baseline]
