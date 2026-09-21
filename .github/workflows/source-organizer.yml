@@ -27,6 +27,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: "1"
+
 jobs:
   source-organizer:
     runs-on: windows-latest
