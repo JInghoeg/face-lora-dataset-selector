@@ -1127,6 +1127,11 @@ class Window(QMainWindow):
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
+    from features.auto_crop.service import (
+        AutoCropProposal,
+        FEATURE_KEY as AUTO_CROP_FEATURE_KEY,
+        self_test as auto_crop_backend_self_test,
+    )
     from features.ranking.analysis import (
         QualityModels,
         phash_int,
@@ -1188,6 +1193,8 @@ def self_test():
     recommendation_summary=BACKEND.recompute_recommendations([front,side],2)
     if recommendation_summary.target!=2 or recommendation_summary.automatic_recommended!=2:raise RuntimeError('application recommendation contract self-test failed')
     if not BACKEND.feature_available('ranking'):raise RuntimeError('mandatory ranking feature registry self-test failed')
+    if not BACKEND.feature_available('auto_crop'):raise RuntimeError('Auto Crop feature registry self-test failed')
+    auto_crop_backend_self_test()
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS'
     baseline=[front,side,manual_extra];BACKEND.recompute_recommendations(baseline,2);before=[r.auto_status for r in baseline]
@@ -1227,6 +1234,32 @@ def self_test():
     cv2.putText(ocr_test,'TEST 123',(70,350),cv2.FONT_HERSHEY_SIMPLEX,3.0,(0,0,0),8,cv2.LINE_AA)
     ocr_boxes,_=TextScan.detected(detector,ocr_test)
     if not ocr_boxes:raise RuntimeError('PP-OCR text detector self-test found no text')
+    with tempfile.TemporaryDirectory() as auto_crop_td:
+        root=Path(auto_crop_td);src=root/'source.png';dst=root/'export'
+        Image.new('RGB',(100,80),(120,80,40)).save(src)
+        crop_photo=Photo(src);crop_photo.manual_status='推荐'
+        crop_photo.feature_state[AUTO_CROP_FEATURE_KEY]={
+            'version':1,
+            'state':'candidate',
+            'proposal':AutoCropProposal(
+                box=[10,5,90,75],
+                decision='accepted',
+                removed_area_ratio=.30,
+            ).to_dict(),
+        }
+        exported=BACKEND.export_recommended([crop_photo],dst)
+        if exported.written!=1:raise RuntimeError('Auto Crop export count self-test failed')
+        out=next(dst.iterdir())
+        with Image.open(out) as check:
+            if check.size!=(80,70):raise RuntimeError(f'Auto Crop accepted export size self-test failed: {check.size}')
+        keep=root/'keep.png';Image.new('RGB',(64,48),(1,2,3)).save(keep)
+        keep_photo=Photo(keep);keep_photo.manual_status='推荐'
+        BACKEND.export_recommended([keep_photo],dst)
+        copied=[p for p in dst.iterdir() if p.name.startswith('keep')]
+        if len(copied)!=1:
+            raise RuntimeError('Auto Crop Keep Original export self-test failed')
+        with Image.open(copied[0]) as check:
+            if check.size!=(64,48):raise RuntimeError('Keep Original dimensions changed')
     pose_smoke_test()
     return 0
 
