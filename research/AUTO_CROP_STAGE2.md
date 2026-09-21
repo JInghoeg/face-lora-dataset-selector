@@ -31,7 +31,7 @@ No production Auto Crop algorithm is introduced here.
 
 ## Frozen challenge set
 
-The first run reads the already-completed legacy Auto Crop review and freezes the exact 20 failure/challenge samples into:
+The first run first tries to reuse the exact 20 samples already executed by Stage 1 (`mature_person_v1_3_s/.../results.json`). If that legacy Stage 1 result is unavailable, it falls back to the completed Auto Crop review and reproduces the same deterministic selection rule. It then freezes the 20 samples into:
 
 ```
 _research_output/auto_crop_stage2/challenge_manifest.json
@@ -58,7 +58,7 @@ _research_output/
 
 `_research_output/` is gitignored.
 
-The prior LocalAppData review is read-only legacy input. New model/download/temp/output data must not default to C:.
+Prior LocalAppData Stage 1/review files are read-only legacy input. New model/download/temp/output data must not default to C:.
 
 ## Run
 
