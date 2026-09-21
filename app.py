@@ -761,16 +761,11 @@ class IncrementalAnalysisWorker(QObject):
     def __init__(self,items):super().__init__();self.items=list(items)
     def run(self):
         try:
-            if not self.items:self.finished.emit([]);return
-            qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
-            out=[]
-            with PoseLandmarker.create_from_options(opt) as pl:
-                total=len(self.items)
-                for i,(path,status) in enumerate(self.items,1):
-                    stat=path.stat();r=Analyzer.one(path,qm,pl,stat.st_size,stat.st_mtime_ns)
-                    r.manual_status=status;r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;derive_eligibility(r);out.append(r)
-                    self.progress.emit(i,total,path.name)
-            self.finished.emit(out)
+            records=BACKEND.analyze_generated(
+                self.items,
+                progress=self.progress.emit,
+            )
+            self.finished.emit(records)
         except Exception:self.failed.emit(traceback.format_exc())
 
 class CompositeSplitReviewDialog(QDialog):
