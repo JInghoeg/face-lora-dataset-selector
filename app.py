@@ -13,11 +13,10 @@ try:
     from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
-    from mediapipe.tasks.python.core.base_options import BaseOptions
-    from mediapipe.tasks.python.vision.core.image import Image as MPImage, ImageFormat as MPImageFormat
-    from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarker, PoseLandmarkerOptions
-    from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
-    from composite_split import CompositeProposal, Detection as CompositeDetection, PROPOSAL_VERSION as COMPOSITE_PROPOSAL_VERSION, proposal_from_dict as composite_proposal_from_dict, proposal_from_detections as composite_proposal_from_detections, detect_proposal as detect_composite_proposal
+    from application import SelectorApplication
+    from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
+    from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best
+    from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
     print(msg)
@@ -27,91 +26,15 @@ except ImportError as exc:
     sys.exit(1)
 
 APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'
-USER_DATA_ROOT=Path(os.environ.get('LOCALAPPDATA') or (Path.home()/'AppData'/'Local'))/'Face LoRA Dataset Selector'
-CACHE=USER_DATA_ROOT/'cache';THUMB_CACHE=CACHE/'thumbnails';LEGACY_CACHE=APP_DIR/'cache'
-def migrate_legacy_cache():
-    if not LEGACY_CACHE.exists():return
-    CACHE.mkdir(parents=True,exist_ok=True)
-    for src in LEGACY_CACHE.glob('*.json'):
-        dst=CACHE/src.name
-        if not dst.exists():
-            try:shutil.copy2(src,dst)
-            except OSError:pass
-    legacy_thumbs=LEGACY_CACHE/'thumbnails'
-    if legacy_thumbs.exists() and not THUMB_CACHE.exists():
-        try:shutil.copytree(legacy_thumbs,THUMB_CACHE)
-        except OSError:pass
-migrate_legacy_cache()
+BACKEND=SelectorApplication()
+CACHE=BACKEND.cache_root;THUMB_CACHE=CACHE/'thumbnails'
 POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; TEXT=MODELS/'ppocrv5_mobile_det'/'inference.onnx'; MIGAN=MODELS/'migan_pipeline_v2.onnx'; COMPOSITE_MODEL_CACHE=MODELS/'composite_split_cache'
 POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
 MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
 MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
-EXT={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff','.gif'}; PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; SCALES=('近景/头肩','半身','大半身','全身'); YAWS=('正脸','左3/4','右3/4','左侧脸','右侧脸'); PITCHES=('正常','仰头','低头')
-COMPOSITE_ARCHIVE_DIR='_CompositeSplit_Originals'
-def is_composite_archive_path(path,folder):
-    try:rel=path.resolve().relative_to(folder.resolve())
-    except Exception:return False
-    archive=COMPOSITE_ARCHIVE_DIR.casefold();return any(part.casefold()==archive for part in rel.parts[:-1])
-def active_image_files(folder):
-    return sorted((x for x in folder.rglob('*') if x.is_file() and x.suffix.lower() in EXT and not is_composite_archive_path(x,folder)),key=lambda x:str(x).lower())
-
-@dataclass
-class AnalysisFinding:
-    code:str; source:str; value:Optional[float]=None; threshold:Optional[float]=None; detail:Optional[str]=None
-
-@dataclass
-class FaceDetection:
-    detection_id:str; bbox_xywh:list[float]=field(default_factory=list); confidence:float=0.; area_ratio:float=0.; face_px:int=0; is_primary:bool=False; detector:str='yunet'
-
-@dataclass
-class AISuggestion:
-    patch_id:str=''; bundle_id:str=''; suggested_eligibility:Optional[str]=None; suggested_status:Optional[str]=None; flags:list[str]=field(default_factory=list); note:str=''; request_full_resolution:bool=False; decision:str='pending'
-
-@dataclass
-class ViewSpec:
-    name:str=''; filters:dict=field(default_factory=dict); sort_field:str='默认顺序'; sort_direction:str='优先顺序'; best_only:bool=False; quick_mode:str=''; limit_n:int=10; ranking_basis:str='综合质量'
-
-def view_field_value(photo,field_name):
-    aliases={
-        'status':lambda r:r.status,
-        'person_scale':lambda r:r.person_scale,
-        'angle_class':lambda r:r.angle_class,
-        'pitch_class':lambda r:r.pitch_class,
-        'eligibility':lambda r:r.eligibility,
-        'duplicate_group':lambda r:r.duplicate_group,
-        'source':lambda r:r.source,
-        'face_quality':lambda r:r.face_quality,
-        'brisque':lambda r:r.brisque,
-        'blur':lambda r:r.blur,
-        'face_px':lambda r:r.face_px,
-    }
-    fn=aliases.get(field_name)
-    return fn(photo) if fn else getattr(photo,field_name,None)
-
-def photo_matches_filters(photo,filters):
-    for field_name,expected in filters.items():
-        if view_field_value(photo,field_name)!=expected:return False
-    return True
-
-@dataclass
-class Photo:
-    path:Path; file_size:int=0; mtime_ns:int=0; width:int=0; height:int=0
-    sample_id:str=''; content_sha256:str=''
-    faces:int=0; face_detections:list[FaceDetection]=field(default_factory=list); primary_face_id:Optional[str]=None
-    face_ratio:float=0.; face_px:int=0; blur:float=0.; brightness:float=0.; face_quality:float=0.; brisque:float=0.; yaw:float=0.; pitch:float=0.; roll:float=0.; angle_class:str='未检测'; pitch_class:str='未检测'; person_scale:str='未检测身体'; phash:int=0; duplicate_group:int=0; duplicate_ignore:bool=False; duplicate_reviewed:bool=False
-    analysis_metrics:dict=field(default_factory=dict); review_flags:list[AnalysisFinding]=field(default_factory=list); hard_rejects:list[AnalysisFinding]=field(default_factory=list); eligibility:str='REVIEW'; recommendation_reasons:list[str]=field(default_factory=list)
-    reasons:list[str]=field(default_factory=list)  # v2 compatibility only; v3 does not use this for decisions
-    auto_status:str='备选'; manual_status:Optional[str]=None; ai_suggestion:Optional[AISuggestion]=None; composite_proposal:Optional[CompositeProposal]=None; composite_scan_version:int=0
-    @property
-    def status(self): return self.manual_status or self.auto_status
-    @property
-    def source(self): return self.path.stem.split('_frame_',1)[0] if '_frame_' in self.path.stem else str(self.path.parent.resolve())
-
-@dataclass
-class TextPhoto:
-    path:Path; file_size:int; mtime_ns:int; boxes:list=field(default_factory=list); selected:list=field(default_factory=list); manual:list=field(default_factory=list); scores:list=field(default_factory=list); suggested:list=field(default_factory=list); width:int=0; height:int=0
+PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
 
 def key(path): return str(path.resolve()).casefold()
 def human_bytes(value):
@@ -127,100 +50,23 @@ def set_combo_value(combo,value):
     if i<0:i=combo.findText(value)
     if i>=0:combo.setCurrentIndex(i)
 
-def phash_int(image):
-    """64-bit pHash compatible with ImageHash's historical scipy DCT implementation."""
-    gray=image.convert('L').resize((32,32),Image.Resampling.LANCZOS)
-    dct=cv2.dct(np.asarray(gray,dtype=np.float32))
-    # scipy.fftpack.dct(..., norm=None), used by ImageHash, differs from
-    # OpenCV's orthonormal DCT only by positive per-frequency scale factors.
-    # Apply those factors so old cached hashes and newly analysed hashes remain
-    # comparable instead of silently creating two incompatible hash spaces.
-    scale=np.full(32,math.sqrt(64.0),dtype=np.float32);scale[0]=2.0*math.sqrt(32.0)
-    low=(dct*scale[:,None]*scale[None,:])[:8,:8]
-    bits=(low>np.median(low)).reshape(-1)
-    value=0
-    for bit in bits:value=(value<<1)|int(bit)
-    return value
-def sha256_file(path):
-    h=hashlib.sha256()
-    with path.open('rb') as f:
-        while True:
-            chunk=f.read(1024*1024)
-            if not chunk:break
-            h.update(chunk)
-    return h.hexdigest()
-def new_sample_id(): return 'img_'+uuid.uuid4().hex[:20]
-def cache_path(folder): return CACHE/(hashlib.sha256(key(folder).encode()).hexdigest()[:24]+'.json')
-def load_data(folder):
-    try:
-        data=json.loads(cache_path(folder).read_text(encoding='utf-8')); return data if data.get('version',data.get('schema_version')) in (1,2,3) else {}
-    except Exception:return {}
-def load_cached(folder):
-    d=load_data(folder)
-    if d.get('version',d.get('schema_version'))!=3 or d.get('analysis_version')!=ANALYSIS_VERSION:return {}
-    return {x['path'].casefold():x for x in d.get('records',[])}
-def load_cached_by_hash(folder):
-    d=load_data(folder)
-    if d.get('version',d.get('schema_version'))!=3 or d.get('analysis_version')!=ANALYSIS_VERSION:return {}
-    out=defaultdict(list)
-    for x in d.get('records',[]):
-        if x.get('content_sha256'):out[x['content_sha256']].append(x)
-    return out
-def historical_records(folder):
-    d=load_data(folder)
-    return {str(x.get('path','')).casefold():x for x in d.get('records',[]) if isinstance(x,dict) and x.get('path')}
-def legacy_manual_states(folder):
-    d=load_data(folder)
-    if d.get('version',d.get('schema_version')) not in (1,2):return {}
-    return {x['path'].casefold():x.get('manual_status') for x in d.get('records',[]) if x.get('manual_status')}
-def finding_from_dict(x):
-    if isinstance(x,AnalysisFinding):return x
-    return AnalysisFinding(**x) if isinstance(x,dict) else AnalysisFinding(str(x),'legacy',detail=str(x))
-def face_detection_from_dict(x):
-    if isinstance(x,FaceDetection):return x
-    return FaceDetection(**x) if isinstance(x,dict) else None
-def ai_suggestion_from_dict(x):
-    if isinstance(x,AISuggestion) or x is None:return x
-    return AISuggestion(**x) if isinstance(x,dict) else None
-def photo_to_dict(p):
-    d=asdict(p); d['path']=str(p.path.resolve()); return d
-def photo_from_dict(d,path,size,mtime):
-    p=Photo(path,size,mtime)
-    simple=('width','height','sample_id','content_sha256','faces','primary_face_id','face_ratio','face_px','blur','brightness','face_quality','brisque','yaw','pitch','roll','angle_class','pitch_class','person_scale','phash','duplicate_group','duplicate_ignore','duplicate_reviewed','analysis_metrics','eligibility','auto_status','manual_status','composite_scan_version')
-    for name in simple:
-        if name in d:setattr(p,name,d[name])
-    p.face_detections=[x for x in (face_detection_from_dict(v) for v in d.get('face_detections',[])) if x is not None]
-    p.review_flags=[finding_from_dict(v) for v in d.get('review_flags',[])]
-    p.hard_rejects=[finding_from_dict(v) for v in d.get('hard_rejects',[])]
-    p.recommendation_reasons=list(d.get('recommendation_reasons',[]))
-    p.reasons=list(d.get('reasons',[]))
-    p.ai_suggestion=ai_suggestion_from_dict(d.get('ai_suggestion'))
-    proposal=composite_proposal_from_dict(d.get('composite_proposal'))
-    if proposal is not None and proposal.version==COMPOSITE_PROPOSAL_VERSION:p.composite_proposal=proposal
-    else:
-        p.composite_proposal=None
-        if proposal is not None:p.composite_scan_version=0
-    return p
-def view_spec_from_dict(x):
-    if isinstance(x,ViewSpec):return x
-    if not isinstance(x,dict):return ViewSpec()
-    field_name=str(x.get('sort_field','默认顺序'));direction=str(x.get('sort_direction','优先顺序'));legacy=str(x.get('sort_mode',''))
-    legacy_map={'Face Quality 高 → 低':('Face Quality','优先顺序'),'Face Quality 低 → 高':('Face Quality','反向'),'BRISQUE 低 → 高':('BRISQUE','优先顺序'),'BRISQUE 高 → 低':('BRISQUE','反向'),'Sharpness 高 → 低':('Sharpness','优先顺序'),'Sharpness 低 → 高':('Sharpness','反向'),'状态':('状态','优先顺序'),'Duplicate Group':('Duplicate Group','优先顺序'),'来源目录 / 源视频':('来源目录 / 源视频','优先顺序'),'景别':('景别','优先顺序'),'Yaw':('Yaw','优先顺序'),'Pitch':('Pitch','优先顺序')}
-    if legacy and 'sort_field' not in x:field_name,direction=legacy_map.get(legacy,('默认顺序','优先顺序'))
-    if direction in ('降序','升序'):
-        best_reverse=field_name in ('Face Quality','Sharpness','Face Pixels')
-        old_reverse=direction=='降序';direction='优先顺序' if old_reverse==best_reverse else '反向'
-    if direction not in ('优先顺序','反向'):direction='优先顺序'
-    return ViewSpec(str(x.get('name','')),dict(x.get('filters',{})),field_name,direction,bool(x.get('best_only',False)),str(x.get('quick_mode','')),max(1,int(x.get('limit_n',10))),str(x.get('ranking_basis','综合质量')))
-def saved_views_from_data(folder):
-    return [view_spec_from_dict(x) for x in load_data(folder).get('saved_views',[]) if isinstance(x,dict)]
+def load_data(folder): return BACKEND.load_dataset_state(folder)
+def load_cached(folder): return BACKEND.cache.load_cached(folder)
+def load_cached_by_hash(folder): return BACKEND.cache.load_cached_by_hash(folder)
+def historical_records(folder): return BACKEND.cache.historical_records(folder)
+def legacy_manual_states(folder): return BACKEND.cache.legacy_manual_states(folder)
+def finding_from_dict(value): return BACKEND.cache._finding_from_dict(value)
+def face_detection_from_dict(value): return BACKEND.cache._face_detection_from_dict(value)
+def ai_suggestion_from_dict(value): return BACKEND.cache.ai_suggestion_from_dict(value)
+def photo_to_dict(photo): return BACKEND.cache.photo_to_dict(photo)
+def photo_from_dict(data,path,size,mtime): return BACKEND.cache.photo_from_dict(data,path,size,mtime)
+def view_spec_from_dict(value): return BACKEND.decode_view_spec(value)
+def saved_views_from_data(folder): return BACKEND.saved_views(folder)
 def save_data(folder,records,target,saved_views=None,bundle_ids=None,last_view=None,pending_composite_outputs=None):
-    CACHE.mkdir(parents=True,exist_ok=True); dest=cache_path(folder); tmp=dest.with_suffix('.tmp'); tmp.write_text(json.dumps({'version':3,'analysis_version':ANALYSIS_VERSION,'folder':str(folder.resolve()),'target':target,'saved_views':[asdict(v) if isinstance(v,ViewSpec) else v for v in (saved_views or [])],'exported_bundle_ids':list(bundle_ids or []),'last_view':asdict(last_view) if isinstance(last_view,ViewSpec) else last_view,'pending_composite_outputs':list(pending_composite_outputs or []),'records':[photo_to_dict(x) for x in records]},ensure_ascii=False,separators=(',',':')),encoding='utf-8'); tmp.replace(dest)
+    return BACKEND.save_dataset_state(folder,records,target,saved_views,bundle_ids,last_view,pending_composite_outputs)
+
 def finding_text(f):
     return f.detail or f.code
-def derive_eligibility(r):
-    r.eligibility='REJECT' if r.hard_rejects else ('REVIEW' if r.review_flags else 'PASS')
-    return r.eligibility
 AI_BUNDLE_SCHEMA=1
 
 def relative_export_path(path,root):
@@ -360,13 +206,6 @@ def write_contact_sheets(records,out_dir,prefix):
         p.end();path=out_dir/f'{prefix}_{page_no:03d}.jpg';page.save(str(path),'JPG',88);written.append(path.name)
     return written
 
-def ensure_pose():
-    if not POSE.exists():
-        POSE.parent.mkdir(exist_ok=True); urllib.request.urlretrieve(POSE_URL,POSE)
-    run=Path(tempfile.gettempdir())/'face_lora_selector'/POSE.name; run.parent.mkdir(exist_ok=True)
-    if not run.exists() or run.stat().st_size!=POSE.stat().st_size:shutil.copy2(POSE,run)
-    return run
-
 def ensure_migan():
     """首次使用时从上游下载 MI-GAN，并在落盘前校验大小与 SHA-256。"""
     if MIGAN.exists() and MIGAN.stat().st_size==MIGAN_SIZE:
@@ -391,298 +230,32 @@ def ensure_migan():
         except Exception:pass
         raise
     return MIGAN
-def native_model(path):
-    """OpenCV Windows 原生层不能稳定打开中文路径，给它 ASCII 运行时副本。"""
-    run=Path(tempfile.gettempdir())/'face_lora_selector'/path.name;run.parent.mkdir(exist_ok=True)
-    if not run.exists() or run.stat().st_size!=path.stat().st_size:shutil.copy2(path,run)
-    return run
 def required(paths):
     missing=[str(x) for x in paths if not x.exists()]
     if missing:raise RuntimeError('缺少模型文件：\n'+'\n'.join(missing))
-def yaw_class(y): return '正脸' if abs(y)<15 else ('左' if y>0 else '右')+('3/4' if abs(y)<45 else '侧脸')
-def pitch_class(p): return '仰头' if p>=22 else ('低头' if p<=-12 else '正常')
-def person_scale(points):
-    if not points:return '近景/头肩'
-    good=lambda ids:any(0<=points[i].x<=1 and 0<=points[i].y<=1 and getattr(points[i],'visibility',0)>=.45 for i in ids)
-    return '全身' if good((27,28)) else '大半身' if good((25,26)) else '半身' if good((23,24)) else '近景/头肩'
-
-def face_box_intersection(a,b):
-    ax,ay,aw,ah=map(float,a[:4]);bx,by,bw,bh=map(float,b[:4]);x0=max(ax,bx);y0=max(ay,by);x1=min(ax+aw,bx+bw);y1=min(ay+ah,by+bh)
-    return max(0.,x1-x0)*max(0.,y1-y0)
-def dedupe_face_rows(rows):
-    rows=[] if rows is None else list(rows)
-    if len(rows)<2:return rows
-    ordered=sorted(rows,key=lambda f:float(f[2]*f[3]),reverse=True);kept=[]
-    for f in ordered:
-        area=max(1.,float(f[2]*f[3]));drop=False
-        for k in kept:
-            karea=max(1.,float(k[2]*k[3]));inter=face_box_intersection(f,k);small=min(area,karea);union=area+karea-inter;iou=inter/max(1.,union);contain=inter/max(1.,small)
-            if iou>=.45 or contain>=.82:
-                drop=True;break
-        if not drop:kept.append(f)
-    return kept
-
-def pose_head_roi(points,width,height):
-    if not points:return None
-    def valid(i,min_vis=.25):
-        p=points[i];return 0<=p.x<=1 and 0<=p.y<=1 and getattr(p,'visibility',1)>=min_vis
-    head=[points[i] for i in range(0,11) if i<len(points) and valid(i)]
-    if len(head)<2:return None
-    xs=[p.x*width for p in head];ys=[p.y*height for p in head];cx=sum(xs)/len(xs);cy=sum(ys)/len(ys)
-    span_x=max(xs)-min(xs);span_y=max(ys)-min(ys);shoulder=0.
-    if len(points)>12 and valid(11,.2) and valid(12,.2):
-        dx=(points[11].x-points[12].x)*width;dy=(points[11].y-points[12].y)*height;shoulder=math.hypot(dx,dy)
-    rw=max(70.,span_x*2.4,shoulder*.9);rh=max(90.,span_y*3.2,shoulder*1.05)
-    return (max(0.,cx-rw*.5),max(0.,cy-rh*.55),min(float(width),cx+rw*.5),min(float(height),cy+rh*.45))
-def filter_face_rows_by_head(rows,roi):
-    rows=[] if rows is None else list(rows)
-    if not roi:return rows
-    x0,y0,x1,y1=roi;out=[]
-    for f in rows:
-        x,y,w,h=map(float,f[:4]);cx=x+w*.5;cy=y+h*.5
-        inter=max(0.,min(x+w,x1)-max(x,x0))*max(0.,min(y+h,y1)-max(y,y0));area=max(1.,w*h)
-        if (x0<=cx<=x1 and y0<=cy<=y1) or inter/area>=.35:out.append(f)
-    return out
-def consolidate_face_rows(rows,roi):
-    rows=dedupe_face_rows(filter_face_rows_by_head(rows,roi))
-    if roi and len(rows)>1:
-        def score(f):
-            area=max(1.,float(f[2]*f[3]));confidence=float(f[-1]) if len(f)>14 else 1.
-            return area*max(.01,confidence)
-        return [max(rows,key=score)]
-    return rows
-
-class QualityModels:
-    pts=np.array([[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]],np.float32)
-    def __init__(self):
-        required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM]); self.yunet_path=native_model(YUNET);self.brisque_model=native_model(BRISQUE);self.brisque_range=native_model(BRISQUE_RANGE);self.det=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.7,.3,5000);self.det_fallback=cv2.FaceDetectorYN.create(str(self.yunet_path),'',(320,320),.45,.3,5000); self.fq=ort.InferenceSession(str(EDIFF),providers=['CPUExecutionProvider']); self.fqin=self.fq.get_inputs()[0].name; self.pose=ort.InferenceSession(str(DDDFA),providers=['CPUExecutionProvider']); self.posein=self.pose.get_inputs()[0].name
-        with DDDFA_NORM.open('rb') as f:n=pickle.load(f)
-        self.mean=n['mean'].astype(np.float32); self.std=n['std'].astype(np.float32)
-    def faces(self,img,fallback=False):
-        det=self.det_fallback if fallback else self.det;det.setInputSize((img.shape[1],img.shape[0]));return det.detect(img)[1]
-    @staticmethod
-    def crop(img,roi):
-        sx,sy,ex,ey=map(lambda x:int(round(x)),roi); out=np.zeros((max(1,ey-sy),max(1,ex-sx),3),np.uint8); h,w=img.shape[:2];x0,x1=max(0,sx),min(w,ex);y0,y1=max(0,sy),min(h,ey)
-        if x1>x0 and y1>y0:out[y0-sy:y1-sy,x0-sx:x1-sx]=img[y0:y1,x0:x1]
-        return out
-    def quality(self,img,face):
-        m,_=cv2.estimateAffinePartial2D(face[4:14].reshape(5,2).astype(np.float32),self.pts,method=cv2.LMEDS)
-        if m is None:return 0.
-        rgb=cv2.cvtColor(cv2.warpAffine(img,m,(112,112)),cv2.COLOR_BGR2RGB).astype(np.float32); x=np.transpose((rgb/255-.5)/.5,(2,0,1))[None].astype(np.float32);return float(np.squeeze(self.fq.run(None,{self.fqin:x})[0]))
-    def brisque(self,img):
-        r=cv2.quality.QualityBRISQUE_compute(img,str(self.brisque_model),str(self.brisque_range));return float(r[0] if isinstance(r,tuple) else r[0])
-    def head(self,img,f):
-        x,y,w,h=map(float,f[:4]); old=(w+h)/2; cx=x+w/2;cy=y+h/2+old*.14;s=int(old*1.58); c=cv2.resize(self.crop(img,(cx-s/2,cy-s/2,cx+s/2,cy+s/2)),(120,120)).astype(np.float32); out=self.pose.run(None,{self.posein:((c-127.5)/128).transpose(2,0,1)[None]})[0][0]*self.std+self.mean; r=out[:12].reshape(3,4)[:,:3];r1=r[0]/np.linalg.norm(r[0]);r2=r[1]/np.linalg.norm(r[1]);r=np.stack((r1,r2,np.cross(r1,r2))); yaw=math.degrees(math.asin(np.clip(r[2,0],-1,1)));cs=max(1e-6,math.cos(math.radians(yaw)));return yaw,math.degrees(math.atan2(r[2,1]/cs,r[2,2]/cs)),math.degrees(math.atan2(r[1,0]/cs,r[0,0]/cs))
-
 class Analyzer(QObject):
     status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
-    def __init__(self,folder):super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
+    def __init__(self,folder):
+        super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
     def run(self):
         try:
-            files=active_image_files(self.folder)
-            if not files:raise RuntimeError('没有找到图片。')
-            old=load_cached(self.folder);self.had_v3_cache=bool(old);old_by_hash=load_cached_by_hash(self.folder);history=historical_records(self.folder);legacy_manual=legacy_manual_states(self.folder);result=[None]*len(files);pending=[];used_sample_ids=set();current_keys={key(p) for p in files};self.deleted_count=sum(1 for k in old if k not in current_keys)
-            for i,path in enumerate(files):
-                stat=path.stat();cache=old.get(key(path))
-                if cache and cache.get('file_size')==stat.st_size and cache.get('mtime_ns')==stat.st_mtime_ns:
-                    restored=photo_from_dict(cache,path,stat.st_size,stat.st_mtime_ns)
-                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
-                    used_sample_ids.add(restored.sample_id);result[i]=restored;self.unchanged_count+=1
-                else:
-                    pending.append((i,path,stat.st_size,stat.st_mtime_ns,cache))
-                    if cache:self.modified_count+=1
-                    else:self.added_count+=1
-            todo=[]
-            for i,path,size,mtime,path_cache in pending:
-                content_sha=sha256_file(path);same=None
-                if path_cache and path_cache.get('content_sha256')==content_sha and path_cache.get('sample_id') not in used_sample_ids:same=path_cache
-                else:
-                    candidates=[x for x in old_by_hash.get(content_sha,[]) if x.get('sample_id') and x.get('sample_id') not in used_sample_ids]
-                    if len(candidates)==1:same=candidates[0]
-                if same:
-                    restored=photo_from_dict(same,path,size,mtime);restored.content_sha256=content_sha
-                    if not restored.sample_id or restored.sample_id in used_sample_ids:restored.sample_id=new_sample_id()
-                    used_sample_ids.add(restored.sample_id);result[i]=restored
-                    if path_cache:self.modified_count=max(0,self.modified_count-1);self.unchanged_count+=1
-                else:todo.append((i,path,size,mtime,content_sha))
-            self.changed_count=len(todo)
-            if todo:
-                self.status.emit(f'分析 {len(todo)} 张变化图片；其余恢复缓存…');qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
-                with PoseLandmarker.create_from_options(opt) as pl:
-                    for n,(i,p,s,m,h) in enumerate(todo,1):result[i]=self.one(p,qm,pl,s,m,h);self.progress.emit(n,len(todo),p.name)
-            rec=[x for x in result if x]
-            for r in rec:
-                hist=history.get(key(r.path))
-                same_content=bool(hist and hist.get('content_sha256') and hist.get('content_sha256')==r.content_sha256)
-                if same_content:
-                    if hist.get('sample_id'):r.sample_id=hist['sample_id']
-                    r.manual_status=hist.get('manual_status')
-                    r.duplicate_ignore=bool(hist.get('duplicate_ignore',False))
-                    r.duplicate_reviewed=bool(hist.get('duplicate_reviewed',False))
-                    r.ai_suggestion=ai_suggestion_from_dict(hist.get('ai_suggestion'))
-                elif not r.manual_status:r.manual_status=legacy_manual.get(key(r.path))
-                derive_eligibility(r)
-            self.groups(rec);self.base(rec);self.finished.emit(rec)
-        except Exception:self.failed.emit(traceback.format_exc())
+            result=BACKEND.refresh_dataset(
+                self.folder,
+                status=self.status.emit,
+                progress=self.progress.emit,
+            )
+            self.had_v3_cache=result.had_v3_cache
+            self.changed_count=result.changed_count
+            self.added_count=result.added_count
+            self.modified_count=result.modified_count
+            self.deleted_count=result.deleted_count
+            self.unchanged_count=result.unchanged_count
+            self.finished.emit(result.records)
+        except Exception:
+            self.failed.emit(traceback.format_exc())
     @staticmethod
-    def one(path,qm,pl,size,mtime,content_sha=None):
-        r=Photo(path,size,mtime);r.content_sha256=content_sha or sha256_file(path);r.sample_id=new_sample_id()
-        try:
-            with Image.open(path) as im:im=im.convert('RGB');r.width,r.height=im.size;r.phash=phash_int(im);rgb=np.asarray(im)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR);gray=cv2.cvtColor(bgr,cv2.COLOR_BGR2GRAY);r.brightness=float(gray.mean())
-        except Exception as e:
-            r.hard_rejects.append(AnalysisFinding('read_error','image',detail=f'无法读取图片：{e}'));derive_eligibility(r);return r
-
-        pose_points=None;head_roi=None
-        try:
-            po=pl.detect(MPImage(image_format=MPImageFormat.SRGB,data=rgb));pose_points=po.pose_landmarks[0] if po.pose_landmarks else None;r.person_scale=person_scale(pose_points);head_roi=pose_head_roi(pose_points,r.width,r.height)
-            if head_roi:r.analysis_metrics['pose_head_roi']=[round(float(v),2) for v in head_roi]
-        except Exception as e:
-            r.review_flags.append(AnalysisFinding('pose_analysis_error','mediapipe',detail=f'景别/姿态分析失败：{e}'))
-
-        rows=[];face_fallback_used=False
-        try:
-            fs=qm.faces(bgr);rows=consolidate_face_rows(fs,head_roi)
-            if not rows and head_roi:
-                fs=qm.faces(bgr,True);rows=consolidate_face_rows(fs,head_roi);face_fallback_used=bool(rows)
-        except Exception as e:
-            r.review_flags.append(AnalysisFinding('face_detection_error','yunet',detail=f'人脸检测失败：{e}'))
-
-        for n,f in enumerate(rows):
-            x,y,w,h=map(float,f[:4]);confidence=float(f[-1]) if len(f)>14 else 1.0
-            r.face_detections.append(FaceDetection(f'face_{n+1}',[x,y,w,h],confidence,w*h/max(1,r.width*r.height),int(min(w,h)),False,'yunet_fallback' if face_fallback_used else 'yunet'))
-        r.faces=len(r.face_detections)
-
-        if rows:
-            primary_index=max(range(len(rows)),key=lambda i:r.face_detections[i].area_ratio*max(.01,r.face_detections[i].confidence))
-            r.face_detections[primary_index].is_primary=True;r.primary_face_id=r.face_detections[primary_index].detection_id
-            f=rows[primary_index];d=r.face_detections[primary_index];x,y,w,h=map(float,f[:4]);l,t=max(0,int(x)),max(0,int(y));rr,bb=min(r.width,int(x+w)),min(r.height,int(y+h));r.face_ratio=d.area_ratio;r.face_px=d.face_px
-            try:
-                crop=gray[t:bb,l:rr];r.blur=float(cv2.Laplacian(crop,cv2.CV_64F).var()) if crop.size else 0.
-            except Exception as e:r.review_flags.append(AnalysisFinding('face_sharpness_error','opencv',detail=f'主脸清晰度分析失败：{e}'))
-            try:r.face_quality=qm.quality(bgr,f)
-            except Exception as e:r.review_flags.append(AnalysisFinding('face_quality_error','ediffiqa',detail=f'eDifFIQA 分析失败：{e}'))
-            try:r.yaw,r.pitch,r.roll=qm.head(bgr,f);r.angle_class=yaw_class(r.yaw);r.pitch_class=pitch_class(r.pitch)
-            except Exception as e:r.review_flags.append(AnalysisFinding('head_pose_error','3ddfa',detail=f'头部姿态分析失败：{e}'))
-        else:
-            try:r.blur=float(cv2.Laplacian(gray,cv2.CV_64F).var())
-            except Exception:pass
-
-        try:r.brisque=qm.brisque(bgr)
-        except Exception as e:r.review_flags.append(AnalysisFinding('brisque_error','brisque',detail=f'BRISQUE 分析失败：{e}'))
-
-        dark,bright=float((gray<20).mean()),float((gray>235).mean());r.analysis_metrics.update({'dark_fraction':dark,'bright_fraction':bright,'face_count':r.faces,'face_detector_fallback':face_fallback_used})
-        if r.faces==0:
-            if r.person_scale=='全身':r.review_flags.append(AnalysisFinding('no_face_full_body_review','yunet',detail='未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认'))
-            else:r.hard_rejects.append(AnalysisFinding('no_face_not_full_body','yunet',detail='两个检测阈值均未找到人脸，且不是全身图'))
-        elif r.faces>1:r.review_flags.append(AnalysisFinding('secondary_faces_detected','yunet',float(r.faces),1.,f'去重后仍检测到 {r.faces} 张独立人脸，需确认是否多人'))
-        if r.width<512 or r.height<512:r.review_flags.append(AnalysisFinding('low_resolution','image',float(min(r.width,r.height)),512.,'图片短边分辨率低于 512px'))
-        if rows and r.face_px<120:r.review_flags.append(AnalysisFinding('low_face_pixels','primary_face',float(r.face_px),120.,'主脸实际像素偏小'))
-        if rows and r.face_ratio<.018:r.review_flags.append(AnalysisFinding('low_face_ratio','primary_face',r.face_ratio,.018,'主脸占画面比例偏低'))
-        if rows and r.blur<25:r.review_flags.append(AnalysisFinding('severe_face_blur','primary_face',r.blur,25.,'主脸明显模糊'))
-        if rows and r.face_quality<.25:r.review_flags.append(AnalysisFinding('low_face_quality','ediffiqa',r.face_quality,.25,'eDifFIQA 人脸质量偏低'))
-        if r.brisque>80:r.review_flags.append(AnalysisFinding('high_brisque','brisque',r.brisque,80.,'BRISQUE 整图质量偏低'))
-        if r.brightness<28 or r.brightness>228 or dark>.55 or bright>.55:r.review_flags.append(AnalysisFinding('extreme_exposure','image',r.brightness,None,'图像疑似严重欠曝或过曝'))
-        derive_eligibility(r);return r
-    @staticmethod
-    def groups(rs,threshold=8,adjacent=16):
-        """以组内质量最佳图为锚点分组，避免 A≈B≈C 的无限传递合并。"""
-        for r in rs:r.duplicate_group=0
-        remaining=set(i for i,r in enumerate(rs) if r.phash and not r.duplicate_ignore)
-        group_no=1
-        while remaining:
-            anchor=max(remaining,key=lambda i:rank(rs[i]));remaining.remove(anchor);members=[anchor]
-            for candidate in list(remaining):
-                a,b=rs[anchor],rs[candidate];distance=bin(a.phash^b.phash).count('1')
-                same_source=a.source==b.source
-                # 连续帧只能在同源、同景别、姿态相近时放宽；每张都直接比较锚点。
-                close=distance<=threshold or (same_source and distance<=adjacent and a.person_scale==b.person_scale and abs(a.yaw-b.yaw)<=25 and abs(a.pitch-b.pitch)<=25)
-                if close:members.append(candidate);remaining.remove(candidate)
-            if len(members)>1:
-                for i in members:rs[i].duplicate_group=group_no
-                group_no+=1
-    @staticmethod
-    def base(rs):
-        for r in rs:
-            if r.manual_status is None:r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-
-def rank(r):
-    """透明的字典序质量排序：FIQA 优先，其次 BRISQUE，最后清晰度；不是综合加权分数。"""
-    return(r.face_quality,-r.brisque,r.blur)
-AUTO_RECOMMEND_BLOCKING_FLAGS={'no_face_full_body_review','secondary_faces_detected','probable_multi_person','low_face_pixels','extreme_exposure','face_detection_error','face_quality_error','head_pose_error','face_sharpness_error','brisque_error','pose_analysis_error'}
-def recommendation_blockers(r):
-    out=[]
-    if r.hard_rejects:out.extend('硬淘汰：'+finding_text(x) for x in r.hard_rejects)
-    out.extend('需先复核：'+finding_text(x) for x in r.review_flags if x.code in AUTO_RECOMMEND_BLOCKING_FLAGS)
-    for x in r.review_flags:
-        if x.code=='low_face_quality' and r.angle_class not in ('左侧脸','右侧脸'):out.append('需先复核：'+finding_text(x))
-    if r.brisque>70:out.append(f'BRISQUE {r.brisque:.1f} > 70')
-    if r.blur<40:out.append(f'主脸清晰度 {r.blur:.1f} < 40')
-    return out
-def recommendation_qualified(r):
-    """FIQA 不再使用统一生杀线；侧脸低 FIQA 只警告，正脸/3⁄4 极低 FIQA 仍先复核。"""
-    return not recommendation_blockers(r)
-def group_entries(rs,group,qualified=False):
-    entries=[r for r in rs if r.duplicate_group==group]
-    if qualified:
-        good=[r for r in entries if recommendation_qualified(r)]
-        entries=good or entries
-    return sorted(entries,key=rank,reverse=True)
-def group_best(rs):
-    """质量门槛后的唯一组代表；同组其余图保持备选，绝不参与后续桶补位。"""
-    result=[];seen=set()
-    for r in sorted(rs,key=rank,reverse=True):
-        if r.duplicate_group and r.duplicate_group in seen:continue
-        result.append(r)
-        if r.duplicate_group:seen.add(r.duplicate_group)
-    return result
-def alloc(total,names,weights):
-    if not names:return {x:0 for x in names}
-    w=sum(weights[x] for x in names);raw={x:total*weights[x]/w for x in names};out={x:int(raw[x]) for x in names}
-    for x in sorted(names,key=lambda a:raw[a]-out[a],reverse=True)[:total-sum(out.values())]:out[x]+=1
-    return out
-def recommend(rs,target):
-    # 自动基线与人工覆盖完全分离：manual_status 只覆盖最终状态，绝不改变算法自己的推荐结果。
-    for r in rs:
-        r.recommendation_reasons=[]
-        r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-    eligible=[r for r in rs if recommendation_qualified(r)]
-    eligible_ids={id(r) for r in eligible}
-    for r in rs:
-        if id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
-    pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
-    for r in eligible:
-        if id(r) not in pool_ids:
-            gr,gs=(1,1)
-            if r.duplicate_group:
-                entries=group_entries(eligible,r.duplicate_group);gr=entries.index(r)+1 if r in entries else 0;gs=len(entries)
-            r.recommendation_reasons=[f'Duplicate Group {r.duplicate_group} 已保留更优代表（组内 {gr}/{gs}）'] if r.duplicate_group else ['同类候选中已有更优代表']
-    for r in pool:b[r.person_scale,r.angle_class].append(r);sc[r.person_scale].append(r)
-    for x in list(b.values())+list(sc.values()):x.sort(key=rank,reverse=True)
-    remain=max(0,target);sq=alloc(remain,[x for x in SCALES if sc[x]],{'近景/头肩':.35,'半身':.3,'大半身':.2,'全身':.15});used=set();chosen=[];ids=set();got=Counter()
-    def take(xs,n):
-        for r in xs:
-            if len(chosen)>=remain or n<=0:return
-            if id(r) in ids or (r.duplicate_group and r.duplicate_group in used):continue
-            chosen.append(r);ids.add(id(r));got[r.person_scale]+=1;n-=1
-            if r.duplicate_group:used.add(r.duplicate_group)
-    for s in [x for x in SCALES if sc[x]]:
-        yn=[x for x in YAWS if b[s,x]]
-        for y,n in alloc(sq[s],yn,{'正脸':.35,'左3/4':.2,'右3/4':.2,'左侧脸':.125,'右侧脸':.125}).items():take(b[s,y],n)
-        take(sc[s],max(0,sq[s]-got[s]))
-    while len(chosen)<remain:
-        progress=False
-        for s in sorted(sq,key=lambda x:got[x]/max(1,sq[x])):
-            n=len(chosen);take(sc[s],1);progress|=len(chosen)>n
-        if not progress:break
-    chosen_ids={id(r) for r in chosen}
-    for r in chosen:
-        r.auto_status='推荐';r.recommendation_reasons=[f'自动推荐：通过基础门槛，并用于补足 {r.person_scale} / {r.angle_class} 覆盖']
-    for r in pool:
-        if id(r) not in chosen_ids and not r.recommendation_reasons:
-            r.recommendation_reasons=[f'已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{r.person_scale} / {r.angle_class}）']
-    for r in rs:
-        if r.manual_status:r.recommendation_reasons.insert(0,f'人工状态优先：{r.manual_status}（自动基线：{r.auto_status}）')
+    def groups(records,threshold=8,adjacent=16):
+        return BACKEND.regroup_duplicates(records,threshold,adjacent)
 
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
@@ -1078,15 +651,15 @@ class CompositeScanWorker(QObject):
     def __init__(self,records):super().__init__();self.records=records
     def run(self):
         try:
-            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION]
+            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version]
             total=len(todo)
             for i,r in enumerate(todo,1):
                 with Image.open(r.path) as im:
                     try:im.seek(0)
                     except EOFError:pass
                     image=ImageOps.exif_transpose(im).convert('RGB')
-                r.composite_proposal=detect_composite_proposal(image,COMPOSITE_MODEL_CACHE)
-                r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION
+                r.composite_proposal=BACKEND.composite_detect_proposal(image,COMPOSITE_MODEL_CACHE)
+                r.composite_scan_version=BACKEND.composite_proposal_version
                 self.progress.emit(i,total,r.path.name)
             self.finished.emit(self.records)
         except Exception:self.failed.emit(traceback.format_exc())
@@ -1096,16 +669,11 @@ class IncrementalAnalysisWorker(QObject):
     def __init__(self,items):super().__init__();self.items=list(items)
     def run(self):
         try:
-            if not self.items:self.finished.emit([]);return
-            qm=QualityModels();opt=PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(ensure_pose())),running_mode=VisionTaskRunningMode.IMAGE,num_poses=1,min_pose_detection_confidence=.5,min_pose_presence_confidence=.5)
-            out=[]
-            with PoseLandmarker.create_from_options(opt) as pl:
-                total=len(self.items)
-                for i,(path,status) in enumerate(self.items,1):
-                    stat=path.stat();r=Analyzer.one(path,qm,pl,stat.st_size,stat.st_mtime_ns)
-                    r.manual_status=status;r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;derive_eligibility(r);out.append(r)
-                    self.progress.emit(i,total,path.name)
-            self.finished.emit(out)
+            records=BACKEND.analyze_generated(
+                self.items,
+                progress=self.progress.emit,
+            )
+            self.finished.emit(records)
         except Exception:self.failed.emit(traceback.format_exc())
 
 class CompositeSplitReviewDialog(QDialog):
@@ -1176,56 +744,6 @@ class CompositeSplitReviewDialog(QDialog):
             return
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
-def unique_output_path(dst:Path,name:str):
-    out=dst/name
-    if not out.exists():return out
-    stem=out.stem;suffix=out.suffix;i=1
-    while True:
-        candidate=dst/f'{stem}_{i}{suffix}'
-        if not candidate.exists():return candidate
-        i+=1
-
-def composite_output_suffix(source:Path):
-    suffix=source.suffix.lower()
-    return suffix if suffix in ('.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff') else '.png'
-
-def save_training_crop(source:Path,box,out:Path):
-    with Image.open(source) as im:
-        try:im.seek(0)
-        except EOFError:pass
-        im=ImageOps.exif_transpose(im).convert('RGB')
-        w,h=im.size;x0,y0,x1,y1=map(int,box)
-        x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1))
-        if x1<=x0 or y1<=y0:raise ValueError(f'无效 Composite Split 裁剪框：{box}')
-        crop=im.crop((x0,y0,x1,y1))
-        suffix=out.suffix.lower()
-        if suffix in ('.jpg','.jpeg'):crop.save(out,quality=95,subsampling=0)
-        elif suffix=='.webp':crop.save(out,quality=95,method=6)
-        else:crop.save(out)
-        return crop.size
-
-def composite_output_statuses(outputs,keep_mask):
-    if len(outputs)!=len(keep_mask):raise ValueError('Composite 输出选择数量与生成结果不一致')
-    return [(path,'推荐' if keep else '淘汰') for path,keep in zip(outputs,keep_mask)]
-
-def materialize_composite_source(folder:Path,source:Path,proposal:CompositeProposal):
-    outputs=[]
-    suffix=composite_output_suffix(source);tag='group' if proposal.mode=='group_crop' else 'split'
-    try:
-        for index,box in enumerate(proposal.output_boxes,1):
-            out=unique_output_path(source.parent,f'{source.stem}__{tag}_{index:02d}{suffix}');save_training_crop(source,box,out);outputs.append(out)
-        try:relative=source.resolve().relative_to(folder.resolve())
-        except Exception:relative=Path(source.name)
-        archive=folder/COMPOSITE_ARCHIVE_DIR/relative;archive.parent.mkdir(parents=True,exist_ok=True);archive=unique_output_path(archive.parent,archive.name)
-        shutil.move(str(source),str(archive))
-        return outputs,archive
-    except Exception:
-        for out in outputs:
-            try:
-                if out.exists():out.unlink()
-            except OSError:pass
-        raise
-
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
@@ -1233,7 +751,7 @@ class Window(QMainWindow):
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self)
         for n in (40,50,60,70,80):b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x));self.group.addButton(b,n);rec.addWidget(b)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setPrefix('自定义 ');ap=QPushButton('应用');ap.clicked.connect(lambda:self.run_rec(self.custom.value()));rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);rec.addWidget(self.composite_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -1273,9 +791,9 @@ class Window(QMainWindow):
             found=[]
             for r in rs:
                 k=key(r.path);item=self.pending_composite_outputs.get(k)
-                if item:r.manual_status=item['status'];r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.append(k)
+                if item:r.manual_status=item['status'];r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;found.append(k)
             for k in found:self.pending_composite_outputs.pop(k,None)
-        self.target=self.custom.value();recommend(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
+        self.target=self.custom.value();BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -1505,28 +1023,29 @@ class Window(QMainWindow):
         except Exception as e:QMessageBox.critical(self,'AI 建议导入失败',str(e))
     def manual(self,v):
         r=self.selected()
-        if r:r.manual_status=v;recommend(self.records,self.target);self.refresh();self.save()
+        if r:r.manual_status=v;BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
     def restore(self):
         r=self.selected()
-        if r:r.manual_status=None;recommend(self.records,self.target);self.refresh();self.save()
-    def run_rec(self,n):self.target=n;self.custom.setValue(n);recommend(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
+        if r:r.manual_status=None;BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
+    def run_rec(self,n):self.target=n;self.custom.setValue(n);BACKEND.recompute_recommendations(self.records,n) if self.records else None;self.page=0;self.refresh() if self.records else None;self.save()
     def quick_toggle_item(self,it):
         r=self.records[it.data(Qt.UserRole)]
         if r.status=='推荐':r.manual_status='备选'
         elif r.status=='备选':r.manual_status='推荐'
         else:r.manual_status='备选'
-        recommend(self.records,self.target);self.page=0;self.refresh();self.save()
+        BACKEND.recompute_recommendations(self.records,self.target);self.page=0;self.refresh();self.save()
     def quick_reject_item(self,it):
-        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';recommend(self.records,self.target);self.page=0;self.refresh();self.save()
+        r=self.records[it.data(Qt.UserRole)];r.manual_status='淘汰';BACKEND.recompute_recommendations(self.records,self.target);self.page=0;self.refresh();self.save()
     def update_composite_button(self):
         if not hasattr(self,'composite_btn'):return
         proposals=[r.composite_proposal for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
         pending=sum(p.decision=='pending' for p in proposals)
         self.composite_btn.setText(f'Composite Split 复核… ({len(proposals)} / 待定 {pending})' if proposals else 'Composite Split 复核…')
     def open_composite_review(self):
+        if not BACKEND.feature_available('composite'):return
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         if self.composite_thread and self.composite_thread.isRunning():return
-        todo=sum(r.status=='推荐' and r.composite_scan_version!=COMPOSITE_PROPOSAL_VERSION for r in self.records)
+        todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
             if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。');return
@@ -1547,7 +1066,7 @@ class Window(QMainWindow):
         if not self.folder or r not in self.records or r.composite_proposal is None:return False
         source=r.path
         try:
-            outputs,_archive=materialize_composite_source(self.folder,source,r.composite_proposal);assigned=composite_output_statuses(outputs,keep_mask)
+            result=BACKEND.accept_composite(self.folder,source,r.composite_proposal,keep_mask);assigned=[(item.path,item.status) for item in result.outputs]
         except Exception as e:
             QMessageBox.critical(self,'Composite Split 写入失败',f'{source.name}\n\n{e}')
             return False
@@ -1566,7 +1085,7 @@ class Window(QMainWindow):
         for r in new_records:
             if key(r.path) not in existing:self.records.append(r);existing.add(key(r.path));added.append(r)
             self.pending_composite_outputs.pop(key(r.path),None)
-        Analyzer.groups(self.records);recommend(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
+        Analyzer.groups(self.records);BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
     def incremental_composite_failed(self,error):
         self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.progress.setText('Composite 新图增量分析失败；状态已保留，可刷新恢复');self.save();QMessageBox.critical(self,'Composite 新图分析失败',error)
     def incremental_composite_thread_done(self):
@@ -1602,14 +1121,22 @@ class Window(QMainWindow):
         dst=Path(x)
         if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,'请选择新目录','导出目录不能是源目录或其子目录。');return
         try:
-            dst.mkdir(parents=True,exist_ok=True);written=0
-            for r in sel:
-                out=unique_output_path(dst,r.path.name);shutil.copy2(r.path,out);written+=1
-            QMessageBox.information(self,'导出完成',f'已导出 {written} 张当前推荐图片。\n\nComposite Split 已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。')
+            result=BACKEND.export_recommended(self.records,dst)
+            QMessageBox.information(self,'导出完成',f'已导出 {result.written} 张当前推荐图片。\n\nComposite Split 已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。')
         except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
+    from features.ranking.analysis import (
+        QualityModels,
+        phash_int,
+        dedupe_face_rows,
+        filter_face_rows_by_head,
+        consolidate_face_rows,
+        new_sample_id,
+        pose_smoke_test,
+    )
+    from infrastructure.filesystem import sha256_file
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     qm=QualityModels()
     gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
@@ -1619,25 +1146,25 @@ def self_test():
     test_image=Image.fromarray(cv2.cvtColor(test_bgr,cv2.COLOR_BGR2RGB))
     if phash_int(test_image)!=phash_int(test_image.copy()):raise RuntimeError('pHash self-test is not deterministic')
     composite_fake_people=[
-        CompositeDetection([10,10,110,230],.95,'person'),
-        CompositeDetection([150,12,250,232],.93,'person'),
+        BACKEND.make_composite_detection([10,10,110,230],.95,'person'),
+        BACKEND.make_composite_detection([150,12,250,232],.93,'person'),
     ]
     composite_fake_heads=[
-        CompositeDetection([35,20,75,65],.9,'head'),
-        CompositeDetection([175,22,215,67],.88,'head'),
+        BACKEND.make_composite_detection([35,20,75,65],.9,'head'),
+        BACKEND.make_composite_detection([175,22,215,67],.88,'head'),
     ]
-    composite_fake=composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
+    composite_fake=BACKEND.composite_proposal_from_detections((300,260),composite_fake_people,composite_fake_heads)
     if not composite_fake or composite_fake.mode!='split_people' or len(composite_fake.output_boxes)!=2:raise RuntimeError('Composite Split proposal self-test failed')
     with tempfile.TemporaryDirectory() as composite_td:
-        root=Path(composite_td);source=root/'source.png';archive=root/COMPOSITE_ARCHIVE_DIR;archive.mkdir()
+        root=Path(composite_td);source=root/'source.png';archive=root/BACKEND.composite_archive_dir;archive.mkdir()
         Image.new('RGB',(100,80),(20,30,40)).save(source);Image.new('RGB',(20,20),(1,2,3)).save(archive/'archived.png')
-        active={p.name for p in active_image_files(root)}
+        active={p.name for p in BACKEND.active_image_files(root)}
         if 'archived.png' in active or 'source.png' not in active:raise RuntimeError('Composite archive exclusion self-test failed')
-        proposal=CompositeProposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
-        outputs,archived=materialize_composite_source(root,source,proposal);assigned=composite_output_statuses(outputs,[True,False])
+        proposal=BACKEND.make_composite_proposal(mode='split_people',output_boxes=[[0,0,50,80],[50,0,100,80]],decision='pending')
+        materialized=BACKEND.accept_composite(root,source,proposal,[True,False]);outputs=[item.path for item in materialized.outputs];archived=materialized.archived_source
         if source.exists() or not archived.exists() or len(outputs)!=2 or any(not p.exists() for p in outputs):raise RuntimeError('Composite materialization self-test failed')
-        if [status for _,status in assigned]!=['推荐','淘汰']:raise RuntimeError('Composite per-output status self-test failed')
-        active={p.name for p in active_image_files(root)}
+        if [item.status for item in materialized.outputs]!=['推荐','淘汰']:raise RuntimeError('Composite per-output status self-test failed')
+        active={p.name for p in BACKEND.active_image_files(root)}
         if archived.name in active or {p.name for p in outputs}-active:raise RuntimeError('Composite materialized active-set self-test failed')
     nested=[np.array([10,10,100,100,*([0]*10),.95],dtype=np.float32),np.array([35,35,25,25,*([0]*10),.90],dtype=np.float32)]
     if len(dedupe_face_rows(nested))!=1:raise RuntimeError('nested face detection dedupe self-test failed')
@@ -1658,15 +1185,17 @@ def self_test():
     low_front=Photo(Path('low_front.jpg'));low_front.face_quality=.20;low_front.brisque=30.;low_front.blur=60.;low_front.person_scale='近景/头肩';low_front.angle_class='正脸';low_front.eligibility='REVIEW';low_front.review_flags=[AnalysisFinding('low_face_quality','ediffiqa',.20,.25,'正脸 FIQA 偏低')]
     if not recommendation_qualified(side):raise RuntimeError('usable side profile is incorrectly blocked by FIQA')
     if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
-    recommend([front,side],2)
+    recommendation_summary=BACKEND.recompute_recommendations([front,side],2)
+    if recommendation_summary.target!=2 or recommendation_summary.automatic_recommended!=2:raise RuntimeError('application recommendation contract self-test failed')
+    if not BACKEND.feature_available('ranking'):raise RuntimeError('mandatory ranking feature registry self-test failed')
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS'
-    baseline=[front,side,manual_extra];recommend(baseline,2);before=[r.auto_status for r in baseline]
-    manual_extra.manual_status='推荐';side.manual_status='备选';recommend(baseline,2);after=[r.auto_status for r in baseline]
+    baseline=[front,side,manual_extra];BACKEND.recompute_recommendations(baseline,2);before=[r.auto_status for r in baseline]
+    manual_extra.manual_status='推荐';side.manual_status='备选';BACKEND.recompute_recommendations(baseline,2);after=[r.auto_status for r in baseline]
     if before!=after or sum(r.auto_status=='推荐' for r in baseline)!=2:raise RuntimeError('manual overlay must not change automatic recommendation baseline')
     if manual_extra.status!='推荐' or side.status!='备选':raise RuntimeError('manual overlay must only affect effective status')
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
-    recommend([bad],1)
+    BACKEND.recompute_recommendations([bad],1)
     if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
     probe.duplicate_reviewed=True;restored=photo_from_dict(photo_to_dict(probe),Path('probe.jpg'),123,456)
     if restored.sample_id!=probe.sample_id or not restored.face_detections or not restored.face_detections[0].is_primary:raise RuntimeError('cache v3 round-trip self-test failed')
@@ -1684,7 +1213,7 @@ def self_test():
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','优先顺序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
     if not photo_matches_filters(probe,{'eligibility':'REVIEW'}) or photo_matches_filters(probe,{'eligibility':'PASS'}):raise RuntimeError('field-driven View filter self-test failed')
-    if CACHE.resolve().parent!=USER_DATA_ROOT.resolve():raise RuntimeError('user cache root self-test failed')
+    if CACHE.resolve()!=BACKEND.cache_root.resolve():raise RuntimeError('application cache ownership self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='优先顺序':raise RuntimeError('legacy ViewSpec migration self-test failed')
     d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
@@ -1698,15 +1227,7 @@ def self_test():
     cv2.putText(ocr_test,'TEST 123',(70,350),cv2.FONT_HERSHEY_SIMPLEX,3.0,(0,0,0),8,cv2.LINE_AA)
     ocr_boxes,_=TextScan.detected(detector,ocr_test)
     if not ocr_boxes:raise RuntimeError('PP-OCR text detector self-test found no text')
-    options=PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=str(ensure_pose())),
-        running_mode=VisionTaskRunningMode.IMAGE,
-        num_poses=1,
-        min_pose_detection_confidence=.5,
-        min_pose_presence_confidence=.5,
-    )
-    landmarker=PoseLandmarker.create_from_options(options)
-    landmarker.close()
+    pose_smoke_test()
     return 0
 
 if __name__=='__main__':

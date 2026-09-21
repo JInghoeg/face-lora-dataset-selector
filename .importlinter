@@ -1,0 +1,54 @@
+[importlinter]
+include_external_packages = True
+root_packages =
+    core
+    features
+    infrastructure
+    application
+
+[importlinter:contract:core-no-upward-dependencies]
+name = Core has no upward dependencies
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    features
+    infrastructure
+    application
+
+[importlinter:contract:infrastructure-no-product-dependencies]
+name = Infrastructure is product-agnostic
+type = forbidden
+source_modules =
+    infrastructure
+forbidden_modules =
+    features
+    application
+
+[importlinter:contract:features-no-application-dependency]
+name = Features do not depend on application orchestration
+type = forbidden
+source_modules =
+    features
+forbidden_modules =
+    application
+
+[importlinter:contract:feature-independence]
+name = Feature packages are independent siblings
+type = independence
+modules =
+    features.ranking
+    features.composite
+
+[importlinter:contract:backend-no-qt-dependency]
+name = Backend packages do not depend on Qt UI bindings
+type = forbidden
+source_modules =
+    core
+    features
+    infrastructure
+    application
+forbidden_modules =
+    PySide6
+    PyQt6
+    PyQt5

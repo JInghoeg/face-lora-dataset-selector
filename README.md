@@ -342,6 +342,27 @@ models/migan_pipeline_v2.onnx
 
 ---
 
+## 开发与架构
+
+如果你要继续开发、增加模块或修改 UI，请先看：
+
+- [Architecture](docs/ARCHITECTURE.md) — 当前模块边界和依赖方向
+- [Module Guide](docs/MODULE_GUIDE.md) — 新增功能模块的固定流程
+- [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — Issue / Branch / PR / CI / QA 规则
+- [v0.3 Roadmap](docs/ROADMAP_v0.3.md) — 当前进度、下一步和 release gate
+- [ADR-0001](docs/decisions/ADR-0001-modular-monolith.md) — 为什么选择模块化单体而不是继续堆 app.py / 微服务 / 过早插件化
+
+架构原则的核心不是“把文件拆得漂亮”，而是：
+
+- 功能模块可以独立增删，不破坏兄弟模块；
+- UI 通过 Application API 使用后端能力，而不是直接操作文件系统、模型和缓存；
+- 已知局部变化只做增量处理；
+- 架构边界由 CI 自动检查，避免以后又耦合回去。
+
+开发依赖（例如 Import Linter）单独放在 `requirements-dev.txt`，不会进入普通 Portable runtime。
+
+---
+
 ## 许可证
 
 本项目自身代码采用 **GNU General Public License v3.0 only（GPL-3.0-only）**。
