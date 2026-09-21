@@ -25,15 +25,49 @@ def research_root() -> Path:
     return root.resolve()
 
 
-def legacy_review_root() -> Path:
-    override = os.environ.get("FACE_LORA_LEGACY_REVIEW_ROOT")
+def legacy_research_root() -> Path:
+    override = os.environ.get("FACE_LORA_LEGACY_RESEARCH_ROOT")
     if override:
         return Path(override).resolve()
     local = Path(
         os.environ.get("LOCALAPPDATA")
         or (Path.home() / "AppData" / "Local")
     )
-    return local / "Face LoRA Dataset Selector" / "research" / "auto_crop"
+    return local / "Face LoRA Dataset Selector" / "research"
+
+
+def legacy_review_root() -> Path:
+    override = os.environ.get("FACE_LORA_LEGACY_REVIEW_ROOT")
+    if override:
+        return Path(override).resolve()
+    return legacy_research_root() / "auto_crop"
+
+
+def find_latest_stage1_result() -> Path | None:
+    root = legacy_research_root() / "mature_person_v1_3_s"
+    candidates = list(root.rglob("results.json")) if root.exists() else []
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def load_stage1_challenge(result_path: Path, limit: int) -> list[tuple[Path, str]]:
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    samples = [
+        (Path(item["path"]), str(item.get("old_label", "")))
+        for item in data.get("samples", [])
+        if isinstance(item, dict) and item.get("path")
+    ]
+    if len(samples) != limit:
+        raise RuntimeError(
+            f"Stage 1 results 中有 {len(samples)} 个样本，要求固定 {limit} 个。"
+        )
+    missing = [str(path) for path, _ in samples if not path.exists()]
+    if missing:
+        raise RuntimeError(
+            "Stage 1 challenge 文件缺失：\n" + "\n".join(missing)
+        )
+    return samples
 
 
 def find_latest_review_run() -> Path:
@@ -112,21 +146,37 @@ def freeze_or_load_challenge(
             )
         return manifest, samples
 
-    run = find_latest_review_run()
-    samples = _select_challenge(run, limit)
-    if len(samples) != limit:
-        raise RuntimeError(
-            f"只找到 {len(samples)} 个失败样本，要求固定 {limit} 个。"
-        )
-
-    payload = {
-        "schema_version": 1,
-        "source_review_run": str(run),
-        "selection_rule": [
+    stage1_result = find_latest_stage1_result()
+    if stage1_result is not None:
+        samples = load_stage1_challenge(stage1_result, limit)
+        source = {
+            "kind": "stage1_results",
+            "path": str(stage1_result),
+        }
+        selection_rule = [
+            "reuse exact Stage 1 executed challenge order",
+        ]
+    else:
+        run = find_latest_review_run()
+        samples = _select_challenge(run, limit)
+        if len(samples) != limit:
+            raise RuntimeError(
+                f"只找到 {len(samples)} 个失败样本，要求固定 {limit} 个。"
+            )
+        source = {
+            "kind": "legacy_review",
+            "path": str(run),
+        }
+        selection_rule = [
             "MANUAL and TOO_TIGHT first",
             "then MISSED_CROP",
             "stable SHA-256 path ordering",
-        ],
+        ]
+
+    payload = {
+        "schema_version": 1,
+        "source": source,
+        "selection_rule": selection_rule,
         "count": len(samples),
         "samples": [
             {"path": str(path), "old_label": label}
