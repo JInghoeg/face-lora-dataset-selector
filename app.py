@@ -1185,7 +1185,9 @@ def self_test():
     low_front=Photo(Path('low_front.jpg'));low_front.face_quality=.20;low_front.brisque=30.;low_front.blur=60.;low_front.person_scale='近景/头肩';low_front.angle_class='正脸';low_front.eligibility='REVIEW';low_front.review_flags=[AnalysisFinding('low_face_quality','ediffiqa',.20,.25,'正脸 FIQA 偏低')]
     if not recommendation_qualified(side):raise RuntimeError('usable side profile is incorrectly blocked by FIQA')
     if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
-    BACKEND.recompute_recommendations([front,side],2)
+    recommendation_summary=BACKEND.recompute_recommendations([front,side],2)
+    if recommendation_summary.target!=2 or recommendation_summary.automatic_recommended!=2:raise RuntimeError('application recommendation contract self-test failed')
+    if not BACKEND.feature_available('ranking'):raise RuntimeError('mandatory ranking feature registry self-test failed')
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
     manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS'
     baseline=[front,side,manual_extra];BACKEND.recompute_recommendations(baseline,2);before=[r.auto_status for r in baseline]
