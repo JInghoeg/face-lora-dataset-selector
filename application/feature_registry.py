@@ -47,8 +47,7 @@ def default_registry():
                 '组合图检测与切分',
                 excluded_source_dirs=('_CompositeSplit_Originals',),
             ),
-            FeatureSpec('text_detection', '字幕 / 水印检测标注'),
-            FeatureSpec('text_repair', '字幕 / 水印修复'),
+            FeatureSpec('text_cleanup', '字幕 / 水印检测与修复'),
             FeatureSpec('auto_crop', 'General Auto Crop'),
             FeatureSpec('source_organizer', 'Source Organizer'),
         )

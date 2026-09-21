@@ -73,13 +73,12 @@ Feature-first organization. Each feature owns its product-specific semantics.
 Current:
 - `features/ranking` — quality-analysis engine, duplicate grouping primitives used by the ranking pipeline, and automatic recommendation semantics; analysis is Qt-free.
 - `features/composite` — Composite detector adapter and accept/materialization semantics.
+- `features/auto_crop` — ISNetIS runtime, crop proposal/decision semantics and export crop metadata.
+- `features/source_organizer` — dry-run planning, transaction/journal recovery and source organization semantics.
+- `features/text_cleanup` — subtitle/watermark detection + repair as one feature: PP-OCR, suggestion policy, state persistence, MI-GAN/TELEA/NS repair and batch output.
 
-Planned:
-- `features/duplicates`
-- `features/text_detection`
-- `features/text_repair`
-- `features/auto_crop`
-- `features/organizer`
+Still deferred:
+- `features/duplicates` — grouping primitives are still coupled to Ranking and the review surface remains legacy Qt code.
 
 A feature should be removable without requiring edits inside sibling feature packages.
 
@@ -90,12 +89,9 @@ Generic implementation adapters.
 Current:
 - `infrastructure/filesystem.py` — generic file enumeration/copy/crop/archive/hash primitives.
 - `infrastructure/cache_store.py` — versioned dataset cache serialization with feature codec injection.
+- `infrastructure/model_download.py` — generic SHA-verified reusable model download/cache helper.
 
-Planned candidates when pressure justifies extraction:
-- cache persistence;
-- model runtime adapters;
-- image decode/encode;
-- external model download/cache.
+Feature-specific model runtimes remain inside their owning feature packages.
 
 Infrastructure APIs must remain generic. Composite-specific naming and state belong in `features/composite`, not in filesystem infrastructure.
 

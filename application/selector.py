@@ -36,6 +36,11 @@ try:
 except ImportError:
     _source_organizer_service = None
 
+try:
+    from features.text_cleanup import TextCleanupService as _TextCleanupService
+except ImportError:
+    _TextCleanupService = None
+
 
 class SelectorApplication:
     def __init__(self, registry=None):
@@ -69,6 +74,30 @@ class SelectorApplication:
             self.cache, self.active_image_files
         )
 
+        self.text_cleanup = (
+            _TextCleanupService(
+                ocr_model_path=project_root
+                / "models"
+                / "ppocrv5_mobile_det"
+                / "inference.onnx",
+                state_path=self.cache.cache_root / "subtitle_cleaner.json",
+                model_cache=self.model_cache_root / "text_cleanup",
+                model_reuse_roots=(
+                    project_root / "models",
+                    self.model_cache_root.parent
+                    / "_shared_cache"
+                    / "face-lora-dataset-selector",
+                ),
+            )
+            if _TextCleanupService is not None
+            else None
+        )
+
+    def _text_cleanup_service(self, required=True):
+        if self.text_cleanup is None and required:
+            raise RuntimeError("Text Cleanup feature is not available.")
+        return self.text_cleanup
+
     def _source_organizer_module(self, required=True):
         if _source_organizer_service is None and required:
             raise RuntimeError("Source Organizer feature is not available.")
@@ -98,6 +127,8 @@ class SelectorApplication:
             return self._auto_crop_module(required=False) is not None
         if feature_id == "source_organizer":
             return self._source_organizer_module(required=False) is not None
+        if feature_id == "text_cleanup":
+            return self._text_cleanup_service(required=False) is not None
         return True
 
     def excluded_source_dirs(self):
@@ -293,6 +324,74 @@ class SelectorApplication:
     def execute_source_organizer(self, plan, progress=None):
         return self._source_organizer_module(required=True).execute_plan(
             plan, progress=progress
+        )
+
+    def text_cleanup_detector_smoke_test(self):
+        return self._text_cleanup_service(required=True).detector_smoke_test()
+
+    def text_cleanup_load_state(self):
+        return self._text_cleanup_service(required=True).load_state()
+
+    def text_cleanup_save_state(self, **kwargs):
+        return self._text_cleanup_service(required=True).save_state(**kwargs)
+
+    def text_cleanup_state_records(self, folder: Path):
+        return self._text_cleanup_service(required=True).state_records(folder)
+
+    def scan_text_cleanup(self, folder: Path, cached=None, progress=None):
+        return self._text_cleanup_service(required=True).scan_folder(
+            folder,
+            cached=cached,
+            progress=progress,
+        )
+
+    def text_cleanup_load_image(self, path: Path, grayscale=False):
+        return self._text_cleanup_service(required=True).load_image(
+            path,
+            grayscale=grayscale,
+        )
+
+    def text_cleanup_ensure_size(self, record):
+        return self._text_cleanup_service(required=True).ensure_size(record)
+
+    def text_cleanup_eligible(self, record, *, min_height, min_area, min_conf):
+        return self._text_cleanup_service(required=True).eligible_indices(
+            record,
+            min_height=min_height,
+            min_area=min_area,
+            min_conf=min_conf,
+        )
+
+    def text_cleanup_migan_ready(self):
+        return self._text_cleanup_service(required=True).migan_ready()
+
+    def text_cleanup_repair(self, record, *, method, expand, radius):
+        return self._text_cleanup_service(required=True).repair_record(
+            record,
+            method=method,
+            expand=expand,
+            radius=radius,
+        )
+
+    def batch_text_cleanup(
+        self,
+        *,
+        folder,
+        output,
+        records,
+        method,
+        expand,
+        radius,
+        progress=None,
+    ):
+        return self._text_cleanup_service(required=True).batch_process(
+            folder=folder,
+            output=output,
+            records=records,
+            method=method,
+            expand=expand,
+            radius=radius,
+            progress=progress,
         )
 
     def export_recommended(self, records, dst: Path):
