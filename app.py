@@ -1458,19 +1458,23 @@ def self_test():
         Image.new('RGB',(100,80),(120,80,40)).save(src)
         crop_photo=Photo(src);crop_photo.manual_status='推荐'
         crop_photo.feature_state[AUTO_CROP_FEATURE_KEY]={
-            'version':1,
+            'version':2,
             'state':'candidate',
             'proposal':AutoCropProposal(
+                auto_box=[10,5,90,75],
                 box=[10,5,90,75],
                 decision='accepted',
+                auto_removed_area_ratio=.30,
                 removed_area_ratio=.30,
+                image_size=[100,80],
             ).to_dict(),
         }
+        BACKEND.update_auto_crop_box(crop_photo,[20,10,80,70],(100,80));BACKEND.accept_auto_crop(crop_photo)
         exported=BACKEND.export_recommended([crop_photo],dst)
         if exported.written!=1:raise RuntimeError('Auto Crop export count self-test failed')
         out=next(dst.iterdir())
         with Image.open(out) as check:
-            if check.size!=(80,70):raise RuntimeError(f'Auto Crop accepted export size self-test failed: {check.size}')
+            if check.size!=(60,60):raise RuntimeError(f'Auto Crop edited export size self-test failed: {check.size}')
         keep=root/'keep.png';Image.new('RGB',(64,48),(1,2,3)).save(keep)
         keep_photo=Photo(keep);keep_photo.manual_status='推荐'
         BACKEND.export_recommended([keep_photo],dst)
