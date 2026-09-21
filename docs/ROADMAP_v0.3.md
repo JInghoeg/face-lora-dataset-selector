@@ -23,7 +23,17 @@ Some recent interaction fixes are AUTO PASS but HUMAN UNVERIFIED; see Issue #17.
 
 Goal: prepare for Auto Crop, Organizer and later UX/UI work without a rewrite.
 
-Stop conditions are defined in `docs/ARCHITECTURE.md`.
+Implemented in the current pass:
+- feature-first Ranking and Composite boundaries;
+- shared domain models outside Qt;
+- generic filesystem + dataset cache infrastructure;
+- Qt-free quality analysis engine;
+- Qt-free incremental dataset refresh service;
+- stable `SelectorApplication` facade for touched workflows;
+- architecture CI + optional-Composite startup smoke;
+- project/update/QA workflow documentation.
+
+Stop conditions are defined in `docs/ARCHITECTURE.md`. After the final automated architecture/runtime/Portable checks pass, this refactor stops and Stage 2 Auto Crop research resumes.
 
 Draft PR: #18
 Tracking Issue: #17
