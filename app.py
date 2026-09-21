@@ -642,16 +642,14 @@ def alloc(total,names,weights):
     for x in sorted(names,key=lambda a:raw[a]-out[a],reverse=True)[:total-sum(out.values())]:out[x]+=1
     return out
 def recommend(rs,target):
-    # 自动基线与人工覆盖完全分离：manual_status 只覆盖显示/导出结果，不参与自动目标配额。
+    # 自动基线与人工覆盖完全分离：manual_status 只覆盖最终状态，绝不改变算法自己的推荐结果。
     for r in rs:
         r.recommendation_reasons=[]
         r.auto_status='淘汰' if r.eligibility=='REJECT' else '备选'
-    auto_pool=[r for r in rs if r.manual_status is None]
-    eligible=[r for r in auto_pool if recommendation_qualified(r)]
+    eligible=[r for r in rs if recommendation_qualified(r)]
     eligible_ids={id(r) for r in eligible}
     for r in rs:
-        if r.manual_status is not None:r.recommendation_reasons=[f'人工状态固定：{r.manual_status}（不占自动推荐目标）']
-        elif id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
+        if id(r) not in eligible_ids:r.recommendation_reasons=recommendation_blockers(r) or ['未通过自动推荐基础门槛']
     pool=group_best(eligible);pool_ids={id(r) for r in pool};b=defaultdict(list);sc=defaultdict(list)
     for r in eligible:
         if id(r) not in pool_ids:
@@ -1277,7 +1275,7 @@ class Window(QMainWindow):
                 k=key(r.path);item=self.pending_composite_outputs.get(k)
                 if item:r.manual_status=item['status'];r.composite_scan_version=COMPOSITE_PROPOSAL_VERSION;r.composite_proposal=None;found.append(k)
             for k in found:self.pending_composite_outputs.pop(k,None)
-        self.target=self.custom.value();unchanged=bool(self.worker and self.worker.had_v3_cache and self.worker.changed_count==0);recommend(rs,self.target) if not unchanged else None;self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
+        self.target=self.custom.value();recommend(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.update_composite_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -1662,9 +1660,11 @@ def self_test():
     if recommendation_qualified(low_front):raise RuntimeError('very low frontal FIQA should remain review-blocking')
     recommend([front,side],2)
     if side.status!='推荐' or not side.recommendation_reasons:raise RuntimeError('side-profile coverage/reason self-test failed')
-    manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS';manual_extra.manual_status='推荐'
-    recommend([front,side,manual_extra],2)
-    if manual_extra.auto_status=='推荐' or sum(r.auto_status=='推荐' for r in (front,side))!=2 or sum(r.status=='推荐' for r in (front,side,manual_extra))!=3:raise RuntimeError('manual overlay must be additive and never consume auto recommendation target')
+    manual_extra=Photo(Path('manual_extra.jpg'));manual_extra.face_quality=.99;manual_extra.brisque=1.;manual_extra.blur=999.;manual_extra.person_scale='近景/头肩';manual_extra.angle_class='正脸';manual_extra.eligibility='PASS'
+    baseline=[front,side,manual_extra];recommend(baseline,2);before=[r.auto_status for r in baseline]
+    manual_extra.manual_status='推荐';side.manual_status='备选';recommend(baseline,2);after=[r.auto_status for r in baseline]
+    if before!=after or sum(r.auto_status=='推荐' for r in baseline)!=2:raise RuntimeError('manual overlay must not change automatic recommendation baseline')
+    if manual_extra.status!='推荐' or side.status!='备选':raise RuntimeError('manual overlay must only affect effective status')
     bad=Photo(Path('bad.jpg'));bad.face_quality=.6;bad.brisque=82.;bad.blur=60.;bad.person_scale='近景/头肩';bad.angle_class='正脸';bad.eligibility='REVIEW'
     recommend([bad],1)
     if bad.status!='备选' or not any('BRISQUE' in x for x in bad.recommendation_reasons):raise RuntimeError('backup reason self-test failed')
