@@ -5,6 +5,7 @@ know Composite/AutoCrop/Duplicate business semantics.
 """
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Iterable
@@ -100,3 +101,14 @@ def copy_file(source: Path, dst_dir: Path):
     out = unique_output_path(dst_dir, source.name)
     shutil.copy2(source, out)
     return out
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
