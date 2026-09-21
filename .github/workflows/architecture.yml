@@ -2,11 +2,31 @@ name: Architecture Boundaries
 
 on:
   pull_request:
+    paths:
+      - "core/**"
+      - "features/**"
+      - "infrastructure/**"
+      - "application/**"
+      - ".importlinter"
+      - "requirements-dev.txt"
+      - ".github/workflows/architecture.yml"
   push:
     branches:
       - main
       - "feature/**"
       - "refactor/**"
+    paths:
+      - "core/**"
+      - "features/**"
+      - "infrastructure/**"
+      - "application/**"
+      - ".importlinter"
+      - "requirements-dev.txt"
+      - ".github/workflows/architecture.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
