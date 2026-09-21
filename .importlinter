@@ -1,4 +1,5 @@
 [importlinter]
+include_external_packages = True
 root_packages =
     core
     features
@@ -38,3 +39,16 @@ type = independence
 modules =
     features.ranking
     features.composite
+
+[importlinter:contract:backend-no-qt-dependency]
+name = Backend packages do not depend on Qt UI bindings
+type = forbidden
+source_modules =
+    core
+    features
+    infrastructure
+    application
+forbidden_modules =
+    PySide6
+    PyQt6
+    PyQt5
