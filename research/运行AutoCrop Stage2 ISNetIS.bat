@@ -12,11 +12,13 @@ set "FACE_LORA_RESEARCH_ROOT=%RESEARCH_ROOT%"
 set "VENV=%RESEARCH_ROOT%\.venv-imgutils"
 set "PY=%VENV%\Scripts\python.exe"
 
-set "HF_HOME=%RESEARCH_ROOT%\hf_home"
+for %%I in ("%CD%\..") do set "AI_RESEARCH_ROOT=%%~fI"
+set "SHARED_CACHE=%AI_RESEARCH_ROOT%\_shared_cache\face-lora-dataset-selector"
+set "HF_HOME=%SHARED_CACHE%\huggingface"
 set "HF_HUB_CACHE=%HF_HOME%\hub"
 set "HUGGINGFACE_HUB_CACHE=%HF_HUB_CACHE%"
-set "XDG_CACHE_HOME=%RESEARCH_ROOT%\xdg_cache"
-set "PIP_CACHE_DIR=%RESEARCH_ROOT%\pip_cache"
+set "XDG_CACHE_HOME=%SHARED_CACHE%\xdg"
+set "PIP_CACHE_DIR=%SHARED_CACHE%\pip"
 set "PIP_DEFAULT_TIMEOUT=180"
 set "PIP_RETRIES=12"
 set "TEMP=%RESEARCH_ROOT%\temp"
@@ -29,6 +31,7 @@ if not exist "%BASEPY%" (
 )
 
 if not exist "%RESEARCH_ROOT%" mkdir "%RESEARCH_ROOT%"
+if not exist "%SHARED_CACHE%" mkdir "%SHARED_CACHE%"
 if not exist "%HF_HOME%" mkdir "%HF_HOME%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
@@ -38,9 +41,12 @@ echo Auto Crop Stage 2 - ISNetIS raw mask validation
 echo ============================================================
 echo Research root:
 echo   %RESEARCH_ROOT%
+echo Shared reusable cache:
+echo   %SHARED_CACHE%
 echo.
-echo New venv / model cache / temp / benchmark output all stay here.
-echo Existing LOCALAPPDATA review files are read-only input only.
+echo Venv and benchmark output stay under the research root.
+echo Reusable pip/model/Hugging Face downloads stay in the shared G: cache.
+echo Existing LOCALAPPDATA review files, if present, are read-only input only.
 echo.
 
 if not exist "%PY%" (
@@ -49,14 +55,22 @@ if not exist "%PY%" (
     if errorlevel 1 goto :failed
 )
 
-echo Installing / repairing mature upstream stack...
-echo Pip cache:
-echo   %PIP_CACHE_DIR%
-echo Network policy:
-echo   timeout=%PIP_DEFAULT_TIMEOUT%s, retries=%PIP_RETRIES%
-echo.
-call :install_stack
-if errorlevel 1 goto :failed
+echo Checking reusable Stage 2 environment...
+"%PY%" -c "import importlib.metadata as m; assert m.version('dghs-imgutils') == '0.19.0'; import onnxruntime; from imgutils.detect import detect_person; from imgutils.segment import get_isnetis_mask; print('Reusable Stage 2 environment OK - pip install skipped')"
+if errorlevel 1 (
+    echo.
+    echo Environment is incomplete or version-mismatched.
+    echo Installing / repairing mature upstream stack...
+    echo Pip cache:
+    echo   %PIP_CACHE_DIR%
+    echo Network policy:
+    echo   timeout=%PIP_DEFAULT_TIMEOUT%s, retries=%PIP_RETRIES%
+    echo.
+    call :install_stack
+    if errorlevel 1 goto :failed
+) else (
+    echo Existing packages will be reused without contacting pip.
+)
 
 echo Verifying upstream imports...
 "%PY%" -c "from imgutils.detect import detect_person; from imgutils.segment import get_isnetis_mask; print('dghs-imgutils Stage 2 imports OK')"
