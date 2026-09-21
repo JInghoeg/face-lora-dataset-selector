@@ -41,3 +41,14 @@ class RecommendationSummary:
 @dataclass(frozen=True)
 class ExportResult:
     written: int
+
+
+@dataclass
+class DatasetRefreshResult:
+    records: list
+    had_v3_cache: bool = False
+    changed_count: int = 0
+    added_count: int = 0
+    modified_count: int = 0
+    deleted_count: int = 0
+    unchanged_count: int = 0
