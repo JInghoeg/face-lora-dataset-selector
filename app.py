@@ -30,21 +30,8 @@ except ImportError as exc:
     sys.exit(1)
 
 APP_DIR=Path(__file__).resolve().parent; MODELS=APP_DIR/'models'
-USER_DATA_ROOT=Path(os.environ.get('LOCALAPPDATA') or (Path.home()/'AppData'/'Local'))/'Face LoRA Dataset Selector'
-CACHE=USER_DATA_ROOT/'cache';THUMB_CACHE=CACHE/'thumbnails';LEGACY_CACHE=APP_DIR/'cache'
-def migrate_legacy_cache():
-    if not LEGACY_CACHE.exists():return
-    CACHE.mkdir(parents=True,exist_ok=True)
-    for src in LEGACY_CACHE.glob('*.json'):
-        dst=CACHE/src.name
-        if not dst.exists():
-            try:shutil.copy2(src,dst)
-            except OSError:pass
-    legacy_thumbs=LEGACY_CACHE/'thumbnails'
-    if legacy_thumbs.exists() and not THUMB_CACHE.exists():
-        try:shutil.copytree(legacy_thumbs,THUMB_CACHE)
-        except OSError:pass
-migrate_legacy_cache()
+BACKEND=SelectorApplication()
+CACHE=BACKEND.cache_root;THUMB_CACHE=CACHE/'thumbnails'
 POSE=MODELS/'pose_landmarker_lite.task'; YUNET=MODELS/'yunet_2023mar.onnx'; EDIFF=MODELS/'ediffiqa_t.onnx'; BRISQUE=MODELS/'brisque_model_live.yml'; BRISQUE_RANGE=MODELS/'brisque_range_live.yml'; DDDFA=MODELS/'mb1_120x120.onnx'; DDDFA_NORM=MODELS/'param_mean_std_62d_120x120.pkl'; TEXT=MODELS/'ppocrv5_mobile_det'/'inference.onnx'; MIGAN=MODELS/'migan_pipeline_v2.onnx'; COMPOSITE_MODEL_CACHE=MODELS/'composite_split_cache'
 POSE_URL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
 MIGAN_URL='https://huggingface.co/andraniksargsyan/migan/resolve/1538c135034b8cfe7a8472f34d09c8a5a45b17a7/migan_pipeline_v2.onnx?download=true'
@@ -52,7 +39,6 @@ MIGAN_SHA256='6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b'
 MIGAN_SIZE=28079181
 ANALYSIS_VERSION=4
 PAGE=120; COLORS={'推荐':'#d9f4df','备选':'#fff2bf','淘汰':'#ffd9d9'}; PITCHES=('正常','仰头','低头')
-BACKEND=SelectorApplication()
 
 def key(path): return str(path.resolve()).casefold()
 def human_bytes(value):
