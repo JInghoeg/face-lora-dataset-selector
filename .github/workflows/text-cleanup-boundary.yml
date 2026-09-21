@@ -97,3 +97,48 @@ jobs:
           finally {
             if (Test-Path $featureOff) { Move-Item $featureOff $feature }
           }
+
+  portable-smoke:
+    needs: text-cleanup
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[portable]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+
+      - name: Build Portable
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) { throw "Portable executable not found: $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) { Get-Content $err }
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Upload Text Cleanup Portable QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: text-cleanup-portable-qa
+          path: dist/Face-LoRA-Dataset-Selector
+          retention-days: 7
