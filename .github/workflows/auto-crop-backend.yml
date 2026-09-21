@@ -68,3 +68,18 @@ jobs:
         shell: pwsh
         run: |
           python app.py --self-test
+
+      - name: Optional Auto Crop absence smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\\auto_crop"
+          $featureOff = "features\\auto_crop.__disabled_for_smoke__"
+          try {
+            Move-Item $feature $featureOff
+            python -c "import app; assert not app.BACKEND.feature_available('auto_crop'); print('optional Auto Crop absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Auto Crop feature" }
+          }
+          finally {
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
