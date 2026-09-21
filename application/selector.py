@@ -11,6 +11,7 @@ from pathlib import Path
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend
+from features.ranking.analysis import group_duplicates
 from infrastructure.filesystem import active_image_files, copy_file
 from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
@@ -152,6 +153,10 @@ class SelectorApplication:
 
     def recompute_recommendations(self, records, target):
         return recommend(records, target)
+
+    def regroup_duplicates(self, records, threshold=8, adjacent=16):
+        group_duplicates(records, threshold=threshold, adjacent=adjacent)
+        return records
 
     def accept_composite(self, folder: Path, source: Path, proposal, keep_mask):
         return self._composite_modules(required=True)[0].accept_composite(
