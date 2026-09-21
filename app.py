@@ -1219,6 +1219,7 @@ class Window(QMainWindow):
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
+    from features.ranking.analysis import QualityModels
     required([YUNET,EDIFF,BRISQUE,BRISQUE_RANGE,DDDFA,DDDFA_NORM,POSE,TEXT])
     qm=QualityModels()
     gradient=np.tile(np.arange(256,dtype=np.uint8),(256,1))
@@ -1293,7 +1294,7 @@ def self_test():
     view_probe=ViewSpec('review',{'eligibility':'REVIEW'},'Face Quality','优先顺序',True,'view_top',25,'Face Pixels');view_restored=view_spec_from_dict(asdict(view_probe))
     if view_restored!=view_probe:raise RuntimeError('ViewSpec round-trip self-test failed')
     if not photo_matches_filters(probe,{'eligibility':'REVIEW'}) or photo_matches_filters(probe,{'eligibility':'PASS'}):raise RuntimeError('field-driven View filter self-test failed')
-    if CACHE.resolve().parent!=USER_DATA_ROOT.resolve():raise RuntimeError('user cache root self-test failed')
+    if CACHE.resolve()!=BACKEND.cache_root.resolve():raise RuntimeError('application cache ownership self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='优先顺序':raise RuntimeError('legacy ViewSpec migration self-test failed')
     d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
