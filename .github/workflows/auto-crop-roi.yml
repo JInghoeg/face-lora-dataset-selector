@@ -1,0 +1,137 @@
+name: Auto Crop Manual ROI
+
+on:
+  push:
+    branches:
+      - feature/v0.3-auto-crop-manual-roi
+    paths:
+      - "app.py"
+      - "features/auto_crop/**"
+      - "application/**"
+      - "requirements.txt"
+      - "portable.spec"
+      - ".github/workflows/auto-crop-roi.yml"
+  pull_request:
+    paths:
+      - "app.py"
+      - "features/auto_crop/**"
+      - "application/**"
+      - "requirements.txt"
+      - "portable.spec"
+      - ".github/workflows/auto-crop-roi.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  roi:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Offscreen RectROI smoke
+        shell: pwsh
+        run: |
+          @'
+          import numpy as np
+          from PySide6.QtWidgets import QApplication
+          import app
+
+          qapp = QApplication.instance() or QApplication([])
+          widget = app.AutoCropROIWidget()
+          image = np.zeros((80, 100, 3), dtype=np.uint8)
+
+          widget.set_data(
+              image,
+              [10, 5, 90, 75],
+              [10, 5, 90, 75],
+          )
+          assert widget.box() == [10, 5, 90, 75]
+
+          widget.roi.setPos([20, 10], finish=False)
+          widget.roi.setSize([60, 50], finish=False)
+          qapp.processEvents()
+          assert widget.box() == [20, 10, 80, 60]
+
+          widget.set_box([-20, -10, 140, 100])
+          qapp.processEvents()
+          assert widget.box() == [0, 0, 100, 80]
+
+          widget.close()
+          print("Auto Crop RectROI offscreen smoke OK")
+          '@ | python -
+
+  portable-smoke:
+    needs: roi
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+
+      - name: Build Portable
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) { throw "Portable executable not found: $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) { Get-Content $err }
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Upload ROI Portable QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-crop-roi-portable-qa
+          path: dist/Face-LoRA-Dataset-Selector
+          retention-days: 7
