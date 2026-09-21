@@ -1,0 +1,40 @@
+name: Architecture Boundaries
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "refactor/**"
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install architecture tooling
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements-dev.txt
+
+      - name: Compile architecture packages
+        shell: pwsh
+        run: |
+          python -m compileall core features infrastructure application
+
+      - name: Enforce import contracts
+        shell: pwsh
+        run: |
+          lint-imports
