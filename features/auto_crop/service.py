@@ -217,6 +217,27 @@ def scan_records(records, model_cache: Path, progress=None, force=False):
     return result
 
 
+def scan_todo(records):
+    count = 0
+    for record in records:
+        if record.status != "推荐":
+            continue
+        state = _state(record)
+        if not state or int(state.get("version", 0)) != PROPOSAL_VERSION:
+            count += 1
+    return count
+
+
+def review_records(records):
+    output = []
+    for record in records:
+        if record.status != "推荐":
+            continue
+        if current_proposal(record) is not None:
+            output.append(record)
+    return output
+
+
 def pending_records(records):
     output = []
     for record in records:
@@ -249,6 +270,15 @@ def keep_original(photo):
         }
         return None
     proposal.decision = "keep_original"
+    _write_state(photo, proposal, state_kind="candidate")
+    return proposal
+
+
+def restore_pending(photo):
+    proposal = current_proposal(photo)
+    if proposal is None:
+        raise ValueError("No current Auto Crop proposal.")
+    proposal.decision = "pending"
     _write_state(photo, proposal, state_kind="candidate")
     return proposal
 
