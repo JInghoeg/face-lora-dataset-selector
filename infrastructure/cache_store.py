@@ -280,6 +280,7 @@ class DatasetCache:
         bundle_ids=None,
         last_view=None,
         pending_composite_outputs=None,
+        target_mode=None,
     ):
         self.cache_root.mkdir(parents=True, exist_ok=True)
         dest = self.cache_path(folder)
@@ -289,6 +290,7 @@ class DatasetCache:
             "analysis_version": self.analysis_version,
             "folder": str(folder.resolve()),
             "target": target,
+            "target_mode": target_mode if target_mode in ("preset", "custom") else None,
             "saved_views": [
                 asdict(value) if isinstance(value, ViewSpec) else value
                 for value in (saved_views or [])

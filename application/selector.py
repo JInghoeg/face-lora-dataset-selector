@@ -163,6 +163,7 @@ class SelectorApplication:
         bundle_ids=None,
         last_view=None,
         pending_composite_outputs=None,
+        target_mode=None,
     ):
         return self.cache.save_data(
             folder,
@@ -172,6 +173,7 @@ class SelectorApplication:
             bundle_ids,
             last_view,
             pending_composite_outputs,
+            target_mode,
         )
 
     def refresh_dataset(self, folder: Path, status=None, progress=None):
