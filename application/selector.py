@@ -326,6 +326,9 @@ class SelectorApplication:
             plan, progress=progress
         )
 
+    def text_cleanup_detector_smoke_test(self):
+        return self._text_cleanup_service(required=True).detector_smoke_test()
+
     def text_cleanup_load_state(self):
         return self._text_cleanup_service(required=True).load_state()
 
