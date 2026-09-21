@@ -1,0 +1,99 @@
+name: Text Cleanup Boundary
+
+on:
+  push:
+    branches:
+      - refactor/v0.3-text-cleanup-boundary
+    paths:
+      - "app.py"
+      - "text_detector.py"
+      - "core/**"
+      - "features/text_cleanup/**"
+      - "application/**"
+      - "infrastructure/**"
+      - ".importlinter"
+      - ".github/workflows/text-cleanup-boundary.yml"
+  pull_request:
+    paths:
+      - "app.py"
+      - "text_detector.py"
+      - "core/**"
+      - "features/text_cleanup/**"
+      - "application/**"
+      - "infrastructure/**"
+      - ".importlinter"
+      - ".github/workflows/text-cleanup-boundary.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  text-cleanup:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Compile backend and UI adapters
+        shell: pwsh
+        run: |
+          python -m compileall features/text_cleanup application app.py text_detector.py
+
+      - name: Text Cleanup backend self-test
+        shell: pwsh
+        run: |
+          python -c "from features.text_cleanup.service import self_test; self_test()"
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Optional Text Cleanup absence startup smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\text_cleanup"
+          $featureOff = "features\text_cleanup.__disabled_for_smoke__"
+          try {
+            Move-Item $feature $featureOff
+            @'
+          from PySide6.QtWidgets import QApplication
+          import app
+
+          assert not app.BACKEND.feature_available("text_cleanup")
+          qapp = QApplication.instance() or QApplication([])
+          window = app.Window()
+          assert window.sub is None
+          window.close()
+          print("optional Text Cleanup absence startup OK")
+          '@ | python -
+            if ($LASTEXITCODE -ne 0) { throw "App startup failed without optional Text Cleanup feature" }
+          }
+          finally {
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
