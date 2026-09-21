@@ -674,3 +674,15 @@ def base_status(records):
             record.auto_status = (
                 "淘汰" if record.eligibility == "REJECT" else "备选"
             )
+
+
+def pose_smoke_test():
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=str(ensure_pose())),
+        running_mode=VisionTaskRunningMode.IMAGE,
+        num_poses=1,
+        min_pose_detection_confidence=0.5,
+        min_pose_presence_confidence=0.5,
+    )
+    landmarker = PoseLandmarker.create_from_options(options)
+    landmarker.close()
