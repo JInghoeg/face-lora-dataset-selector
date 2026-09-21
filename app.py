@@ -233,6 +233,30 @@ def ensure_migan():
 def required(paths):
     missing=[str(x) for x in paths if not x.exists()]
     if missing:raise RuntimeError('缺少模型文件：\n'+'\n'.join(missing))
+class Analyzer(QObject):
+    status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    def __init__(self,folder):
+        super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
+    def run(self):
+        try:
+            result=BACKEND.refresh_dataset(
+                self.folder,
+                status=self.status.emit,
+                progress=self.progress.emit,
+            )
+            self.had_v3_cache=result.had_v3_cache
+            self.changed_count=result.changed_count
+            self.added_count=result.added_count
+            self.modified_count=result.modified_count
+            self.deleted_count=result.deleted_count
+            self.unchanged_count=result.unchanged_count
+            self.finished.emit(result.records)
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+    @staticmethod
+    def groups(records,threshold=8,adjacent=16):
+        return BACKEND.regroup_duplicates(records,threshold,adjacent)
+
 def det_config():return {'model_path':str(TEXT),'limit_side_len':960,'limit_type':'min','mean':[.485,.456,.406],'std':[.229,.224,.225],'thresh':.3,'box_thresh':.6,'max_candidates':1000,'unclip_ratio':1.5,'use_dilation':False,'score_mode':'fast','use_cuda':False,'use_dml':False,'intra_op_num_threads':-1,'inter_op_num_threads':-1}
 class TextScan(QObject):
     progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
