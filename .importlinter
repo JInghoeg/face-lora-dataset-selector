@@ -40,6 +40,7 @@ modules =
     features.ranking
     features.composite
     features.auto_crop
+    features.source_organizer
 
 [importlinter:contract:backend-no-qt-dependency]
 name = Backend packages do not depend on Qt UI bindings
