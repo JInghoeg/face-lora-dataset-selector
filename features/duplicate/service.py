@@ -36,7 +36,7 @@ def group_duplicates(records, threshold=8, adjacent=16):
 
         for candidate in list(remaining):
             left, right = records[anchor], records[candidate]
-            distance = (left.phash ^ right.phash).bit_count()
+            distance = bin(left.phash ^ right.phash).count("1")
             same_source = left.source == right.source
             close = distance <= threshold or (
                 same_source
