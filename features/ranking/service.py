@@ -60,7 +60,7 @@ def recommendation_qualified(record):
     return not recommendation_blockers(record)
 
 
-def group_entries(records, group, qualified=False):
+def _duplicate_group_entries(records, group, qualified=False):
     entries = [r for r in records if r.duplicate_group == group]
     if qualified:
         good = [r for r in entries if recommendation_qualified(r)]
@@ -68,7 +68,7 @@ def group_entries(records, group, qualified=False):
     return sorted(entries, key=rank, reverse=True)
 
 
-def group_best(records):
+def _best_per_duplicate_group(records):
     """Return only the best representative for each duplicate group."""
     result = []
     seen = set()
@@ -104,7 +104,7 @@ def recommend(records, target):
         if id(record) not in eligible_ids:
             record.recommendation_reasons = recommendation_blockers(record) or ['未通过自动推荐基础门槛']
 
-    pool = group_best(eligible)
+    pool = _best_per_duplicate_group(eligible)
     pool_ids = {id(r) for r in pool}
     buckets = defaultdict(list)
     scale_buckets = defaultdict(list)
@@ -113,7 +113,7 @@ def recommend(records, target):
         if id(record) not in pool_ids:
             group_rank, group_size = (1, 1)
             if record.duplicate_group:
-                entries = group_entries(eligible, record.duplicate_group)
+                entries = _duplicate_group_entries(eligible, record.duplicate_group)
                 group_rank = entries.index(record) + 1 if record in entries else 0
                 group_size = len(entries)
             record.recommendation_reasons = (
