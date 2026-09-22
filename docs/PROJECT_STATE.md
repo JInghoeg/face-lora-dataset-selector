@@ -7,21 +7,21 @@ Canonical current-state entry point for the active v0.3 product line.
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
 - Latest verified product/code baseline: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8` — merged PR #38, Duplicate Review modularization
-- GitHub product branch is authoritative; do not assume a local clone is current without checking fetch/status.
+- Active UX/UI work: Draft PR #46 on `pilot/openspec-text-cleanup-ui` — OpenSpec pilot / Text Cleanup presentation extraction.
+- GitHub product branch and active Draft PRs are authoritative; do not assume a local clone or this file alone is current without checking repository reality.
 
 ## Current objective
 
-Finish the remaining v0.3 release-validation gates.
+Continue the accepted **v0.3 Stage 3 UX/UI modernization** with bounded, behavior-preserving slices. Do **not** jump directly to consolidated release QA.
 
-The bounded feature modularization pass for the known main workflow is complete:
-- Ranking
-- Duplicate Review
-- Composite Split
-- General Auto Crop
-- Source Organizer
-- Text Cleanup
+Accepted execution order:
 
-Broad whole-application `app.py` / Qt Model-View migration remains deferred until after the v0.3 release gates.
+1. Auto Crop manual ROI — complete.
+2. Limited architecture closeout — complete, including Duplicate and Text Cleanup boundaries.
+3. **UX/UI modernization — active.**
+4. Final unified Portable + consolidated human QA — later, after the UX/UI stage is accepted complete.
+
+The first real Stage 3 slice is Draft PR #46, `extract-text-cleanup-presentation`. Its implementation and automated validation are complete, and the clean-context recovery test passed on 2026-09-22: a fresh continuation independently found PR #46 / the OpenSpec change, identified UX/UI modernization as the active phase, and flagged the older QA-first PROJECT_STATE/HANDOFF/ROADMAP direction as stale.
 
 ## Verified complete
 
@@ -79,20 +79,28 @@ Project continuity is active:
 
 ## In progress
 
-### v0.3 release validation
+### Stage 3 UX/UI modernization
 
-No known implementation blocker remains in the frozen workflow.
+Draft PR #46 is the active work item.
 
-Remaining work is the planned human/release validation:
-- consolidated HUMAN UNVERIFIED checkpoint in Issue #17;
-- Source Organizer human QA on a disposable/copied dataset;
-- final local Valby end-to-end workflow QA.
+Current pilot status:
+- OpenSpec 1.13.1 strict validation: PASS;
+- Text Cleanup Python 3.9 + 3.12 compile/backend/full-selector/extracted-UI smoke: PASS;
+- optional Text Cleanup physical-removal startup: PASS;
+- Portable build + packaged EXE self-test: PASS;
+- Architecture Boundaries / UI Polish / Duplicate / Auto Crop / Source Organizer regressions: PASS;
+- clean-context recovery gate: PASS;
+- implementation vs proposal/design/tasks verification: PASS with no mismatch found.
+
+Remaining pilot closeout is administrative/project-state work: finish the OpenSpec completion decision, archive the completed change when appropriate, and merge PR #46 into the product branch.
+
+After PR #46 is finalized, continue Stage 3 with the next bounded UX/UI slice. Consolidated human QA remains deferred to the final Stage 4 checkpoint.
 
 ## Blockers / uncertainties
 
 No current code blocker is known.
 
-Human QA is intentionally still outstanding. AUTO PASS must not be treated as user acceptance of the real interaction flow.
+Human QA is intentionally still outstanding. AUTO PASS must not be treated as user acceptance of the real interaction flow. This debt is tracked, but it is not the current main phase while Stage 3 UX/UI modernization is active.
 
 ## Human QA debt
 
@@ -109,14 +117,12 @@ Source Organizer must be human-tested first on a disposable/copied dataset, neve
 
 ## Next action
 
-Run the consolidated Portable human-QA checkpoint from Issue #17.
+1. Finalize the OpenSpec pilot in PR #46: completion decision/archive + merge.
+2. Start the next **bounded UX/UI modernization** slice using the same repository-first/OpenSpec workflow.
+3. Only after Stage 3 is explicitly accepted complete, build the unified Portable and run the consolidated human-QA checkpoint from Issue #17.
+4. Then run Source Organizer human QA on a disposable copied dataset and final local Valby end-to-end workflow QA.
 
-Then:
-1. Source Organizer human QA on a disposable copied dataset;
-2. final local Valby end-to-end workflow QA;
-3. close remaining production/release issues if all pass.
-
-Do not start a broad UI rewrite before these gates are cleared.
+Do not let the existing QA debt silently reorder Stage 3 and Stage 4.
 
 ## Architecture / workflow state
 
@@ -131,15 +137,16 @@ Initial analysis / recommendation
 -> Final Export
 ```
 
-Known presentation debt:
+Active presentation modernization:
 - much of the remaining Qt presentation is still concentrated in `app.py`;
-- broader dedicated `ui/qt` / Qt Model-View migration is deferred.
+- PR #46 proves one bounded presentation surface can move into `ui/qt` while preserving the UI -> `SelectorApplication` -> backend boundary;
+- broader visual/interaction improvements and any further Qt Model/View adoption must proceed as bounded Stage 3 slices, not as a whole-application rewrite.
 
-This debt is not a current v0.3 implementation blocker.
+This work is now the active v0.3 phase, but it must remain incremental and reversible.
 
 ## Do not repeat
 
-- Do not reopen bounded feature modularization as a broad `app.py` rewrite before release validation.
+- Do not turn Stage 3 UX/UI modernization into a broad whole-application `app.py` rewrite; use bounded, reviewable slices.
 - Do not stop for separate low-risk manual QA after every automated fix; use Issue #17 checkpoint.
 - Do not revive failed custom Auto Crop Stage 1 saliency/pose safe-trim.
 - Do not use raw DeepGHS person bbox as final crop boundary.
