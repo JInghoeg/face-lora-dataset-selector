@@ -1,0 +1,16 @@
+name: Project Memory
+
+on:
+  pull_request:
+    branches:
+      - feature/v0.3-workflow-recovery
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  continuity:
+    uses: JInghoeg/Engineering-Playbook/.github/workflows/project-memory-gate.yml@main
+    with:
+      state_path: docs/PROJECT_STATE.md
