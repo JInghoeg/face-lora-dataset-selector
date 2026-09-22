@@ -233,7 +233,7 @@ def render_qdarkstyle_variant(records, output: Path, dark: bool) -> None:
         dialog.setStyleSheet(qdarkstyle.load_stylesheet_pyside6())
     else:
         dialog.setStyleSheet(
-            qdarkstyle.load_stylesheet_pyside6(palette=LightPalette)
+            qdarkstyle.load_stylesheet(qt_api="pyside6", palette=LightPalette)
         )
     dialog.show()
     QApplication.processEvents()
@@ -305,15 +305,26 @@ def main() -> int:
     qapp = QApplication.instance() or QApplication([])
     from PySide6.QtGui import QFont, QFontDatabase
 
-    families = set(QFontDatabase.families())
-    preferred = [
-        "Microsoft YaHei UI",
-        "Microsoft YaHei",
-        "Microsoft JhengHei UI",
-        "Microsoft JhengHei",
-        "SimHei",
-    ]
-    chosen = next((name for name in preferred if name in families), None)
+    font_path = os.environ.get("AUTO_CROP_VISUAL_FONT")
+    chosen = None
+    if font_path and Path(font_path).exists():
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id >= 0:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                chosen = families[0]
+
+    if not chosen:
+        families = set(QFontDatabase.families())
+        preferred = [
+            "Microsoft YaHei UI",
+            "Microsoft YaHei",
+            "Microsoft JhengHei UI",
+            "Microsoft JhengHei",
+            "SimHei",
+        ]
+        chosen = next((name for name in preferred if name in families), None)
+
     if chosen:
         qapp.setFont(QFont(chosen, 10))
     print("UI font:", chosen or qapp.font().family())
