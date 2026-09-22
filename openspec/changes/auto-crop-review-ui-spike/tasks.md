@@ -16,6 +16,7 @@
 ## 3. Candidate decision
 
 - [x] 3.1 Inspect the actual rendered screenshots for both usability and visual quality. Candidate A improves cohesion, especially dark_blue, but remains too close to a themed engineering-tool surface to meet the visual-quality gate by itself.
-- [ ] 3.2 If qt-material is good enough, make a separate bounded adoption change and measure Portable delta before merge.
+- [x] 3.2 Candidate A was not good enough; no qt-material adoption change was made.
 - [x] 3.3 qt-material is not strong enough for direct adoption; do not hand-style it. Run one bounded PySide6-Fluent-Widgets spike instead.
-- [ ] 3.4 Stop before any whole-app theme or unrelated review-surface redesign.
+- [x] 3.4 Stop before any whole-app theme or unrelated review-surface redesign.
+- [x] 3.5 Candidate B result: Fluent light selected for bounded production adoption; Fluent dark rejected for v0.3; Essentials-only/no-Addons proof PASS; actual Portable delta must be measured in the separate adoption change.
