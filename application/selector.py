@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from core.contracts import ExportResult
-from features.ranking.service import recommend
+from features.ranking.service import recommend, recommendation_qualified
 from infrastructure.filesystem import active_image_files, copy_file, save_crop, unique_output_path
 from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
@@ -263,6 +263,17 @@ class SelectorApplication:
         return self._duplicate_module(required=True).group_reviewed(
             records, group_id
         )
+
+    def duplicate_group_rank(self, records, record, qualified=False):
+        if not record.duplicate_group:
+            return (1, 1)
+        members = list(self.duplicate_group_members(records, record.duplicate_group))
+        if qualified:
+            eligible = [item for item in members if recommendation_qualified(item)]
+            members = eligible or members
+        if record not in members:
+            return (0, len(members))
+        return (members.index(record) + 1, len(members))
 
     def duplicate_keep_best(self, records, group_id):
         return self._duplicate_module(required=True).keep_best(records, group_id)
