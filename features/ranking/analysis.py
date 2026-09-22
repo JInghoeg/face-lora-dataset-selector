@@ -29,7 +29,6 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
 
 from core.models import AnalysisFinding, FaceDetection, Photo, derive_eligibility
 from infrastructure.filesystem import sha256_file
-from .service import rank
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODELS = PROJECT_ROOT / "models"
@@ -632,40 +631,6 @@ class AnalysisEngine:
 
         derive_eligibility(record)
         return record
-
-
-def group_duplicates(records, threshold=8, adjacent=16):
-    """Anchor-based pHash grouping; no transitive chain merging."""
-    for record in records:
-        record.duplicate_group = 0
-    remaining = {
-        index
-        for index, record in enumerate(records)
-        if record.phash and not record.duplicate_ignore
-    }
-    group_no = 1
-    while remaining:
-        anchor = max(remaining, key=lambda i: rank(records[i]))
-        remaining.remove(anchor)
-        members = [anchor]
-        for candidate in list(remaining):
-            left, right = records[anchor], records[candidate]
-            distance = bin(left.phash ^ right.phash).count("1")
-            same_source = left.source == right.source
-            close = distance <= threshold or (
-                same_source
-                and distance <= adjacent
-                and left.person_scale == right.person_scale
-                and abs(left.yaw - right.yaw) <= 25
-                and abs(left.pitch - right.pitch) <= 25
-            )
-            if close:
-                members.append(candidate)
-                remaining.remove(candidate)
-        if len(members) > 1:
-            for index in members:
-                records[index].duplicate_group = group_no
-            group_no += 1
 
 
 def base_status(records):
