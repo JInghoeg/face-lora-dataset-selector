@@ -1,0 +1,122 @@
+name: Duplicate Boundary
+
+on:
+  pull_request:
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/duplicate/**"
+      - "features/ranking/**"
+      - "application/**"
+      - "ui/qt/duplicate_review.py"
+      - "tests/duplicate_backend_smoke.py"
+      - "requirements*.txt"
+      - ".importlinter"
+      - ".github/workflows/duplicate-boundary.yml"
+  push:
+    branches:
+      - "feature/**"
+      - "refactor/**"
+    paths:
+      - "app.py"
+      - "core/**"
+      - "features/duplicate/**"
+      - "features/ranking/**"
+      - "application/**"
+      - "ui/qt/duplicate_review.py"
+      - "tests/duplicate_backend_smoke.py"
+      - "requirements*.txt"
+      - ".importlinter"
+      - ".github/workflows/duplicate-boundary.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  duplicate:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Compile Duplicate boundary
+        shell: pwsh
+        run: |
+          python -m compileall features/duplicate application ui/qt/duplicate_review.py app.py
+
+      - name: Duplicate backend smoke
+        shell: pwsh
+        run: |
+          python tests/duplicate_backend_smoke.py
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Offscreen Duplicate dialog smoke
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtWidgets import QApplication
+          from application import SelectorApplication
+          from core.models import Photo
+          from ui.qt import DuplicateReviewDialog
+
+          qapp = QApplication.instance() or QApplication([])
+          backend = SelectorApplication()
+          a = Photo(Path("missing-a.jpg"))
+          b = Photo(Path("missing-b.jpg"))
+          a.sample_id = "a"
+          b.sample_id = "b"
+          a.duplicate_group = 1
+          b.duplicate_group = 1
+          a.face_quality = 0.9
+          b.face_quality = 0.8
+
+          dialog = DuplicateReviewDialog(backend, [a, b], lambda _regroup=False: None)
+          assert dialog.group_list.count() == 1
+          assert dialog.members.count() == 2
+          dialog.close()
+          print("Duplicate dialog offscreen smoke: PASS")
+          '@ | python -
+
+      - name: Optional Duplicate absence startup smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\duplicate"
+          $featureOff = "features\duplicate.__disabled_for_smoke__"
+          try {
+            Move-Item $feature $featureOff
+            python -c "import app; assert not app.BACKEND.feature_available('duplicates'); print('optional Duplicate absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Duplicate feature" }
+          }
+          finally {
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
