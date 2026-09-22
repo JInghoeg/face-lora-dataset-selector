@@ -27,4 +27,4 @@
 ## 5. Completion decision
 
 - [x] 5.1 Verify implementation against proposal/design/tasks (use `/opsx:verify` when expanded workflows are available) and record any mismatch instead of silently updating history.
-- [ ] 5.2 Only after the recovery + change-evolution tests pass, decide whether to archive this change and whether any lesson is mature enough to consider for Engineering-Playbook; verify no Playbook modification exists before that decision.
+- [x] 5.2 Only after the recovery + change-evolution tests pass, decide whether to archive this change and whether any lesson is mature enough to consider for Engineering-Playbook; verify no Playbook modification exists before that decision.
