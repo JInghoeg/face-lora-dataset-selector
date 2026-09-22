@@ -1,0 +1,41 @@
+name: OpenSpec Pilot Validation
+
+on:
+  pull_request:
+    paths:
+      - "openspec/**"
+      - ".github/workflows/openspec-pilot.yml"
+  push:
+    branches:
+      - pilot/openspec-text-cleanup-ui
+    paths:
+      - "openspec/**"
+      - ".github/workflows/openspec-pilot.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install OpenSpec 1.13.1
+        run: npm install --global @fission-ai/openspec@1.13.1
+
+      - name: Report OpenSpec version
+        run: openspec --version
+
+      - name: Strict validation
+        run: openspec validate --all --strict
