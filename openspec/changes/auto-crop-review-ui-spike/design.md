@@ -69,3 +69,25 @@ The spike is successful only if it produces evidence sufficient to decide:
 - or stop UI work because neither reusable option is worth release risk.
 
 No candidate is adopted solely because automated tests pass; rendered visual quality is part of acceptance.
+
+
+## Spike outcome
+
+Candidate A — qt-material 2.17:
+- behavior/ROI compatibility: PASS on Python 3.9 and 3.12;
+- visual result: improved, especially dark_blue, but not strong enough for production adoption by itself;
+- decision: reject for v0.3 rather than hand-style it.
+
+Candidate B — PySide6-Fluent-Widgets 1.11.3:
+- Fluent light visual result: PASS for bounded production adoption;
+- existing Auto Crop workflow and real pyqtgraph RectROI/backend path: PASS;
+- Fluent dark result: reject for v0.3 because the surrounding application is not a complete dark-mode system;
+- normal pip resolution downloads PySide6-Addons 6.8.3 (~127.9 MB), which conflicts with the existing Essentials-only runtime strategy;
+- explicit Essentials-only/no-deps proof: PASS with no PySide6 Addons available.
+
+Production decision:
+- keep PySide6-Essentials;
+- adopt Fluent light only for the Auto Crop review surface in a separate bounded production change;
+- use an explicit no-deps UI dependency installation path so package metadata cannot reintroduce Addons;
+- measure final Portable size delta before production merge;
+- do not expand this into a global theme/dark-mode redesign.
