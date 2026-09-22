@@ -48,6 +48,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt
           python -m pip install --no-cache-dir qt-material==2.17
+          python -m pip install --no-cache-dir "PySide6>=6.6,<6.9" PySide6-Fluent-Widgets==1.11.3
+          python -c "import PySide6, qfluentwidgets; print('PySide6', PySide6.__version__); print('QFluentWidgets import OK')"
+          python -m pip show PySide6 PySide6-Essentials PySide6-Addons PySide6-Fluent-Widgets
 
       - name: Render real Auto Crop dialog and verify ROI
         shell: pwsh
