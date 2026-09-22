@@ -7,6 +7,9 @@ on:
       - "features/**"
       - "infrastructure/**"
       - "application/**"
+      - "ui/**"
+      - "app.py"
+      - "tests/duplicate_backend_smoke.py"
       - ".importlinter"
       - "requirements-dev.txt"
       - ".github/workflows/architecture.yml"
@@ -20,6 +23,9 @@ on:
       - "features/**"
       - "infrastructure/**"
       - "application/**"
+      - "ui/**"
+      - "app.py"
+      - "tests/duplicate_backend_smoke.py"
       - ".importlinter"
       - "requirements-dev.txt"
       - ".github/workflows/architecture.yml"
@@ -52,9 +58,14 @@ jobs:
       - name: Compile architecture packages
         shell: pwsh
         run: |
-          python -m compileall core features infrastructure application
+          python -m compileall core features infrastructure application ui app.py
 
       - name: Enforce import contracts
         shell: pwsh
         run: |
           lint-imports
+
+      - name: Duplicate backend smoke
+        shell: pwsh
+        run: |
+          python tests/duplicate_backend_smoke.py
