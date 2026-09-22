@@ -6,6 +6,8 @@ context: |
   Architecture invariant: Qt presentation -> SelectorApplication -> independent feature backends.
   Feature backends remain Qt-free; optional features must not create destructive sibling coupling.
   Reuse mature components before custom primitives. Do not rewrite validated algorithms for architecture aesthetics.
+  UX/UI quality has two equal release criteria: usability and visual quality. Neither may be traded away for the other.
+  For UX/UI work, prefer actual reuse/adaptation of mature open-source applications, components, templates, and design systems over imitation or self-designed replacements.
   Risk-based QA: low-risk, reversible, automated-test-covered work may remain HUMAN UNVERIFIED until a coherent checkpoint.
 
   Accepted v0.3 execution order:
@@ -26,6 +28,10 @@ rules:
     - Keep SelectorApplication and feature backend contracts stable unless a concrete implementation blocker is documented.
     - Prefer incremental presentation extraction over a whole-application rewrite.
     - Keep UI-specific dependencies out of backend packages.
+    - For every UX/UI change, treat usability and visual quality as equal hard requirements; a solution that is functionally mature but visibly rough, or visually polished but awkward to use, is not acceptable.
+    - Before custom UI design, search for mature reusable implementations that solve both interaction and visual presentation. Record source, license, maintenance/integration fit, and what can be reused directly.
+    - Prefer importing/adapting real components, templates, styling systems, or implementation patterns over merely looking at screenshots and then designing a new interface from scratch.
+    - Custom Qt UI is the fallback only after reusable options are shown to be unsuitable; keep any fallback customization minimal and document why reuse was rejected.
   tasks:
     - Every task must name an objective verification step.
     - Keep tasks small enough to stop safely between commits.
