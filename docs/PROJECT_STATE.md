@@ -94,12 +94,12 @@ Current UX/UI rule:
 - do not accept a visually rough solution merely because interaction is mature;
 - do not accept a polished solution that weakens the crop-review workflow.
 
-Current spike:
+Spike result:
 - existing pyqtgraph RectROI remains the crop interaction primitive;
-- first reusable visual candidate is qt-material 2.17, tested only in CI initially;
-- baseline / light_blue / dark_blue versions of the real Auto Crop dialog are rendered as screenshot artifacts;
-- PySide6-Fluent-Widgets remains a second candidate if qt-material is not visually strong enough;
-- no production UI library is adopted until the real render and compatibility evidence justify it.
+- qt-material was tested and rejected for direct adoption: visually cleaner, but not strong enough without custom styling;
+- PySide6-Fluent-Widgets light mode passed the visual + interaction gate and is the selected bounded production direction;
+- Fluent dark is explicitly out of scope for v0.3 because the surrounding application is not a dark-mode system;
+- Essentials-only/no-Addons compatibility proof passed; production adoption must preserve PySide6-Essentials and measure Portable delta.
 
 PR #48 status is COMPLETE:
 - merged at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`;
@@ -130,9 +130,9 @@ Source Organizer must be human-tested first on a disposable/copied dataset, neve
 
 ## Next action
 
-1. Complete Issue #49 visual spike using the real Auto Crop dialog, not a mockup.
-2. Inspect the rendered baseline / qt-material candidates for both usability and visual quality.
-3. If qt-material is good enough, adopt it in one bounded Auto Crop-only change and measure Portable delta; if not, test PySide6-Fluent-Widgets rather than hand-designing a replacement.
+1. Finish the separate bounded Auto Crop production adoption using PySide6-Fluent-Widgets light components only.
+2. Preserve PySide6-Essentials through an explicit no-deps UI dependency install path; do not reintroduce PySide6-Addons.
+3. Measure the actual Portable size delta and rerun Auto Crop ROI / startup regression before merge.
 4. Stop Stage 3 after this bounded release-facing UI slice unless a concrete blocker is discovered.
 5. Build the unified Portable and run the consolidated human-QA checkpoint from Issue #17, then fix release blockers / obvious experience defects and publish v0.3.
 
