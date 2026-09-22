@@ -75,7 +75,13 @@ class SelectorApplication:
         )
         self.cache.migrate_legacy()
         self.refresh_service = DatasetRefreshService(
-            self.cache, self.active_image_files
+            self.cache,
+            self.active_image_files,
+            duplicate_grouper=(
+                _duplicate_service.group_duplicates
+                if _duplicate_service is not None
+                else None
+            ),
         )
 
         self.text_cleanup = (
