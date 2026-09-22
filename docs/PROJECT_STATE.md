@@ -72,7 +72,7 @@ features/duplicate
 
 No known missing implementation blocker currently prevents Duplicate modularization.
 
-The reusable cross-repository Project Memory Gate is being piloted. If GitHub private-repository reusable-workflow access blocks it, keep the protocol and use a local workflow implementation rather than weakening the continuity rule.
+The Project Memory Gate is installed locally on the product branch for the pilot because the cross-private reusable-workflow caller did not trigger under the current repository setup. The Playbook workflow remains the reference implementation; local automation enforces the same mechanical checks.
 
 ## Human QA debt
 
@@ -90,7 +90,7 @@ Release still requires the consolidated QA checkpoint, copied-dataset Source Org
 
 ## Next action
 
-After this continuity pilot is merged and its gate behavior is verified, continue **Duplicate Review modularization**.
+After the local Project Memory Gate smoke check passes, continue **Duplicate Review modularization**.
 
 Do not pause for a broad manual-QA pass first unless new work crosses the existing risk-based immediate-validation boundary.
 
