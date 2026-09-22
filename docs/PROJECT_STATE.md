@@ -47,11 +47,11 @@ Auto Crop manual ROI PR #29 passed Python 3.9/3.12 tests, full selector self-tes
 
 ### Project continuity pilot
 
-This repository is adopting the Engineering-Playbook write-through continuity protocol:
-- `docs/PROJECT_STATE.md` becomes the canonical current-state entry point;
+The Engineering-Playbook write-through continuity protocol is installed:
+- `docs/PROJECT_STATE.md` is the canonical current-state entry point;
 - PRs declare whether they change canonical project state;
-- a Project Memory Gate checks the declaration mechanically;
-- `HANDOFF.md` becomes supplementary rather than the sole recovery source.
+- `HANDOFF.md` is supplementary rather than the sole recovery source;
+- this smoke PR validates the Project Memory Gate against a real state-impacting change.
 
 ### Next bounded architecture work
 
@@ -72,7 +72,7 @@ features/duplicate
 
 No known missing implementation blocker currently prevents Duplicate modularization.
 
-The reusable cross-repository Project Memory Gate is being piloted. If GitHub private-repository reusable-workflow access blocks it, keep the protocol and use a local workflow implementation rather than weakening the continuity rule.
+The reusable cross-repository Project Memory Gate must pass this smoke PR. If GitHub private-repository reusable-workflow access blocks it, keep the protocol and replace only the caller with a local gate implementation rather than weakening the continuity rule.
 
 ## Human QA debt
 
