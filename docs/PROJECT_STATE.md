@@ -58,6 +58,12 @@ Auto Crop manual ROI is implemented through `pyqtgraph RectROI` and merged via P
 
 Text Cleanup frontend/backend separation is merged via PR #27.
 
+## In progress
+
+Stage 3 UX/UI modernization is active in Issue #42.
+
+No Stage 4 Portable/QA work should become the main phase while Stage 3 remains active, except an immediate destructive/startup/release-blocking defect that explicitly interrupts the phase.
+
 ## Blockers / uncertainties
 
 No known code blocker prevents entering Stage 3.
