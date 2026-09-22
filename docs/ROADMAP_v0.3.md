@@ -2,11 +2,14 @@
 
 Status date: 2026-09-22
 
+Canonical current-state summary:
+`docs/PROJECT_STATE.md`
+
 ## Completed / substantially implemented
 
 - v0.3 correctness redesign.
 - Dataset/View filters and independent sorting.
-- Duplicate Review workflow.
+- Duplicate Review workflow behavior.
 - AI Review Bundle / patch workflow.
 - Composite Split detector research and production integration.
 - Composite source archive semantics.
@@ -23,12 +26,32 @@ Some interaction changes are AUTO PASS but HUMAN UNVERIFIED; Issue #17 is the au
 
 ## Current
 
-### Human QA checkpoint
+### Bounded architecture work — Duplicate Review
 
-The remaining v0.3 product blocker is no longer missing implementation. The project is now at the planned consolidated human-QA checkpoint.
+Continue feature modularization and frontend/backend separation without turning it into a broad UI rewrite.
 
-Current Portable candidate:
-- workflow: Auto Crop Manual ROI
+Current debt:
+- duplicate grouping primitives still live under `features/ranking`;
+- `DuplicateReviewDialog` remains legacy Qt in `app.py`.
+
+Target:
+```
+features/duplicate
+-> SelectorApplication contract
+-> thin Qt Duplicate Review presentation
+```
+
+This work may proceed while low-risk HUMAN UNVERIFIED items remain batched.
+
+Do **not** interpret the human-QA release gate as a requirement to stop bounded modularization first.
+
+Broad `app.py` / `ui/qt` migration remains deferred.
+
+### Human QA queue
+
+Issue #17 remains authoritative for batched HUMAN UNVERIFIED checks.
+
+The current Auto Crop Portable candidate remains useful for the later consolidated checkpoint:
 - head tested before merge: `d8e936f6854670873d6544fca9a86bf487a7cdf5`
 - merged product commit: `c3aeabf4ec65c92ca3eb29f2b781d9e71cea8baf`
 - artifact: `auto-crop-roi-portable-qa`
@@ -45,8 +68,6 @@ Automated PASS includes:
 - UI Polish regression;
 - Text Cleanup Boundary;
 - Portable build + packaged EXE self-test.
-
-Human verification remains intentionally batched in Issue #17.
 
 ### General Auto Crop status
 
@@ -65,42 +86,33 @@ Behavior:
 - Final Export uses accepted current `box`;
 - source pixels remain untouched until export.
 
-Persistence:
-- proposal schema v2 stores `auto_box` and editable `box`;
-- v1 metadata migrates without re-running ISNetIS.
-
-Architecture:
-- pyqtgraph is presentation-only;
-- state mutation stays in `features/auto_crop` behind `SelectorApplication`;
-- backend packages remain Qt-free.
-
-Tracking:
-- implementation issue #28: completed;
-- broader Auto Crop production issue #21 remains open until human/release gates pass.
+Known non-blocking limitation:
+- occasional foreground/background adhesion may make a proposal too loose;
+- do not reopen Stage 3.2 unless real QA shows this is frequent.
 
 ### Architecture state
 
-The main product path has backend boundaries for:
+Backend boundaries currently exist for:
 - Ranking
 - Composite
 - Auto Crop
 - Source Organizer
 - Text Cleanup
 
-Deferred architecture debt:
-- Duplicate as its own independent feature package;
-- dedicated `ui/qt` package / Qt Model-View migration.
+Next boundary:
+- Duplicate
 
-Do not start a broad UI rewrite before v0.3 release gates are closed.
+Deferred until later:
+- broad dedicated `ui/qt` package / whole-application Qt Model-View migration.
 
-## v0.3 release gate
+## v0.3 remaining gates
 
-v0.3 is not final until:
-- accumulated human-QA checkpoint in Issue #17 passes;
-- Source Organizer is human-tested on a disposable copied dataset;
-- final local Valby end-to-end workflow QA passes.
+Before v0.3 is considered release-complete:
 
-After those gates:
-- close Auto Crop production Issue #21;
-- decide whether Duplicate modularization belongs before v0.3 release or immediately after it;
-- only then consider broader `ui/qt` presentation migration.
+1. complete the bounded Duplicate modularization work without broad UI refactor;
+2. run the accumulated human-QA checkpoint in Issue #17;
+3. human-test Source Organizer on a disposable copied dataset;
+4. run final local Valby end-to-end workflow QA;
+5. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
+
+Low-risk automated changes may continue between these gates under the existing risk-based QA policy.
