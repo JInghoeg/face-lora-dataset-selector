@@ -6,24 +6,27 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified product merge: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8` — PR #38 Duplicate Review modularization.
-- Active work: Draft PR #46, `pilot/openspec-text-cleanup-ui`.
+- Latest verified product merge: `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00` — PR #46 OpenSpec Text Cleanup presentation pilot.
+- Active tracker: Issue #47 — main Dataset View Model/View modernization.
 - Current accepted phase: v0.3 Stage 3 UX/UI modernization.
 - Project Memory Gate is active.
 
 ## Just completed in this continuation
 
 - Recovered project state from GitHub rather than old chat memory.
-- Identified Draft PR #46 / `openspec/changes/extract-text-cleanup-presentation` as the active work.
-- Correctly detected that the previous QA-first PROJECT_STATE/HANDOFF/ROADMAP direction was stale relative to the accepted OpenSpec phase order.
-- Clean-context recovery gate 4.1: PASS.
-- Implementation vs proposal/design/tasks verification 5.1: PASS; no mismatch found.
-- Confirmed all current PR #46 automated workflows are green and the Portable self-test artifact exists.
+- Clean-context recovery gate for PR #46: PASS.
+- Verified implementation against proposal/design/tasks with no mismatch.
+- Synchronized stale QA-first PROJECT_STATE/HANDOFF/ROADMAP back to the accepted Stage 3 order.
+- Archived `extract-text-cleanup-presentation` in one atomic commit.
+- Final archive head passed all 9 current workflows, including Portable build/self-tests.
+- Squash-merged PR #46 into the product branch at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`.
+- Closed completed stale UI polish Issue #16.
+- Opened Issue #47 for the next bounded main Dataset View Model/View modernization slice.
 - Engineering-Playbook remains untouched.
 
 ## Currently in flight
 
-PR #46 is in final pilot closeout.
+Stage 3 UX/UI modernization continues under Issue #47.
 
 The accepted product sequence is:
 1. Auto Crop manual ROI — complete.
@@ -35,9 +38,9 @@ Issue #17 remains the batched HUMAN UNVERIFIED queue, but it is not the immediat
 
 ## Immediate next action
 
-1. Finish the OpenSpec completion decision/archive for `extract-text-cleanup-presentation`.
-2. Merge Draft PR #46 into `feature/v0.3-workflow-recovery` once its final checks stay green.
-3. Continue with the next bounded Stage 3 UX/UI slice.
+1. Create the OpenSpec proposal/design/tasks for Issue #47.
+2. Freeze the main Dataset View migration boundary before implementation: Qt Model/View roles, existing ViewSpec semantics, pagination/virtualization, thumbnail loading, stable IDs and manual actions.
+3. Implement only the accepted bounded slice.
 
 Do not jump to consolidated Portable human QA until Stage 3 is explicitly accepted complete.
 
@@ -45,7 +48,8 @@ Do not jump to consolidated Portable human QA until Stage 3 is explicitly accept
 
 - `docs/PROJECT_STATE.md`
 - `docs/ROADMAP_v0.3.md`
-- Issue #45 / Draft PR #46 — active OpenSpec UX/UI pilot
+- Issue #47 — active Dataset View Model/View modernization
+- Issue #45 / PR #46 — completed OpenSpec pilot
 - Issue #17 — batched HUMAN UNVERIFIED for later consolidated QA
 - PR #38 — merged Duplicate modularization
 - Issue #21 — Auto Crop production/release tracking

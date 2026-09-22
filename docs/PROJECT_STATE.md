@@ -6,8 +6,8 @@ Canonical current-state entry point for the active v0.3 product line.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified product/code baseline: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8` — merged PR #38, Duplicate Review modularization
-- Active UX/UI work: Draft PR #46 on `pilot/openspec-text-cleanup-ui` — OpenSpec pilot / Text Cleanup presentation extraction.
+- Latest verified product/code baseline: `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00` — merged PR #46, completed OpenSpec Text Cleanup presentation pilot.
+- Active UX/UI tracker: Issue #47 — main Dataset View Model/View modernization.
 - GitHub product branch and active Draft PRs are authoritative; do not assume a local clone or this file alone is current without checking repository reality.
 
 ## Current objective
@@ -21,7 +21,7 @@ Accepted execution order:
 3. **UX/UI modernization — active.**
 4. Final unified Portable + consolidated human QA — later, after the UX/UI stage is accepted complete.
 
-The first real Stage 3 slice is Draft PR #46, `extract-text-cleanup-presentation`. Its implementation and automated validation are complete, and the clean-context recovery test passed on 2026-09-22: a fresh continuation independently found PR #46 / the OpenSpec change, identified UX/UI modernization as the active phase, and flagged the older QA-first PROJECT_STATE/HANDOFF/ROADMAP direction as stale.
+The first real Stage 3 slice, PR #46 / `extract-text-cleanup-presentation`, is complete and merged. The clean-context recovery test passed on 2026-09-22, the change was archived under `openspec/changes/archive/2026-09-22-extract-text-cleanup-presentation/`, and all final workflows including Portable self-tests passed. Stage 3 now continues with Issue #47: bounded modernization of the main Dataset View using mature Qt Model/View primitives.
 
 ## Verified complete
 
@@ -81,20 +81,29 @@ Project continuity is active:
 
 ### Stage 3 UX/UI modernization
 
-Draft PR #46 is the active work item.
+Issue #47 is the active tracker for the next bounded slice: **main Dataset View Model/View modernization**.
 
-Current pilot status:
-- OpenSpec 1.13.1 strict validation: PASS;
-- Text Cleanup Python 3.9 + 3.12 compile/backend/full-selector/extracted-UI smoke: PASS;
-- optional Text Cleanup physical-removal startup: PASS;
-- Portable build + packaged EXE self-test: PASS;
-- Architecture Boundaries / UI Polish / Duplicate / Auto Crop / Source Organizer regressions: PASS;
-- clean-context recovery gate: PASS;
-- implementation vs proposal/design/tasks verification: PASS with no mismatch found.
+Why this is next:
+- PR #46 proved the OpenSpec/recovery workflow and extracted one low-risk presentation surface;
+- the main Dataset View is still implemented as a manually rebuilt `QListWidget` inside `Window`;
+- filter/sort/page state, thumbnail lifecycle and item presentation remain tightly coupled there;
+- this is now the highest-leverage presentation seam for real Stage 3 work, without reopening feature algorithms.
 
-Remaining pilot closeout is administrative/project-state work: finish the OpenSpec completion decision, archive the completed change when appropriate, and merge PR #46 into the product branch.
+The next change must settle design before implementation:
+- preserve existing `ViewSpec` and manual-status semantics;
+- use Qt's native `QAbstractListModel` / `QSortFilterProxyModel` / `QListView` path where it fits;
+- decide pagination vs native view virtualization explicitly;
+- keep async thumbnail work bounded;
+- map stable sample IDs safely through model/proxy indexes;
+- keep UI -> `SelectorApplication` -> backend boundaries intact.
 
-After PR #46 is finalized, continue Stage 3 with the next bounded UX/UI slice. Consolidated human QA remains deferred to the final Stage 4 checkpoint.
+PR #46 pilot status is COMPLETE:
+- merged at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`;
+- OpenSpec change archived;
+- clean-context recovery PASS;
+- implementation verification PASS;
+- final 9/9 workflows PASS after archive, including Portable self-tests;
+- Engineering-Playbook unchanged.
 
 ## Blockers / uncertainties
 
@@ -117,10 +126,11 @@ Source Organizer must be human-tested first on a disposable/copied dataset, neve
 
 ## Next action
 
-1. Finalize the OpenSpec pilot in PR #46: completion decision/archive + merge.
-2. Start the next **bounded UX/UI modernization** slice using the same repository-first/OpenSpec workflow.
-3. Only after Stage 3 is explicitly accepted complete, build the unified Portable and run the consolidated human-QA checkpoint from Issue #17.
-4. Then run Source Organizer human QA on a disposable copied dataset and final local Valby end-to-end workflow QA.
+1. For Issue #47, create the bounded OpenSpec proposal/design/tasks for the main Dataset View.
+2. Freeze the Model/View migration boundary before implementation, especially `ViewSpec`, pagination, async thumbnails, stable IDs, and manual actions.
+3. Implement only that accepted slice; do not use it as a pretext for a whole-`app.py` rewrite.
+4. Continue Stage 3 with further bounded UX/UI slices only after the current one is verified.
+5. Only after Stage 3 is explicitly accepted complete, build the unified Portable and run the consolidated human-QA checkpoint from Issue #17.
 
 Do not let the existing QA debt silently reorder Stage 3 and Stage 4.
 
@@ -139,7 +149,7 @@ Initial analysis / recommendation
 
 Active presentation modernization:
 - much of the remaining Qt presentation is still concentrated in `app.py`;
-- PR #46 proves one bounded presentation surface can move into `ui/qt` while preserving the UI -> `SelectorApplication` -> backend boundary;
+- merged PR #46 proves one bounded presentation surface can move into `ui/qt` while preserving the UI -> `SelectorApplication` -> backend boundary;
 - broader visual/interaction improvements and any further Qt Model/View adoption must proceed as bounded Stage 3 slices, not as a whole-application rewrite.
 
 This work is now the active v0.3 phase, but it must remain incremental and reversible.
@@ -162,6 +172,8 @@ This work is now the active v0.3 phase, but it must remain incremental and rever
 ## Authoritative references
 
 - `docs/ROADMAP_v0.3.md` — v0.3 product roadmap and release gates.
+- Issue #47 — active Stage 3 main Dataset View Model/View modernization.
+- Issue #45 / PR #46 — completed OpenSpec pilot / Text Cleanup presentation extraction.
 - Issue #17 — batched HUMAN UNVERIFIED queue.
 - Issue #37 — completed; PR #38 — merged Duplicate Review modularization.
 - Issue #21 — General Auto Crop production/release tracking.

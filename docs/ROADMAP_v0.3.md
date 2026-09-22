@@ -37,9 +37,9 @@ The accepted execution order is:
 3. **UX/UI modernization — active.**
 4. Unified Portable + consolidated human QA — final checkpoint.
 
-Draft PR #46 (`pilot/openspec-text-cleanup-ui`) is the first bounded Stage 3 slice and the repository's OpenSpec pilot.
+PR #46 (`pilot/openspec-text-cleanup-ui`) was the first bounded Stage 3 slice and repository OpenSpec pilot; it is now merged at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`.
 
-Current PR #46 evidence:
+Completed PR #46 evidence:
 - Text Cleanup presentation moved out of `app.py` into `ui/qt/text_cleanup.py`;
 - shared `ImagePreview` and `ThumbnailWorker` extracted into reusable `ui/qt` components after code inspection showed real cross-surface reuse;
 - UI dependencies are explicit through `SelectorApplication` and presentation/cache paths;
@@ -51,7 +51,9 @@ Current PR #46 evidence:
 - clean-context recovery test: PASS;
 - proposal/design/tasks implementation verification: PASS.
 
-The older QA-first state was intentionally retained long enough to test recovery drift detection. That test has now passed, so repository state is being synchronized to the real Stage 3 phase.
+The older QA-first state was intentionally retained long enough to test recovery drift detection. That test passed; the completed change is archived at `openspec/changes/archive/2026-09-22-extract-text-cleanup-presentation/` and final post-archive workflows are green.
+
+Next bounded Stage 3 tracker: Issue #47 — main Dataset View Model/View modernization. It must use mature Qt Model/View primitives, preserve current application/backend boundaries, and freeze pagination/thumbnail/stable-ID behavior before implementation.
 
 ### Human QA queue
 
