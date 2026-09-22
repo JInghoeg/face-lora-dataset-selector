@@ -8,14 +8,14 @@
 
 ## 2. Real-dialog visual spike
 
-- [ ] 2.1 Add an offscreen synthetic Auto Crop dialog fixture using the real AutoCropReviewDialog and existing RectROI.
-- [ ] 2.2 Render baseline, qt-material light_blue and qt-material dark_blue screenshots.
-- [ ] 2.3 Upload screenshots as a CI artifact for visual inspection.
-- [ ] 2.4 Verify ROI edit/reset/decision behavior remains intact on Python 3.9 and 3.12.
+- [x] 2.1 Add an offscreen synthetic Auto Crop dialog fixture using the real AutoCropReviewDialog and existing RectROI.
+- [x] 2.2 Render baseline, qt-material light_blue and qt-material dark_blue screenshots.
+- [x] 2.3 Upload screenshots as a CI artifact for visual inspection.
+- [x] 2.4 Verify ROI edit/reset/decision behavior remains intact on Python 3.9 and 3.12.
 
 ## 3. Candidate decision
 
-- [ ] 3.1 Inspect the actual rendered screenshots for both usability and visual quality.
+- [x] 3.1 Inspect the actual rendered screenshots for both usability and visual quality. Candidate A improves cohesion, especially dark_blue, but remains too close to a themed engineering-tool surface to meet the visual-quality gate by itself.
 - [ ] 3.2 If qt-material is good enough, make a separate bounded adoption change and measure Portable delta before merge.
-- [ ] 3.3 If qt-material is not good enough, do not hand-style it; run one bounded PySide6-Fluent-Widgets spike instead.
+- [x] 3.3 qt-material is not strong enough for direct adoption; do not hand-style it. Run one bounded PySide6-Fluent-Widgets spike instead.
 - [ ] 3.4 Stop before any whole-app theme or unrelated review-surface redesign.
