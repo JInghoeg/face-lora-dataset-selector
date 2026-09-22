@@ -36,9 +36,9 @@ Issue #17 remains the batched HUMAN UNVERIFIED queue.
 
 ## Immediate next action
 
-1. Let the Auto Crop UI spike render baseline / qt-material candidates from the real dialog.
-2. Inspect actual screenshot artifacts; do not choose based on mockups or assistant taste.
-3. Adopt the reusable candidate only if it is both visually strong and interaction-safe; otherwise run the one bounded Fluent candidate.
+1. Adopt the selected Fluent light components in the real Auto Crop review dialog only.
+2. Keep the existing RectROI/backend behavior and PySide6-Essentials runtime; install the UI package without Addons.
+3. Measure Portable delta and verify the real production dialog before merge.
 4. Then stop Stage 3 and move to unified Portable + consolidated QA for v0.3.
 
 ## Relevant links only
