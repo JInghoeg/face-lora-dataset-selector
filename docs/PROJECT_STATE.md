@@ -6,8 +6,8 @@ Canonical current-state entry point for the active v0.3 product line.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified product/code baseline: `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00` — merged PR #46, completed OpenSpec Text Cleanup presentation pilot.
-- Active UX/UI tracker: Issue #47 — main Dataset View Model/View modernization.
+- Latest verified product/code baseline: `4b574df844ffd2d795707eb7c6ea5440b5a61bd1` — merged PR #48, main Dataset View Qt Model/View modernization.
+- Active UX/UI tracker: Issue #49 — Auto Crop review-surface reusable UI spike.
 - GitHub product branch and active Draft PRs are authoritative; do not assume a local clone or this file alone is current without checking repository reality.
 
 ## Current objective
@@ -21,7 +21,7 @@ Accepted execution order:
 3. **UX/UI modernization — active.**
 4. Final unified Portable + consolidated human QA — later, after the UX/UI stage is accepted complete.
 
-The first real Stage 3 slice, PR #46 / `extract-text-cleanup-presentation`, is complete and merged. The clean-context recovery test passed on 2026-09-22, the change was archived under `openspec/changes/archive/2026-09-22-extract-text-cleanup-presentation/`, and all final workflows including Portable self-tests passed. Stage 3 now continues with Issue #47: bounded modernization of the main Dataset View using mature Qt Model/View primitives.
+Stage 3 has completed two bounded slices: PR #46 extracted Text Cleanup presentation and proved OpenSpec continuity; PR #48 migrated the main Dataset View to a Qt Model/View seam and is merged at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`. Stage 3 now continues with Issue #49: one limited, user-visible Auto Crop review UI spike before the v0.3 release gate.
 
 ## Verified complete
 
@@ -81,29 +81,33 @@ Project continuity is active:
 
 ### Stage 3 UX/UI modernization
 
-Issue #47 is the active tracker for the next bounded slice: **main Dataset View Model/View modernization**.
+Issue #49 is the active tracker: **Auto Crop review-surface reusable UI spike**.
 
 Why this is next:
-- PR #46 proved the OpenSpec/recovery workflow and extracted one low-risk presentation surface;
-- the main Dataset View is still implemented as a manually rebuilt `QListWidget` inside `Window`;
-- filter/sort/page state, thumbnail lifecycle and item presentation remain tightly coupled there;
-- this is now the highest-leverage presentation seam for real Stage 3 work, without reopening feature algorithms.
+- PR #48 already completed the main Dataset View Model/View seam; do not continue internal proxy/pagination work merely for architecture aesthetics;
+- v0.3 is close to release and needs one bounded, visible UX/UI improvement rather than a whole-app redesign;
+- Auto Crop is a new v0.3 review workflow with validated backend/ROI behavior and a contained presentation surface.
 
-The next change must settle design before implementation:
-- preserve existing `ViewSpec` and manual-status semantics;
-- use Qt's native `QAbstractListModel` / `QSortFilterProxyModel` / `QListView` path where it fits;
-- decide pagination vs native view virtualization explicitly;
-- keep async thumbnail work bounded;
-- map stable sample IDs safely through model/proxy indexes;
-- keep UI -> `SelectorApplication` -> backend boundaries intact.
+Current UX/UI rule:
+- usability and visual quality are equal hard requirements;
+- search for and actually reuse mature components/themes/templates before custom UI design;
+- do not accept a visually rough solution merely because interaction is mature;
+- do not accept a polished solution that weakens the crop-review workflow.
 
-PR #46 pilot status is COMPLETE:
-- merged at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`;
-- OpenSpec change archived;
-- clean-context recovery PASS;
-- implementation verification PASS;
-- final 9/9 workflows PASS after archive, including Portable self-tests;
-- Engineering-Playbook unchanged.
+Current spike:
+- existing pyqtgraph RectROI remains the crop interaction primitive;
+- first reusable visual candidate is qt-material 2.17, tested only in CI initially;
+- baseline / light_blue / dark_blue versions of the real Auto Crop dialog are rendered as screenshot artifacts;
+- PySide6-Fluent-Widgets remains a second candidate if qt-material is not visually strong enough;
+- no production UI library is adopted until the real render and compatibility evidence justify it.
+
+PR #48 status is COMPLETE:
+- merged at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`;
+- Dataset View uses `DatasetListModel(QAbstractListModel)` + `DatasetListView(QListView)`;
+- stable sample IDs drive UI action mapping;
+- existing ViewSpec filter/sort and pagination semantics remain unchanged;
+- OpenSpec change archived under `openspec/changes/archive/2026-09-23-modernize-dataset-view-model/`;
+- Issue #47 closed.
 
 ## Blockers / uncertainties
 
@@ -126,13 +130,13 @@ Source Organizer must be human-tested first on a disposable/copied dataset, neve
 
 ## Next action
 
-1. For Issue #47, create the bounded OpenSpec proposal/design/tasks for the main Dataset View.
-2. Freeze the Model/View migration boundary before implementation, especially `ViewSpec`, pagination, async thumbnails, stable IDs, and manual actions.
-3. Implement only that accepted slice; do not use it as a pretext for a whole-`app.py` rewrite.
-4. Continue Stage 3 with further bounded UX/UI slices only after the current one is verified.
-5. Only after Stage 3 is explicitly accepted complete, build the unified Portable and run the consolidated human-QA checkpoint from Issue #17.
+1. Complete Issue #49 visual spike using the real Auto Crop dialog, not a mockup.
+2. Inspect the rendered baseline / qt-material candidates for both usability and visual quality.
+3. If qt-material is good enough, adopt it in one bounded Auto Crop-only change and measure Portable delta; if not, test PySide6-Fluent-Widgets rather than hand-designing a replacement.
+4. Stop Stage 3 after this bounded release-facing UI slice unless a concrete blocker is discovered.
+5. Build the unified Portable and run the consolidated human-QA checkpoint from Issue #17, then fix release blockers / obvious experience defects and publish v0.3.
 
-Do not let the existing QA debt silently reorder Stage 3 and Stage 4.
+Do not let either architecture cleanup or an open-ended UI redesign delay the release.
 
 ## Architecture / workflow state
 
@@ -172,7 +176,8 @@ This work is now the active v0.3 phase, but it must remain incremental and rever
 ## Authoritative references
 
 - `docs/ROADMAP_v0.3.md` — v0.3 product roadmap and release gates.
-- Issue #47 — active Stage 3 main Dataset View Model/View modernization.
+- Issue #49 — active Auto Crop review-surface reusable UI spike.
+- Issue #47 / PR #48 — completed main Dataset View Model/View modernization.
 - Issue #45 / PR #46 — completed OpenSpec pilot / Text Cleanup presentation extraction.
 - Issue #17 — batched HUMAN UNVERIFIED queue.
 - Issue #37 — completed; PR #38 — merged Duplicate Review modularization.
