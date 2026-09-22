@@ -54,7 +54,9 @@ Project continuity is now active:
 
 ### Duplicate Review modularization
 
-Duplicate Review is the next modularization target.
+Active work: Issue #37 on `feature/v0.3-duplicate-module`.
+
+Duplicate Review is the current modularization target.
 
 Known debt:
 - duplicate grouping primitives still live under `features/ranking`;
@@ -91,7 +93,7 @@ Release still requires the consolidated QA checkpoint, copied-dataset Source Org
 
 ## Next action
 
-Continue **Duplicate Review modularization**.
+Implement and validate Issue #37: **Duplicate Review feature module + frontend/backend boundary**.
 
 Do not pause for a broad manual-QA pass first unless new work crosses the existing risk-based immediate-validation boundary.
 
