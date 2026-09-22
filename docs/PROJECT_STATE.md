@@ -43,19 +43,18 @@ Import Linter enforces dependency direction and Qt-free backend boundaries.
 
 Auto Crop manual ROI PR #29 passed Python 3.9/3.12 tests, full selector self-test, RectROI smoke, Portable build/EXE self-test, architecture regression, Source Organizer regression, UI regression, and Text Cleanup boundary checks.
 
+Project continuity is now active:
+- `docs/PROJECT_STATE.md` is the canonical current-state entry point;
+- PRs declare whether they change canonical project state;
+- local Project Memory Gate automation is installed on main and the v0.3 product branch;
+- state-impacting PR validation passed in PR #35 / Actions runs #35673375953 and #35673432128;
+- `HANDOFF.md` is supplementary rather than the sole recovery source.
+
 ## In progress
 
-### Project continuity pilot
+### Duplicate Review modularization
 
-This repository is adopting the Engineering-Playbook write-through continuity protocol:
-- `docs/PROJECT_STATE.md` becomes the canonical current-state entry point;
-- PRs declare whether they change canonical project state;
-- a Project Memory Gate checks the declaration mechanically;
-- `HANDOFF.md` becomes supplementary rather than the sole recovery source.
-
-### Next bounded architecture work
-
-Duplicate Review remains the next modularization target.
+Duplicate Review is the next modularization target.
 
 Known debt:
 - duplicate grouping primitives still live under `features/ranking`;
@@ -72,7 +71,9 @@ features/duplicate
 
 No known missing implementation blocker currently prevents Duplicate modularization.
 
-The Project Memory Gate is installed locally on the product branch for the pilot because the cross-private reusable-workflow caller did not trigger under the current repository setup. The Playbook workflow remains the reference implementation; local automation enforces the same mechanical checks. The gate was validated on a real state-impacting PR by PR #35 / Actions run #35673375953.
+No current blocker is known for Duplicate modularization.
+
+For continuity automation, the cross-private reusable-workflow caller did not trigger under the current repository setup, so this pilot uses the same gate logic locally. The Playbook workflow remains the reference implementation.
 
 ## Human QA debt
 
