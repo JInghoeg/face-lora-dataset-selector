@@ -72,7 +72,7 @@ features/duplicate
 
 No known missing implementation blocker currently prevents Duplicate modularization.
 
-The Project Memory Gate is installed locally on the product branch for the pilot because the cross-private reusable-workflow caller did not trigger under the current repository setup. The Playbook workflow remains the reference implementation; local automation enforces the same mechanical checks. This final smoke PR verifies the gate on a real state-impacting change.
+The Project Memory Gate is installed locally on the product branch for the pilot because the cross-private reusable-workflow caller did not trigger under the current repository setup. The Playbook workflow remains the reference implementation; local automation enforces the same mechanical checks. The gate was validated on a real state-impacting PR by PR #35 / Actions run #35673375953.
 
 ## Human QA debt
 
@@ -90,7 +90,7 @@ Release still requires the consolidated QA checkpoint, copied-dataset Source Org
 
 ## Next action
 
-Continue **Duplicate Review modularization** after this continuity smoke PR passes.
+Continue **Duplicate Review modularization**.
 
 Do not pause for a broad manual-QA pass first unless new work crosses the existing risk-based immediate-validation boundary.
 
