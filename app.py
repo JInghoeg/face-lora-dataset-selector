@@ -853,13 +853,8 @@ class Window(QMainWindow):
     def set_category_filter(self,kind,value):
         combo={'status':self.view_combo,'scale':self.scale_combo,'yaw':self.yaw_combo,'pitch':self.pitch_combo,'eligibility':self.eligibility_combo}[kind]
         set_combo_value(combo,value);self.page=0;self.refresh()
-    def group_rank(self,r):
-        if not r.duplicate_group:return 1,1
-        entries=group_entries(self.records,r.duplicate_group);return entries.index(r)+1,len(entries)
-    def qualified_group_rank(self,r):
-        if not r.duplicate_group:return 1,1
-        entries=group_entries(self.records,r.duplicate_group,True)
-        return (entries.index(r)+1,len(entries)) if r in entries else (0,len(entries))
+    def group_rank(self,r):return BACKEND.duplicate_group_rank(self.records,r,False)
+    def qualified_group_rank(self,r):return BACKEND.duplicate_group_rank(self.records,r,True)
     def indices(self,with_quick=True):
         spec=self.current_view_spec();base=[i for i,r in enumerate(self.records) if photo_matches_filters(r,spec.filters)]
         if spec.best_only:base=[i for i in base if not self.records[i].duplicate_group or self.qualified_group_rank(self.records[i])[0]==1]
