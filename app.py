@@ -15,7 +15,8 @@ try:
     import pyqtgraph as pg
     from application import SelectorApplication
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
-    from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified, group_entries, group_best
+    from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
+    from ui.qt import DuplicateReviewDialog
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
@@ -234,10 +235,6 @@ class Analyzer(QObject):
             self.finished.emit(result.records)
         except Exception:
             self.failed.emit(traceback.format_exc())
-    @staticmethod
-    def groups(records,threshold=8,adjacent=16):
-        return BACKEND.regroup_duplicates(records,threshold,adjacent)
-
 class TextScan(QObject):
     progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
     def __init__(self,folder,cached):super().__init__();self.folder=folder;self.cached=cached
@@ -493,99 +490,6 @@ class ReviewGrid(QListWidget):
         if event.button()==Qt.RightButton and item is not None:
             self.rightItemDoubleClicked.emit(item);event.accept();return
         super().mouseDoubleClickEvent(event)
-
-class DuplicateReviewDialog(QDialog):
-    def __init__(self,records,on_changed,parent=None):
-        super().__init__(parent);self.records=records;self.on_changed=on_changed;self.current_group=None;self.draft_checks={r.sample_id:(r.status=='推荐') for r in records};self.dirty=False;self.regroup_needed=False;self.setWindowTitle('Duplicate Group 人工复核');self.resize(1500,900)
-        root=QVBoxLayout(self);hint=QLabel('勾选只是本窗口里的临时选择；切换 Group 不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。');hint.setWordWrap(True);hint.setStyleSheet('padding:6px;color:#333;background:#f3f4f6;border:1px solid #d1d5db;');root.addWidget(hint)
-        split=QSplitter(Qt.Horizontal);self.group_list=QListWidget();self.group_list.setMinimumWidth(220);self.group_list.itemClicked.connect(self.show_group);split.addWidget(self.group_list);right=QWidget();rl=QVBoxLayout(right);self.group_label=QLabel('选择左侧重复组');self.group_label.setStyleSheet('font-weight:600;');rl.addWidget(self.group_label);self.members=QListWidget();self.members.setViewMode(QListWidget.IconMode);self.members.setResizeMode(QListWidget.Adjust);self.members.setMovement(QListWidget.Static);self.members.setIconSize(QSize(280,280));self.members.setGridSize(QSize(340,390));self.members.setWordWrap(True);self.members.itemChanged.connect(self.member_check_changed);self.members.itemDoubleClicked.connect(self.open_member);rl.addWidget(self.members,1);split.addWidget(right);split.setSizes([230,1230]);root.addWidget(split,1)
-        actions=QHBoxLayout();best=QPushButton('保留组内最佳');best.clicked.connect(self.keep_best);selected=QPushButton('完成本组：勾选推荐 / 未勾淘汰');selected.clicked.connect(self.keep_checked);all_groups=QPushButton('完成全部组');all_groups.clicked.connect(self.commit_all_groups);all_keep=QPushButton('全部保留');all_keep.clicked.connect(self.keep_all);restore=QPushButton('恢复组内自动状态');restore.clicked.connect(self.restore_auto);self.toggle_grouping=QPushButton('勾选项移出重复组');self.toggle_grouping.clicked.connect(self.toggle_ignore)
-        for b in (best,selected,all_groups,all_keep,restore,self.toggle_grouping):actions.addWidget(b)
-        actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);root.addLayout(actions);self.reload_groups()
-    @staticmethod
-    def thumb(path):
-        reader=QImageReader(str(path));reader.setAutoTransform(True);size=reader.size()
-        if size.isValid():size.scale(280,280,Qt.KeepAspectRatio);reader.setScaledSize(size)
-        image=reader.read();return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
-    def remember_checks(self):
-        for i in range(self.members.count()):
-            it=self.members.item(i);idx=it.data(Qt.UserRole)
-            if isinstance(idx,int) and 0<=idx<len(self.records):self.draft_checks[self.records[idx].sample_id]=it.checkState()==Qt.Checked
-    def member_check_changed(self,it):
-        idx=it.data(Qt.UserRole)
-        if isinstance(idx,int) and 0<=idx<len(self.records):self.draft_checks[self.records[idx].sample_id]=it.checkState()==Qt.Checked
-    def open_member(self,it):
-        idx=it.data(Qt.UserRole)
-        if isinstance(idx,int) and 0<=idx<len(self.records):
-            try:os.startfile(str(self.records[idx].path))
-            except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
-    def grouped(self,gid):
-        if gid==-1:return [r for r in self.records if r.duplicate_ignore]
-        return group_entries(self.records,gid)
-    def reload_groups(self,prefer=None):
-        self.remember_checks();self.group_list.clear();groups=sorted({r.duplicate_group for r in self.records if r.duplicate_group})
-        for gid in groups:
-            members=self.grouped(gid);done=bool(members) and all(r.duplicate_reviewed for r in members);item=QListWidgetItem(f'{"✓ " if done else ""}Group {gid} · {len(members)} 张');item.setData(Qt.UserRole,gid);self.group_list.addItem(item)
-        ignored=[r for r in self.records if r.duplicate_ignore]
-        if ignored:
-            item=QListWidgetItem(f'已人工移出 · {len(ignored)} 张');item.setData(Qt.UserRole,-1);self.group_list.addItem(item)
-        if not self.group_list.count():self.group_label.setText('当前没有 Duplicate Group');self.members.clear();self.current_group=None;return
-        row=0
-        if prefer is not None:
-            for i in range(self.group_list.count()):
-                if self.group_list.item(i).data(Qt.UserRole)==prefer:row=i;break
-        self.group_list.setCurrentRow(row);self.show_group(self.group_list.item(row))
-    def show_group(self,item):
-        if item is None:return
-        self.remember_checks();gid=item.data(Qt.UserRole);self.current_group=gid;members=self.grouped(gid);self.members.blockSignals(True);self.members.clear();done=bool(members) and all(r.duplicate_reviewed for r in members);self.group_label.setText(('已人工移出自动重复分组' if gid==-1 else f'Duplicate Group {gid}')+f' · {len(members)} 张'+(' · ✓ 已完成' if done else ' · 未完成'))
-        self.toggle_grouping.setText('勾选项恢复自动分组' if gid==-1 else '勾选项移出重复组')
-        for rank_no,r in enumerate(members,1):
-            index=next(i for i,x in enumerate(self.records) if x is r);prefix='★ ' if gid!=-1 and rank_no==1 else '';checked=self.draft_checks.get(r.sample_id,r.status=='推荐')
-            text=f'{prefix}{r.path.name}\n{human_bytes(r.file_size)} · {r.width}×{r.height}\nFIQA {r.face_quality:.3f} · BRISQUE {r.brisque:.1f} · Sharp {r.blur:.0f}\n{r.person_scale} · {r.angle_class}'
-            eligibility_text='可直接用' if r.eligibility=='PASS' else '需复核' if r.eligibility=='REVIEW' else '硬淘汰'
-            it=QListWidgetItem(QIcon(self.thumb(r.path)),text);it.setData(Qt.UserRole,index);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if checked else Qt.Unchecked);it.setToolTip(f'{r.sample_id}\n文件：{human_bytes(r.file_size)} · {r.width}×{r.height}\n状态：{r.status} · 判定：{eligibility_text}');self.members.addItem(it)
-        self.members.blockSignals(False)
-    def checked_records(self):
-        self.remember_checks();return [r for r in self.current_records() if self.draft_checks.get(r.sample_id,False)]
-    def current_records(self):return self.grouped(self.current_group) if self.current_group is not None else []
-    def changed(self,prefer=None,regroup=False):
-        self.dirty=True;self.regroup_needed=self.regroup_needed or regroup;self.reload_groups(prefer)
-    def done(self,result):
-        if self.dirty:self.on_changed(self.regroup_needed)
-        super().done(result)
-    def keep_best(self):
-        if self.current_group in (None,-1):return
-        members=self.current_records()
-        if not members:return
-        best=members[0]
-        for r in members:r.manual_status='推荐' if r is best else '淘汰';r.duplicate_reviewed=True;self.draft_checks[r.sample_id]=r is best
-        self.changed(self.current_group)
-    def keep_checked(self):
-        members=self.current_records();checked={r.sample_id for r in self.checked_records()}
-        if not members:return
-        for r in members:r.manual_status='推荐' if r.sample_id in checked else '淘汰';r.duplicate_reviewed=True
-        self.changed(self.current_group)
-    def commit_all_groups(self):
-        self.remember_checks();groups=sorted({r.duplicate_group for r in self.records if r.duplicate_group})
-        if not groups:return
-        for gid in groups:
-            for r in self.grouped(gid):
-                r.manual_status='推荐' if self.draft_checks.get(r.sample_id,False) else '淘汰';r.duplicate_reviewed=True
-        self.changed(self.current_group)
-    def keep_all(self):
-        members=self.current_records()
-        for r in members:r.manual_status='推荐';r.duplicate_reviewed=True;self.draft_checks[r.sample_id]=True
-        if members:self.changed(self.current_group)
-    def restore_auto(self):
-        members=self.current_records()
-        for r in members:r.manual_status=None;r.duplicate_reviewed=False;self.draft_checks[r.sample_id]=False
-        if members:self.changed(self.current_group)
-    def toggle_ignore(self):
-        checked=self.checked_records()
-        if not checked:QMessageBox.information(self,'未勾选图片','请先勾选需要调整重复分组的图片。');return
-        restore=self.current_group==-1
-        for r in checked:r.duplicate_ignore=not restore
-        self.changed(-1 if not restore else None,True)
 
 class CompositeScanWorker(QObject):
     progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
@@ -844,7 +748,7 @@ class Window(QMainWindow):
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
         self.custom_mode=QPushButton('自定义');self.custom_mode.setCheckable(True);self.custom_mode.clicked.connect(self.apply_custom_target);self.group.addButton(self.custom_mode,0);rec.addWidget(self.custom_mode)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setToolTip('仅输入数字；点击“应用”后切换到自定义目标。');ap=QPushButton('应用');ap.clicked.connect(self.apply_custom_target);rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('Auto Crop 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('Auto Crop 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -1287,7 +1191,7 @@ class Window(QMainWindow):
         for r in new_records:
             if key(r.path) not in existing:self.records.append(r);existing.add(key(r.path));added.append(r)
             self.pending_composite_outputs.pop(key(r.path),None)
-        Analyzer.groups(self.records);BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
+        BACKEND.regroup_duplicates(self.records);BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
     def incremental_composite_failed(self,error):
         self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText('Composite 新图增量分析失败；状态已保留，可刷新恢复');self.save();QMessageBox.critical(self,'Composite 新图分析失败',error)
     def incremental_composite_thread_done(self):
@@ -1300,9 +1204,9 @@ class Window(QMainWindow):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
-        DuplicateReviewDialog(self.records,self.duplicate_review_changed,self).exec()
+        DuplicateReviewDialog(BACKEND,self.records,self.duplicate_review_changed,self).exec()
     def duplicate_review_changed(self,regroup=False):
-        if regroup:Analyzer.groups(self.records)
+        if regroup:BACKEND.regroup_duplicates(self.records)
         self.page=0;self.refresh();self.save()
     def open(self,it):
         try:os.startfile(str(self.records[it.data(Qt.UserRole)].path))
@@ -1411,6 +1315,7 @@ def self_test():
     recommendation_summary=BACKEND.recompute_recommendations([front,side],2)
     if recommendation_summary.target!=2 or recommendation_summary.automatic_recommended!=2:raise RuntimeError('application recommendation contract self-test failed')
     if not BACKEND.feature_available('ranking'):raise RuntimeError('mandatory ranking feature registry self-test failed')
+    if not BACKEND.feature_available('duplicates'):raise RuntimeError('Duplicate feature registry self-test failed')
     if not BACKEND.feature_available('auto_crop'):raise RuntimeError('Auto Crop feature registry self-test failed')
     auto_crop_backend_self_test()
     if not BACKEND.feature_available('source_organizer'):raise RuntimeError('Source Organizer feature registry self-test failed')
@@ -1445,8 +1350,19 @@ def self_test():
     if CACHE.resolve()!=BACKEND.cache_root.resolve():raise RuntimeError('application cache ownership self-test failed')
     legacy_view=view_spec_from_dict({'name':'legacy','filters':{},'sort_mode':'BRISQUE 低 → 高','best_only':False,'quick_mode':'','limit_n':10,'ranking_basis':'综合质量'})
     if legacy_view.sort_field!='BRISQUE' or legacy_view.sort_direction!='优先顺序':raise RuntimeError('legacy ViewSpec migration self-test failed')
-    d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'));d1.phash=d2.phash=d3.phash=12345;d3.duplicate_ignore=True;Analyzer.groups([d1,d2,d3],threshold=0,adjacent=0)
+    d1=Photo(Path('d1.jpg'));d2=Photo(Path('d2.jpg'));d3=Photo(Path('d3.jpg'))
+    d1.sample_id='d1';d2.sample_id='d2';d3.sample_id='d3';d1.phash=d2.phash=d3.phash=12345;d1.face_quality=.9;d2.face_quality=.8;d3.duplicate_ignore=True
+    BACKEND.regroup_duplicates([d1,d2,d3],threshold=0,adjacent=0)
     if not d1.duplicate_group or d1.duplicate_group!=d2.duplicate_group or d3.duplicate_group!=0:raise RuntimeError('duplicate exclusion self-test failed')
+    gid=d1.duplicate_group
+    if BACKEND.duplicate_group_ids([d1,d2,d3])!=(gid,) or BACKEND.duplicate_group_members([d1,d2,d3],gid)[0] is not d1:raise RuntimeError('duplicate group query self-test failed')
+    BACKEND.duplicate_keep_best([d1,d2,d3],gid)
+    if d1.manual_status!='推荐' or d2.manual_status!='淘汰' or not BACKEND.duplicate_group_reviewed([d1,d2,d3],gid):raise RuntimeError('duplicate keep-best self-test failed')
+    BACKEND.duplicate_restore_auto([d1,d2,d3],gid)
+    if d1.manual_status is not None or d2.manual_status is not None or d1.duplicate_reviewed or d2.duplicate_reviewed:raise RuntimeError('duplicate restore-auto self-test failed')
+    BACKEND.duplicate_apply_checked([d1,d2,d3],gid,{'d2'})
+    if d1.manual_status!='淘汰' or d2.manual_status!='推荐':raise RuntimeError('duplicate checked-decision self-test failed')
+    if BACKEND.duplicate_set_ignored([d1,d2,d3],{'d2'},True)!=1 or not d2.duplicate_ignore:raise RuntimeError('duplicate ignore mutation self-test failed')
     restored.hard_rejects=[AnalysisFinding('read_error','test',detail='fatal')];derive_eligibility(restored)
     if restored.eligibility!='REJECT':raise RuntimeError('eligibility REJECT self-test failed')
     ok,encoded=cv2.imencode('.jpg',test_bgr)
