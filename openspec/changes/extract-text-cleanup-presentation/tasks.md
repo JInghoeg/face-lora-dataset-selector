@@ -3,7 +3,7 @@
 ## 1. OpenSpec pilot baseline
 
 - [x] 1.1 Add the OpenSpec project config and `extract-text-cleanup-presentation` change artifacts; verify the files follow the current spec-driven schema structure and record that CLI validation is still pending in this sandbox.
-- [ ] 1.2 Open a Draft PR linked to Issue #45 and verify the old Issue-tree pilot (#41-#44) is closed/superseded so a fresh continuation sees only one active pilot.
+- [x] 1.2 Open a Draft PR linked to Issue #45 and verify the old Issue-tree pilot (#41-#44) is closed/superseded so a fresh continuation sees only one active pilot.
 
 ## 2. Text Cleanup presentation extraction
 
