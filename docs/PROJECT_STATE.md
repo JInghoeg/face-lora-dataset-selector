@@ -6,7 +6,7 @@ Canonical current-state entry point for the active v0.3 product line.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified implementation: PR #38 source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34` — Duplicate Review modularization
+- Latest verified product/code baseline: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8` — merged PR #38, Duplicate Review modularization
 - GitHub product branch is authoritative; do not assume a local clone is current without checking fetch/status.
 
 ## Current objective
@@ -41,7 +41,7 @@ Feature packages:
 - `features/source_organizer`
 - `features/text_cleanup`
 
-Duplicate Review modularization is AUTO PASS at PR #38 source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`:
+Duplicate Review modularization is merged via PR #38 at `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8` and AUTO PASS; validation ran on source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`:
 - pHash grouping moved out of `features/ranking.analysis` into `features/duplicate`;
 - duplicate group queries and review mutations are owned by the Duplicate backend;
 - `SelectorApplication` is the Duplicate UI/backend seam;
@@ -156,6 +156,6 @@ This debt is not a current v0.3 implementation blocker.
 
 - `docs/ROADMAP_v0.3.md` — v0.3 product roadmap and release gates.
 - Issue #17 — batched HUMAN UNVERIFIED queue.
-- Issue #37 / PR #38 — Duplicate Review modularization.
+- Issue #37 — completed; PR #38 — merged Duplicate Review modularization.
 - Issue #21 — General Auto Crop production/release tracking.
 - Engineering-Playbook `PROJECT_CONTINUITY.md` — continuity protocol.
