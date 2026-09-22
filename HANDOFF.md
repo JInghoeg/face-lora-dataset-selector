@@ -6,49 +6,47 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified product merge: `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00` — PR #46 OpenSpec Text Cleanup presentation pilot.
-- Active tracker: Issue #47 — main Dataset View Model/View modernization.
+- Latest verified product merge: `4b574df844ffd2d795707eb7c6ea5440b5a61bd1` — PR #48 main Dataset View Model/View modernization.
+- Active tracker: Issue #49 — Auto Crop review-surface reusable UI spike.
 - Current accepted phase: v0.3 Stage 3 UX/UI modernization.
 - Project Memory Gate is active.
 
 ## Just completed in this continuation
 
-- Recovered project state from GitHub rather than old chat memory.
-- Clean-context recovery gate for PR #46: PASS.
-- Verified implementation against proposal/design/tasks with no mismatch.
-- Synchronized stale QA-first PROJECT_STATE/HANDOFF/ROADMAP back to the accepted Stage 3 order.
-- Archived `extract-text-cleanup-presentation` in one atomic commit.
-- Final archive head passed all 9 current workflows, including Portable build/self-tests.
-- Squash-merged PR #46 into the product branch at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`.
-- Closed completed stale UI polish Issue #16.
-- Opened Issue #47 for the next bounded main Dataset View Model/View modernization slice.
+- Completed and merged PR #48 at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`.
+- Main Dataset View now has a bounded Qt Model/View seam with stable-ID action mapping.
+- Archived `modernize-dataset-view-model` under `openspec/changes/archive/2026-09-23-modernize-dataset-view-model/`.
+- Closed Issue #47.
+- Hardened project-level UX/UI rules: usability and visual quality are equal hard requirements; mature reusable UI assets precede custom design.
+- Opened Issue #49 and branch `ux/auto-crop-review-spike`.
+- First visual spike uses the real Auto Crop dialog + existing pyqtgraph RectROI and renders reusable theme candidates in CI.
 - Engineering-Playbook remains untouched.
 
 ## Currently in flight
 
-Stage 3 UX/UI modernization continues under Issue #47.
+Stage 3 UX/UI modernization continues under Issue #49.
 
 The accepted product sequence is:
 1. Auto Crop manual ROI — complete.
 2. Limited architecture closeout — complete.
-3. **UX/UI modernization — active.**
-4. Unified Portable + consolidated human QA — later.
+3. **UX/UI modernization — active, now intentionally limited to the Auto Crop release-facing spike.**
+4. Unified Portable + consolidated human QA — next after this bounded slice.
 
-Issue #17 remains the batched HUMAN UNVERIFIED queue, but it is not the immediate mainline action.
+Issue #17 remains the batched HUMAN UNVERIFIED queue.
 
 ## Immediate next action
 
-1. Create the OpenSpec proposal/design/tasks for Issue #47.
-2. Freeze the main Dataset View migration boundary before implementation: Qt Model/View roles, existing ViewSpec semantics, pagination/virtualization, thumbnail loading, stable IDs and manual actions.
-3. Implement only the accepted bounded slice.
-
-Do not jump to consolidated Portable human QA until Stage 3 is explicitly accepted complete.
+1. Let the Auto Crop UI spike render baseline / qt-material candidates from the real dialog.
+2. Inspect actual screenshot artifacts; do not choose based on mockups or assistant taste.
+3. Adopt the reusable candidate only if it is both visually strong and interaction-safe; otherwise run the one bounded Fluent candidate.
+4. Then stop Stage 3 and move to unified Portable + consolidated QA for v0.3.
 
 ## Relevant links only
 
 - `docs/PROJECT_STATE.md`
 - `docs/ROADMAP_v0.3.md`
-- Issue #47 — active Dataset View Model/View modernization
+- Issue #49 — active Auto Crop reusable UI spike
+- Issue #47 / PR #48 — completed Dataset View Model/View modernization
 - Issue #45 / PR #46 — completed OpenSpec pilot
 - Issue #17 — batched HUMAN UNVERIFIED for later consolidated QA
 - PR #38 — merged Duplicate modularization
