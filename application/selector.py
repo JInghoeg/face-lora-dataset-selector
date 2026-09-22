@@ -12,12 +12,16 @@ from pathlib import Path
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend
-from features.ranking.analysis import group_duplicates
 from infrastructure.filesystem import active_image_files, copy_file, save_crop, unique_output_path
 from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
+
+try:
+    from features.duplicate import service as _duplicate_service
+except ImportError:
+    _duplicate_service = None
 
 try:
     from features.composite import adapter as _composite_adapter
@@ -93,6 +97,11 @@ class SelectorApplication:
             else None
         )
 
+    def _duplicate_module(self, required=True):
+        if _duplicate_service is None and required:
+            raise RuntimeError("Duplicate Review feature is not available.")
+        return _duplicate_service
+
     def _text_cleanup_service(self, required=True):
         if self.text_cleanup is None and required:
             raise RuntimeError("Text Cleanup feature is not available.")
@@ -121,6 +130,8 @@ class SelectorApplication:
     def feature_available(self, feature_id: str) -> bool:
         if not self.registry.contains(feature_id):
             return False
+        if feature_id == "duplicates":
+            return self._duplicate_module(required=False) is not None
         if feature_id == "composite":
             return self._composite_modules(required=False) is not None
         if feature_id == "auto_crop":
@@ -231,9 +242,51 @@ class SelectorApplication:
     def recompute_recommendations(self, records, target):
         return recommend(records, target)
 
+    @property
+    def duplicate_ignored_group_id(self):
+        return self._duplicate_module(required=True).IGNORED_GROUP_ID
+
     def regroup_duplicates(self, records, threshold=8, adjacent=16):
-        group_duplicates(records, threshold=threshold, adjacent=adjacent)
-        return records
+        return self._duplicate_module(required=True).group_duplicates(
+            records, threshold=threshold, adjacent=adjacent
+        )
+
+    def duplicate_group_ids(self, records):
+        return self._duplicate_module(required=True).group_ids(records)
+
+    def duplicate_group_members(self, records, group_id):
+        return self._duplicate_module(required=True).group_members(
+            records, group_id
+        )
+
+    def duplicate_group_reviewed(self, records, group_id):
+        return self._duplicate_module(required=True).group_reviewed(
+            records, group_id
+        )
+
+    def duplicate_keep_best(self, records, group_id):
+        return self._duplicate_module(required=True).keep_best(records, group_id)
+
+    def duplicate_apply_checked(self, records, group_id, selected_sample_ids):
+        return self._duplicate_module(required=True).apply_checked(
+            records, group_id, selected_sample_ids
+        )
+
+    def duplicate_apply_all_groups(self, records, selected_sample_ids):
+        return self._duplicate_module(required=True).apply_all_groups(
+            records, selected_sample_ids
+        )
+
+    def duplicate_keep_all(self, records, group_id):
+        return self._duplicate_module(required=True).keep_all(records, group_id)
+
+    def duplicate_restore_auto(self, records, group_id):
+        return self._duplicate_module(required=True).restore_auto(records, group_id)
+
+    def duplicate_set_ignored(self, records, sample_ids, ignored):
+        return self._duplicate_module(required=True).set_ignored(
+            records, sample_ids, ignored
+        )
 
     def accept_composite(self, folder: Path, source: Path, proposal, keep_mask):
         return self._composite_modules(required=True)[0].accept_composite(
