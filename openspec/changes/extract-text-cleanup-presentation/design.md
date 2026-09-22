@@ -24,14 +24,17 @@ However the Qt side still resides in `app.py`:
 - `SubtitleTab`
 - `ThumbnailWorker`
 
+Code inspection during planning found that `ImagePreview` is also used by Composite Review and `ThumbnailWorker` is also used by the main Dataset View. They are therefore shared presentation components, not Text Cleanup-owned classes.
+
 The backend separation from PR #27 is already validated. This change must not redesign that backend.
 
 ## Goals / Non-Goals
 
 Goals:
 
-- create a real `ui/qt/text_cleanup.py` presentation module;
-- remove Text Cleanup Qt classes from `app.py`;
+- create a real `ui/qt/text_cleanup.py` presentation module for Text Cleanup-specific Qt code;
+- extract shared `ImagePreview` and `ThumbnailWorker` into reusable `ui/qt` modules instead of duplicating them;
+- remove Text Cleanup-specific Qt classes from `app.py`;
 - keep all Text Cleanup product behavior compatible;
 - make UI dependencies explicit enough that the module can be imported and tested independently;
 - keep the change small enough to revert cleanly.
@@ -41,17 +44,21 @@ Non-goals:
 - no PP-OCR/model/repair algorithm changes;
 - no Text Cleanup workflow redesign;
 - no new threshold/default changes;
-- no migration of unrelated MainWindow/Composite/Auto Crop presentation;
+- no migration of unrelated MainWindow/Composite/Auto Crop presentation beyond replacing their references to the shared UI helpers;
 - no broad Qt Model/View conversion in this slice;
 - no change to Stage 4 Portable/QA sequencing.
 
 ## Decisions
 
-### Decision 1: Move one complete presentation surface, not scattered helpers
+### Decision 1: Extract one complete presentation surface plus genuinely shared UI helpers
 
-Move the Text Cleanup Qt workers, preview, thumbnail worker, and `SubtitleTab` together into `ui/qt/text_cleanup.py`.
+Move `TextScan`, `TextCleanupBatchWorker`, and `SubtitleTab` into `ui/qt/text_cleanup.py`.
 
-Rationale: moving only one helper would reduce line count but leave the presentation lifecycle coupled to `app.py`. Moving the whole already-separated Text Cleanup surface creates a meaningful module boundary without touching unrelated UI.
+Move `ImagePreview` and `ThumbnailWorker` into small reusable sibling modules under `ui/qt`, then reuse those components from Text Cleanup and the existing Composite/main Dataset surfaces.
+
+Rationale: the first draft incorrectly treated both helpers as Text Cleanup-owned. Code inspection showed real existing reuse, so forcing them into `text_cleanup.py` would create new coupling while pretending to remove old coupling.
+
+Alternative considered: duplicate the helpers inside Text Cleanup. Rejected because that creates divergent UI implementations and future maintenance cost.
 
 Alternative considered: move all remaining Qt presentation at once. Rejected because it turns a bounded pilot into a broad rewrite and makes regressions harder to localize.
 
@@ -59,7 +66,7 @@ Alternative considered: move all remaining Qt presentation at once. Rejected bec
 
 `SubtitleTab`, `TextScan`, and `TextCleanupBatchWorker` receive the existing `SelectorApplication` instance rather than importing `app.py.BACKEND`.
 
-Presentation-only paths such as app directory / thumbnail cache are passed or derived locally without changing backend APIs.
+Presentation-only paths such as app directory and thumbnail cache are passed into the presentation/shared worker instead of reaching back into `app.py`.
 
 Rationale: avoids circular imports and preserves the established UI -> application boundary.
 
@@ -78,17 +85,19 @@ Rationale: OpenSpec explicitly supports spec-less pure refactors; inventing a re
 ## Risks / Trade-offs
 
 - **Risk: hidden dependency on app.py globals** -> Mitigation: inspect every moved class reference and inject/replace only the presentation dependencies actually required.
-- **Risk: thumbnail/cache behavior changes during move** -> Mitigation: preserve existing cache key/path logic and cover import/offscreen behavior plus existing Text Cleanup regression.
+- **Risk: shared helper extraction changes Composite/main Dataset behavior** -> Mitigation: move code without semantic changes and keep call sites equivalent.
+- **Risk: thumbnail/cache behavior changes during move** -> Mitigation: preserve existing cache-key/path logic and cover import/offscreen behavior plus existing Text Cleanup/UI regression.
 - **Risk: accidental backend redesign** -> Mitigation: no edits under `features/text_cleanup` unless a concrete blocker is discovered and recorded in this design first.
 - **Risk: pilot looks successful without running OpenSpec CLI** -> Mitigation: repository setup is provisional until `openspec validate --all --strict` runs in an environment with OpenSpec 1.13.1+ available.
 
 ## Migration Plan
 
-1. Add `ui/qt/text_cleanup.py` with moved presentation classes.
-2. Export the tab from `ui/qt/__init__.py`.
-3. Update `app.py` composition/imports and remove the migrated classes.
-4. Run compile/self-tests, architecture checks, Text Cleanup boundary regression, and an offscreen UI smoke.
-5. Keep the change on the pilot branch/Draft PR until a clean-context recovery test succeeds.
+1. Extract `ImagePreview` and `ThumbnailWorker` into reusable `ui/qt` modules with equivalent behavior.
+2. Add `ui/qt/text_cleanup.py` with Text Cleanup-specific presentation classes and explicit dependencies.
+3. Export the moved components from `ui/qt/__init__.py`.
+4. Update `app.py` composition/imports and remove the migrated class definitions.
+5. Run compile/self-tests, architecture checks, Text Cleanup boundary regression, UI regression, and an offscreen Text Cleanup UI smoke.
+6. Keep the change on the pilot branch/Draft PR until a clean-context recovery test succeeds.
 
 Rollback: revert the pilot commits/close the Draft PR. No dataset or persistence migration is introduced.
 
