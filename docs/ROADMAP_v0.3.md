@@ -28,67 +28,58 @@ Some interaction changes are AUTO PASS but HUMAN UNVERIFIED; Issue #17 is author
 
 ## Current
 
-### v0.3 release validation
+### Stage 3 — UX/UI modernization
 
-The bounded architecture pass for the known main workflow is complete.
+The accepted execution order is:
 
-Current feature boundaries:
-- Ranking
-- Duplicate
-- Composite
-- Auto Crop
-- Source Organizer
-- Text Cleanup
+1. Auto Crop manual ROI — complete.
+2. Limited architecture closeout — complete.
+3. **UX/UI modernization — active.**
+4. Unified Portable + consolidated human QA — final checkpoint.
 
-Duplicate Review AUTO PASS evidence:
-- merged PR #38: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8`;
-- validated source head: `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`;
-- Python 3.9 + 3.12 Duplicate Boundary: PASS;
-- full selector self-test: PASS;
-- Duplicate backend smoke: PASS;
-- offscreen Duplicate dialog smoke: PASS;
-- optional Duplicate feature removal/startup smoke: PASS;
-- Architecture Boundaries: PASS;
-- Auto Crop / Text Cleanup / Source Organizer / UI regression: PASS;
-- Portable build + packaged EXE self-test: PASS.
+Draft PR #46 (`pilot/openspec-text-cleanup-ui`) is the first bounded Stage 3 slice and the repository's OpenSpec pilot.
 
-Current Portable QA candidate:
-- artifact: `auto-crop-roi-portable-qa`
-- artifact ID: `10673035111`
-- built from PR #38 source head
-- expires: 2026-09-29
+Current PR #46 evidence:
+- Text Cleanup presentation moved out of `app.py` into `ui/qt/text_cleanup.py`;
+- shared `ImagePreview` and `ThumbnailWorker` extracted into reusable `ui/qt` components after code inspection showed real cross-surface reuse;
+- UI dependencies are explicit through `SelectorApplication` and presentation/cache paths;
+- no Text Cleanup backend/model/repair algorithm redesign;
+- OpenSpec 1.13.1 strict validation: PASS;
+- Python 3.9/3.12 Text Cleanup and extracted-UI smoke: PASS;
+- Architecture / UI Polish / Duplicate / Auto Crop / Source Organizer regressions: PASS;
+- Portable build + packaged EXE self-test: PASS;
+- clean-context recovery test: PASS;
+- proposal/design/tasks implementation verification: PASS.
+
+The older QA-first state was intentionally retained long enough to test recovery drift detection. That test has now passed, so repository state is being synchronized to the real Stage 3 phase.
 
 ### Human QA queue
 
-Issue #17 remains authoritative for batched HUMAN UNVERIFIED checks.
+Issue #17 remains authoritative for accumulated HUMAN UNVERIFIED interaction checks.
 
-The next checkpoint should cover the accumulated real interaction flow, including the newly refactored Duplicate Review.
+Those checks are still required before release, but they are intentionally batched for Stage 4 rather than interrupting each bounded Stage 3 UX/UI change.
 
-### General Auto Crop status
+### Architecture / presentation direction
 
-Manual ROI gap remains implemented and AUTO PASS.
+The backend/feature seam remains:
 
-Known non-blocking limitation:
-- occasional foreground/background adhesion may make a proposal too loose;
-- do not reopen Stage 3.2 unless real QA shows this is frequent.
+```
+Qt presentation
+-> SelectorApplication
+-> feature backends
+```
 
-### Architecture state
-
-Main backend/feature boundaries are now in place for the frozen workflow.
-
-Remaining architecture debt:
-- broad presentation concentration in `app.py`;
-- full dedicated `ui/qt` / Qt Model-View migration.
-
-These are deferred until after v0.3 release gates; do not turn them into a pre-release rewrite.
+Stage 3 should reduce presentation concentration in `app.py` through bounded, reversible slices. It must not become a broad whole-application rewrite merely for architectural aesthetics.
 
 ## v0.3 remaining gates
 
 Before v0.3 is considered release-complete:
 
-1. run the accumulated human-QA checkpoint in Issue #17;
-2. human-test Source Organizer on a disposable copied dataset;
-3. run final local Valby end-to-end workflow QA;
-4. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
+1. complete and merge the bounded Stage 3 UX/UI modernization work;
+2. build the final unified Portable candidate;
+3. run the accumulated human-QA checkpoint in Issue #17;
+4. human-test Source Organizer on a disposable copied dataset;
+5. run final local Valby end-to-end workflow QA;
+6. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
 
-Low-risk automated fixes may continue between these gates under the existing risk-based QA policy.
+Low-risk automated fixes may continue under the existing risk-based QA policy; they do not reorder the accepted Stage 3 -> Stage 4 sequence.
