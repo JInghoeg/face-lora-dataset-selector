@@ -16,7 +16,7 @@ try:
     from application import SelectorApplication
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import DuplicateReviewDialog
+    from ui.qt import DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
@@ -235,249 +235,6 @@ class Analyzer(QObject):
             self.finished.emit(result.records)
         except Exception:
             self.failed.emit(traceback.format_exc())
-class TextScan(QObject):
-    progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
-    def __init__(self,folder,cached):super().__init__();self.folder=folder;self.cached=cached
-    def run(self):
-        try:
-            records=BACKEND.scan_text_cleanup(
-                self.folder,
-                cached=self.cached,
-                progress=self.progress.emit,
-            )
-            self.finished.emit(records)
-        except Exception:self.failed.emit(traceback.format_exc())
-
-class TextCleanupBatchWorker(QObject):
-    progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
-    def __init__(self,folder,output,records,method,expand,radius):
-        super().__init__();self.folder=folder;self.output=output;self.records=list(records);self.method=method;self.expand=expand;self.radius=radius
-    def run(self):
-        try:
-            result=BACKEND.batch_text_cleanup(
-                folder=self.folder,
-                output=self.output,
-                records=self.records,
-                method=self.method,
-                expand=self.expand,
-                radius=self.radius,
-                progress=self.progress.emit,
-            )
-            self.finished.emit(result)
-        except Exception:self.failed.emit(traceback.format_exc())
-
-class ImagePreview(QLabel):
-    drawn=Signal(object)
-    def __init__(self):super().__init__('选择缩略图查看文字框');self.setMinimumSize(520,400);self.setAlignment(Qt.AlignCenter);self.setStyleSheet('background:#222;color:#ddd');self.img=None;self.boxes=[];self.selected=[];self.manual=[];self.add=False;self.start=None;self.now=None
-    def set_data(self,img,boxes,selected,manual=None):self.img=img;self.boxes=boxes;self.selected=selected;self.manual=manual or [False]*len(boxes);self.start=self.now=None;self.update()
-    def scale(self):
-        if self.img is None:return 1,0,0
-        h,w=self.img.shape[:2];s=min(self.width()/w,self.height()/h);return s,(self.width()-w*s)/2,(self.height()-h*s)/2
-    def paintEvent(self,e):
-        super().paintEvent(e)
-        if self.img is None:return
-        h,w=self.img.shape[:2];rgb=cv2.cvtColor(self.img,cv2.COLOR_BGR2RGB);pix=QPixmap.fromImage(QImage(rgb.data,w,h,rgb.strides[0],QImage.Format_RGB888).copy());s,ox,oy=self.scale();p=QPainter(self);p.drawPixmap(int(ox),int(oy),int(w*s),int(h*s),pix)
-        for b,on,manual in zip(self.boxes,self.selected,self.manual):
-            a=np.asarray(b);p.setPen(QPen(QColor('#32e675' if on else ('#ffb000' if manual else '#999')),2));p.drawRect(int(ox+a[:,0].min()*s),int(oy+a[:,1].min()*s),int((a[:,0].max()-a[:,0].min())*s),int((a[:,1].max()-a[:,1].min())*s))
-        if self.start and self.now:p.setPen(QPen(QColor('#3da5ff'),2));p.drawRect(int(self.start[0]),int(self.start[1]),int(self.now[0]-self.start[0]),int(self.now[1]-self.start[1]))
-        p.end()
-    def mousePressEvent(self,e):
-        if self.add and self.img is not None:self.start=self.now=(e.position().x(),e.position().y());self.update()
-    def mouseMoveEvent(self,e):
-        if self.start:self.now=(e.position().x(),e.position().y());self.update()
-    def mouseReleaseEvent(self,e):
-        if not self.start or not self.img:return
-        x0,y0=map(min,zip(self.start,self.now));x1,y1=map(max,zip(self.start,self.now));s,ox,oy=self.scale();self.start=self.now=None
-        if x1-x0>8 and y1-y0>8:self.drawn.emit([[int((x0-ox)/s),int((y0-oy)/s)],[int((x1-ox)/s),int((y0-oy)/s)],[int((x1-ox)/s),int((y1-oy)/s)],[int((x0-ox)/s),int((y1-oy)/s)]])
-        self.update()
-
-class SubtitleTab(QWidget):
-    PAGE_SIZE=80
-    def __init__(self):
-        super().__init__();self.folder=None;self.output=None;self.records=[];self.current=-1;self.thread=None;self.worker=None;self.page=0;self.visible=[];self.thumb_memory=OrderedDict();self.thumb_threads=[];self.thumb_token=0;self.item_by_record={};self.save_timer=QTimer(self);self.save_timer.setSingleShot(True);self.save_timer.timeout.connect(self.save);self.ui();self.restore()
-    def ui(self):
-        l=QVBoxLayout(self);p=QGridLayout();self.input=QLabel('未选择输入目录');self.output_label=QLabel('未选择输出目录');a=QPushButton('选择输入目录');b=QPushButton('选择输出目录');a.clicked.connect(self.pick_input);b.clicked.connect(self.pick_output);p.addWidget(a,0,0);p.addWidget(self.input,0,1);p.addWidget(b,1,0);p.addWidget(self.output_label,1,1);l.addLayout(p)
-        c=QHBoxLayout();self.scan=QPushButton('扫描文字');self.scan.clicked.connect(self.start_scan);self.add=QPushButton('添加区域：关');self.add.setCheckable(True);self.add.toggled.connect(lambda x:(self.preview.__setattr__('add',x),self.add.setText('添加区域：开' if x else '添加区域：关')));dele=QPushButton('删除选中区域');dele.clicked.connect(self.delete);self.method=QComboBox();self.method.addItems(['AI 修复（MI-GAN）','快速修复（TELEA）','Navier-Stokes']);self.expand=QSpinBox();self.expand.setRange(0,40);self.expand.setValue(5);self.expand.setPrefix('Mask 扩张 ');self.radius=QSpinBox();self.radius.setRange(1,30);self.radius.setValue(4);self.radius.setPrefix('修复半径 ');pre=QPushButton('预览修复');pre.clicked.connect(self.preview_repair);batch=QPushButton('批量处理到新目录');batch.clicked.connect(self.start_batch)
-        for x in (self.scan,self.add,dele,QLabel('方式'),self.method,self.expand,self.radius,pre,batch):c.addWidget(x)
-        l.addLayout(c)
-        f=QHBoxLayout();self.view=QComboBox();self.view.addItems(['全部图片','仅显示需要修复','仅显示有文字','仅显示人工修改']);self.view.currentTextChanged.connect(self.filter_changed);all_s=QPushButton('全选建议修复');all_s.clicked.connect(self.select_suggested);none=QPushButton('取消当前页全部');none.clicked.connect(self.clear_page);self.min_height=QSpinBox();self.min_height.setRange(2,80);self.min_height.setValue(6);self.min_height.setPrefix('最小高 ');self.min_area=QSpinBox();self.min_area.setRange(4,5000);self.min_area.setValue(36);self.min_area.setPrefix('最小面积 ');self.min_conf=QDoubleSpinBox();self.min_conf.setRange(0,.99);self.min_conf.setSingleStep(.05);self.min_conf.setValue(.0);self.min_conf.setPrefix('最低置信度 ')
-        for x in (QLabel('查看'),self.view,all_s,none,self.min_height,self.min_area,self.min_conf):f.addWidget(x)
-        for x in (self.min_height,self.min_area,self.min_conf):x.valueChanged.connect(self.filter_changed)
-        f.addStretch(1);self.summary=QLabel('检测到文字：0 · 建议修复：0 · 人工修改：0');f.addWidget(self.summary);l.addLayout(f);self.bar=QProgressBar();l.addWidget(self.bar)
-        s=QSplitter(Qt.Horizontal);self.list=QListWidget();self.list.setViewMode(QListWidget.IconMode);self.list.setResizeMode(QListWidget.Adjust);self.list.setMovement(QListWidget.Static);self.list.setIconSize(QSize(110,110));self.list.setGridSize(QSize(135,150));self.list.itemClicked.connect(self.show);s.addWidget(self.list);r=QWidget();rl=QVBoxLayout(r);self.preview=ImagePreview();self.preview.drawn.connect(self.new_box);rl.addWidget(self.preview,1);rl.addWidget(QLabel('灰色＝检测到文字；绿色＝建议/已选修复；橙色＝人工修改。勾选仅控制修复。'));self.boxes=QListWidget();self.boxes.itemChanged.connect(self.checked);rl.addWidget(self.boxes);nav=QHBoxLayout();self.prev_image=QPushButton('上一张');self.prev_image.clicked.connect(lambda:self.move_image(-1));self.next_image=QPushButton('下一张');self.next_image.clicked.connect(lambda:self.move_image(1));nav.addWidget(self.prev_image);nav.addWidget(self.next_image);rl.addLayout(nav);s.addWidget(r);s.setSizes([500,800]);l.addWidget(s,1);pg=QHBoxLayout();self.prev_page=QPushButton('上一页');self.prev_page.clicked.connect(lambda:self.change_page(-1));self.page_label=QLabel('第 0/0 页');self.next_page=QPushButton('下一页');self.next_page.clicked.connect(lambda:self.change_page(1));pg.addStretch(1);pg.addWidget(self.prev_page);pg.addWidget(self.page_label);pg.addWidget(self.next_page);pg.addStretch(1);l.addLayout(pg)
-    def pick_input(self):
-        x=QFileDialog.getExistingDirectory(self,'选择待去字幕图片目录',str(self.folder or APP_DIR))
-        if x:self.folder=Path(x);self.input.setText(x);self.schedule_save()
-    def pick_output(self):
-        x=QFileDialog.getExistingDirectory(self,'选择输出目录（只写新文件）',str(self.output or APP_DIR))
-        if x:self.output=Path(x);self.output_label.setText(x);self.schedule_save()
-    def state_records(self):
-        try:return BACKEND.text_cleanup_state_records(self.folder) if self.folder else {}
-        except Exception:return {}
-    def start_scan(self):
-        if not self.folder or self.thread and self.thread.isRunning():return
-        self.scan.setEnabled(False);self.bar.setRange(0,0);self.thread=QThread(self);self.worker=TextScan(self.folder,self.state_records());self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.progress.connect(self.scan_progress);self.worker.finished.connect(self.scanned);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'扫描失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.done);self.thread.start()
-    def scan_progress(self,n,t,name):self.bar.setRange(0,t);self.bar.setValue(n);self.bar.setFormat(f'扫描文字 {n}/{t}: {name}')
-    def scanned(self,rs):self.records=rs;self.current=-1;self.page=0;self.refresh();self.schedule_save();self.bar.setFormat(f'扫描完成：{len(rs)} 张')
-    def done(self):self.scan.setEnabled(True);self.worker=None;self.thread.deleteLater();self.thread=None
-    def eligible(self,r):
-        return BACKEND.text_cleanup_eligible(r,min_height=self.min_height.value(),min_area=self.min_area.value(),min_conf=self.min_conf.value())
-    def current_size(self,r):
-        if self.current>=0 and self.records[self.current] is r and self.preview.img is not None:
-            r.height,r.width=self.preview.img.shape[:2];return r.height,r.width
-        return BACKEND.text_cleanup_ensure_size(r)
-    def filtered(self):
-        mode=self.view.currentText();out=[]
-        for i,r in enumerate(self.records):
-            good=self.eligible(r)
-            if mode=='仅显示需要修复' and not any(r.selected[j] for j in good):continue
-            if mode=='仅显示有文字' and not good:continue
-            if mode=='仅显示人工修改' and not any(r.manual):continue
-            out.append(i)
-        return out
-    def status_text(self,r):
-        good=self.eligible(r);return f'{r.path.name}\n检测 {len(good)} · 建议 {sum(r.selected[i] for i in good)}'+(' · 人工' if any(r.manual) else '')
-    def placeholder(self):
-        p=QPixmap(110,110);p.fill(QColor('#e8edf2'));return p
-    def refresh(self,preserve=True):
-        old=self.current;scroll=self.list.verticalScrollBar().value();self.visible=self.filtered();pages=max(1,math.ceil(len(self.visible)/self.PAGE_SIZE));self.page=min(self.page,pages-1);shown=self.visible[self.page*self.PAGE_SIZE:(self.page+1)*self.PAGE_SIZE];self.thumb_token+=1;token=self.thumb_token;self.list.clear();self.item_by_record={}
-        for i in shown:
-            it=QListWidgetItem(QIcon(self.placeholder()),self.status_text(self.records[i]));it.setData(Qt.UserRole,i);self.list.addItem(it);self.item_by_record[i]=it
-        self.page_label.setText(f'第 {self.page+1}/{pages} 页 · 显示 {len(shown)} / {len(self.visible)} 张');self.prev_page.setEnabled(self.page>0);self.next_page.setEnabled(self.page+1<pages);self.update_summary();self.start_thumbnails(token,shown)
-        if preserve and old in self.item_by_record:self.list.setCurrentItem(self.item_by_record[old]);QTimer.singleShot(0,lambda:self.list.verticalScrollBar().setValue(scroll))
-    def filter_changed(self,*_):self.page=0;self.refresh(False)
-    def change_page(self,d):self.page=max(0,self.page+d);self.refresh(False)
-    def start_thumbnails(self,token,indices):
-        miss=[]
-        for i in indices:
-            v=self.thumb_memory.get(key(self.records[i].path))
-            if v is not None:self.thumb_memory.move_to_end(key(self.records[i].path));self.thumbnail_ready(token,i,v)
-            else:miss.append((i,self.records[i]))
-        if not miss:return
-        thread=QThread(self);worker=ThumbnailWorker(token,miss);thread._subtitle_worker=worker;worker.moveToThread(thread);thread.started.connect(worker.run);worker.ready.connect(self.thumbnail_ready);worker.finished.connect(thread.quit);thread.finished.connect(worker.deleteLater);thread.finished.connect(lambda t=thread:self.thumb_done(t));self.thumb_threads.append(thread);thread.start()
-    def thumb_done(self,t):
-        if t in self.thumb_threads:self.thumb_threads.remove(t)
-        t.deleteLater()
-    def thumbnail_ready(self,token,index,image):
-        k=key(self.records[index].path);self.thumb_memory[k]=image;self.thumb_memory.move_to_end(k)
-        while len(self.thumb_memory)>600:self.thumb_memory.popitem(last=False)
-        if token==self.thumb_token and index in self.item_by_record:self.item_by_record[index].setIcon(QIcon(QPixmap.fromImage(image)))
-    def show(self,item):
-        self.current=item.data(Qt.UserRole);r=self.records[self.current];im=BACKEND.text_cleanup_load_image(r.path);self.preview.set_data(im,r.boxes,r.selected,r.manual);self.refresh_boxes()
-    def move_image(self,d):
-        if not self.visible:return
-        try:p=self.visible.index(self.current)
-        except ValueError:p=-1
-        i=self.visible[max(0,min(len(self.visible)-1,p+d))]
-        if i not in self.item_by_record:self.page=self.visible.index(i)//self.PAGE_SIZE;self.refresh(False)
-        self.list.setCurrentItem(self.item_by_record[i]);self.show(self.item_by_record[i])
-    def refresh_boxes(self):
-        self.boxes.blockSignals(True);self.boxes.clear()
-        if self.current>=0:
-            r=self.records[self.current]
-            for i,b in enumerate(r.boxes):
-                a=np.asarray(b);state='建议修复' if (i<len(r.suggested) and r.suggested[i]) else '检测到文字';state+='（人工）' if r.manual[i] else ''
-                it=QListWidgetItem(f'{state} · 区域 {i+1}: {a[:,0].min()},{a[:,1].min()} - {a[:,0].max()},{a[:,1].max()}');it.setData(Qt.UserRole,i);it.setFlags(it.flags()|Qt.ItemIsUserCheckable);it.setCheckState(Qt.Checked if r.selected[i] else Qt.Unchecked);self.boxes.addItem(it)
-        self.boxes.blockSignals(False)
-    def update_item(self,index):
-        if index in self.item_by_record:self.item_by_record[index].setText(self.status_text(self.records[index]))
-    def checked(self,it):
-        if self.current<0:return
-        r=self.records[self.current];i=it.data(Qt.UserRole);r.selected[i]=it.checkState()==Qt.Checked;r.manual[i]=True;self.preview.set_data(self.preview.img,r.boxes,r.selected,r.manual);self.update_item(self.current);self.update_summary();self.schedule_save()
-    def new_box(self,b):
-        if self.current<0:return
-        r=self.records[self.current];r.boxes.append(b);r.suggested.append(False);r.selected.append(True);r.manual.append(True);r.scores.append(1.0);self.preview.set_data(self.preview.img,r.boxes,r.selected,r.manual);self.refresh_boxes();self.update_item(self.current);self.update_summary();self.schedule_save()
-    def delete(self):
-        if self.current<0:return
-        r=self.records[self.current]
-        for i in sorted((x.data(Qt.UserRole) for x in self.boxes.selectedItems()),reverse=True):
-            for x in (r.boxes,r.selected,r.manual,r.scores,r.suggested):del x[i]
-        self.preview.set_data(self.preview.img,r.boxes,r.selected,r.manual);self.refresh_boxes();self.update_item(self.current);self.update_summary();self.schedule_save()
-    def select_suggested(self):
-        for i in self.visible[self.page*self.PAGE_SIZE:(self.page+1)*self.PAGE_SIZE]:
-            r=self.records[i]
-            for j,v in enumerate(r.suggested):
-                if v:r.selected[j]=True;r.manual[j]=True
-            self.update_item(i)
-        if self.current>=0:self.preview.set_data(self.preview.img,self.records[self.current].boxes,self.records[self.current].selected,self.records[self.current].manual);self.refresh_boxes()
-        self.update_summary();self.schedule_save()
-    def clear_page(self):
-        for i in self.visible[self.page*self.PAGE_SIZE:(self.page+1)*self.PAGE_SIZE]:
-            r=self.records[i];r.selected=[False]*len(r.selected);r.manual=[True]*len(r.manual);self.update_item(i)
-        if self.current>=0:self.preview.set_data(self.preview.img,self.records[self.current].boxes,self.records[self.current].selected,self.records[self.current].manual);self.refresh_boxes()
-        self.update_summary();self.schedule_save()
-    def update_summary(self):
-        detected=sum(len(self.eligible(r)) for r in self.records);selected=sum(sum(r.selected[i] for i in self.eligible(r)) for r in self.records);manual=sum(any(r.manual) for r in self.records);self.summary.setText(f'检测到文字：{detected} · 建议修复：{selected} · 人工修改：{manual}')
-    def preview_repair(self):
-        if self.current<0:return
-        try:
-            if self.method.currentText()=='AI 修复（MI-GAN）' and not BACKEND.text_cleanup_migan_ready():
-                QMessageBox.information(self,'首次使用 MI-GAN','首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。下载完成后会自动校验文件。')
-            image=BACKEND.text_cleanup_repair(
-                self.records[self.current],
-                method=self.method.currentText(),
-                expand=self.expand.value(),
-                radius=self.radius.value(),
-            )
-            self.preview.set_data(image,[],[],[])
-        except Exception as e:QMessageBox.critical(self,'预览修复失败',str(e))
-    def start_batch(self):
-        if not self.folder or not self.output or not self.records:
-            QMessageBox.information(self,'缺少内容','请先选择输入、输出目录并扫描文字。');return
-        if self.thread and self.thread.isRunning():return
-        if self.output.resolve()==self.folder.resolve() or self.folder.resolve() in self.output.resolve().parents:
-            QMessageBox.warning(self,'输出目录无效','输出目录必须是源目录以外的新目录。');return
-        self.scan.setEnabled(False);self.bar.setRange(0,len(self.records));self.bar.setValue(0);self.bar.setFormat('批量处理准备中…')
-        self.thread=QThread(self);self.worker=TextCleanupBatchWorker(self.folder,self.output,self.records,self.method.currentText(),self.expand.value(),self.radius.value());self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.progress.connect(self.batch_progress);self.worker.finished.connect(self.batch_done);self.worker.failed.connect(self.batch_failed);self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.done);self.thread.start()
-    def batch_progress(self,n,t,name):self.bar.setRange(0,t);self.bar.setValue(n);self.bar.setFormat(f'批量处理 {n}/{t}: {name}')
-    def batch_done(self,result):
-        self.bar.setFormat(f'批量处理完成：{result.written} 张');QMessageBox.information(self,'批量处理完成',f'已写入 {result.written} 张图片到新目录：\n{self.output}\n\n源图片未被修改。')
-    def batch_failed(self,error):
-        self.bar.setFormat('批量处理失败');QMessageBox.critical(self,'批量处理失败',error)
-    def restore(self):
-        try:
-            state=BACKEND.text_cleanup_load_state();self.folder=state.folder;self.output=state.output;self.input.setText(str(self.folder) if self.folder else '未选择输入目录');self.output_label.setText(str(self.output) if self.output else '未选择输出目录');self.method.setCurrentText(state.method);self.expand.setValue(state.expand);self.radius.setValue(state.radius);self.min_height.setValue(state.min_height);self.min_area.setValue(state.min_area);self.min_conf.setValue(state.min_conf);self.records=list(state.records)
-            if self.records:self.refresh(False)
-        except Exception:pass
-    def schedule_save(self):self.save_timer.start(450)
-    def save(self):
-        try:
-            BACKEND.text_cleanup_save_state(
-                folder=self.folder,
-                output=self.output,
-                records=self.records,
-                method=self.method.currentText(),
-                expand=self.expand.value(),
-                radius=self.radius.value(),
-                min_height=self.min_height.value(),
-                min_area=self.min_area.value(),
-                min_conf=self.min_conf.value(),
-            )
-        except Exception:pass
-
-class ThumbnailWorker(QObject):
-    ready=Signal(int,int,object)
-    finished=Signal(int)
-    def __init__(self,token,items):super().__init__();self.token=token;self.items=items
-    @staticmethod
-    def disk_path(photo):
-        digest=hashlib.sha256(f'{key(photo.path)}:{photo.file_size}:{photo.mtime_ns}'.encode()).hexdigest()
-        return THUMB_CACHE/f'{digest}.jpg'
-    def run(self):
-        try:
-            THUMB_CACHE.mkdir(parents=True,exist_ok=True)
-            for index,photo in self.items:
-                cache=self.disk_path(photo)
-                try:
-                    with Image.open(cache if cache.exists() else photo.path) as image:
-                        image=image.convert('RGB');image.thumbnail((150,150),Image.Resampling.LANCZOS)
-                        canvas=Image.new('RGB',(150,150),(30,30,30));canvas.paste(image,((150-image.width)//2,(150-image.height)//2))
-                        if not cache.exists():canvas.save(cache,'JPEG',quality=85,optimize=True)
-                        data=canvas.tobytes();qimage=QImage(data,150,150,150*3,QImage.Format_RGB888).copy()
-                        self.ready.emit(self.token,index,qimage)
-                except Exception:pass
-        finally:self.finished.emit(self.token)
-
 class ReviewGrid(QListWidget):
     middleItemClicked=Signal(object);rightItemDoubleClicked=Signal(object)
     def mouseReleaseEvent(self,event):
@@ -740,7 +497,7 @@ class AutoCropReviewDialog(QDialog):
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.visible_item_map={};self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
     def ui(self):
-        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab() if BACKEND.feature_available('text_cleanup') else None
+        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE) if BACKEND.feature_available('text_cleanup') else None
         if self.sub is not None:tabs.addTab(self.sub,'批量去字幕 / 水印')
         l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self);self.group.setExclusive(True)
@@ -896,7 +653,7 @@ class Window(QMainWindow):
     def start_thumbnails(self,indices):
         missing=[(i,self.records[i]) for i in indices if self.cached_thumbnail(self.records[i]) is None]
         if not missing:return
-        self.thumb_generation+=1;token=self.thumb_generation;thread=QThread(self);worker=ThumbnailWorker(token,missing);thread._thumbnail_worker=worker;worker.moveToThread(thread);thread.started.connect(worker.run);worker.ready.connect(self.thumbnail_ready);worker.finished.connect(thread.quit);thread.finished.connect(worker.deleteLater);thread.finished.connect(lambda t=thread:self.thumbnail_thread_done(t));self.thumb_threads.append(thread);thread.start()
+        self.thumb_generation+=1;token=self.thumb_generation;thread=QThread(self);worker=ThumbnailWorker(token,missing,THUMB_CACHE);thread._thumbnail_worker=worker;worker.moveToThread(thread);thread.started.connect(worker.run);worker.ready.connect(self.thumbnail_ready);worker.finished.connect(thread.quit);thread.finished.connect(worker.deleteLater);thread.finished.connect(lambda t=thread:self.thumbnail_thread_done(t));self.thumb_threads.append(thread);thread.start()
     def thumbnail_thread_done(self,thread):
         if thread in self.thumb_threads:self.thumb_threads.remove(thread)
         thread.deleteLater()
