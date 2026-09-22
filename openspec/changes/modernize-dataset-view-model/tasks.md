@@ -22,4 +22,4 @@
 ## 4. Verification / next decision
 
 - [x] 4.1 Verify implementation against proposal/design/tasks and record any mismatch before changing accepted intent.
-- [ ] 4.2 Only after parity passes, decide the next bounded UX/UI change: proxy-based filter/sort migration, measured pagination removal/virtualization, or card/layout redesign. Do not silently bundle those follow-ons into this PR.
+- [x] 4.2 Next bounded UX/UI change selected: Auto Crop review-surface reusable UI spike under Issue #49. Do not bundle proxy/filter migration, pagination removal/virtualization, or broad card/layout redesign into this PR.
