@@ -2,15 +2,15 @@
 
 ## 1. Baseline and parity
 
-- [ ] 1.1 Add focused regression coverage that captures current Dataset View page membership/order, stable sample identity, status actions and page/scroll preservation before replacing the gallery widget.
-- [ ] 1.2 Confirm the first slice keeps existing `ViewSpec` filtering/sorting and pagination outside the model; verify no duplicate filter/sort implementation is introduced.
+- [x] 1.1 Add focused regression coverage that captures current Dataset View page membership/order, stable sample identity, status actions and page/scroll preservation before replacing the gallery widget.
+- [x] 1.2 Confirm the first slice keeps existing `ViewSpec` filtering/sorting and pagination outside the model; verify no duplicate filter/sort implementation is introduced.
 
 ## 2. Dataset Model/View seam
 
-- [ ] 2.1 Add `ui/qt/dataset_view.py` with `DatasetListModel(QAbstractListModel)`; expose only the roles required for current icon, text, tooltip, status/background and stable sample identity.
-- [ ] 2.2 Add `DatasetListView(QListView)` in IconMode and preserve the existing click/double-click/middle-click/right-double-click interaction surface.
-- [ ] 2.3 Reuse shared `ThumbnailWorker` / cache behavior and update model rows through model signals; verify generation/stable-ID guards prevent stale thumbnail writes.
-- [ ] 2.4 Update `Window` to compose the new Dataset View while keeping current `ViewSpec`, page controls and application/backend calls unchanged.
+- [x] 2.1 Add `ui/qt/dataset_view.py` with `DatasetListModel(QAbstractListModel)`; expose only the roles required for current icon, text, tooltip, status/background and stable sample identity.
+- [x] 2.2 Add `DatasetListView(QListView)` in IconMode and preserve the existing click/double-click/middle-click/right-double-click interaction surface.
+- [x] 2.3 Reuse shared `ThumbnailWorker` / cache behavior and update model rows through model signals; verify generation/stable-ID guards prevent stale thumbnail writes.
+- [x] 2.4 Update `Window` to compose the new Dataset View while keeping current `ViewSpec`, page controls and application/backend calls unchanged.
 
 ## 3. Automated regression
 

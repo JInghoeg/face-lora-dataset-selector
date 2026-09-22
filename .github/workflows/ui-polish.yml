@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - "app.py"
+      - "ui/qt/dataset_view.py"
+      - "tests/dataset_view_ui_smoke.py"
       - "infrastructure/cache_store.py"
       - "application/selector.py"
       - ".github/workflows/ui-polish.yml"
@@ -102,3 +104,8 @@ jobs:
           window.close()
           print("UI polish offscreen smoke OK")
           '@ | python -
+
+      - name: Dataset View Model/View smoke
+        shell: pwsh
+        run: |
+          python tests/dataset_view_ui_smoke.py
