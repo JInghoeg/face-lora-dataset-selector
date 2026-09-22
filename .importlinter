@@ -5,6 +5,7 @@ root_packages =
     features
     infrastructure
     application
+    ui
 
 [importlinter:contract:core-no-upward-dependencies]
 name = Core has no upward dependencies
@@ -42,6 +43,7 @@ modules =
     features.auto_crop
     features.source_organizer
     features.text_cleanup
+    features.duplicate
 
 [importlinter:contract:backend-no-qt-dependency]
 name = Backend packages do not depend on Qt UI bindings
@@ -55,3 +57,13 @@ forbidden_modules =
     PySide6
     PyQt6
     PyQt5
+
+[importlinter:contract:ui-through-application]
+name = Qt presentation does not bypass application boundary
+type = forbidden
+source_modules =
+    ui
+forbidden_modules =
+    features
+    infrastructure
+    core

@@ -6,98 +6,122 @@ Canonical current-state entry point for the active v0.3 product line.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Last verified product/code baseline: `c3aeabf4ec65c92ca3eb29f2b781d9e71cea8baf` — PR #29, Auto Crop manual ROI
+- Latest verified implementation: PR #38 source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34` — Duplicate Review modularization
 - GitHub product branch is authoritative; do not assume a local clone is current without checking fetch/status.
 
 ## Current objective
 
-Continue v0.3 development with bounded feature modularization and frontend/backend separation.
+Finish the remaining v0.3 release-validation gates.
 
-Immediate architecture target: **Duplicate Review**.
+The bounded feature modularization pass for the known main workflow is complete:
+- Ranking
+- Duplicate Review
+- Composite Split
+- General Auto Crop
+- Source Organizer
+- Text Cleanup
 
-The current direction is:
-- extract Duplicate business/state behavior into a clear feature boundary;
-- expose it through `SelectorApplication`;
-- keep Qt presentation thin;
-- do not use this as an excuse for a broad `app.py` / `ui/qt` rewrite.
-
-Batched human QA remains visible and required before release, but it is **not** a prerequisite for continuing this bounded modularization work.
+Broad whole-application `app.py` / Qt Model-View migration remains deferred until after the v0.3 release gates.
 
 ## Verified complete
 
-Current major backend/product boundaries already implemented:
-- Ranking / recommendation behavior;
-- Composite Split;
-- General Auto Crop, including manual draggable/resizable ROI;
-- Source Organizer backend/workflow;
-- Text Cleanup as one detection + repair product module with backend separation.
-
 Current architecture seam:
+
 ```
 Qt presentation
 -> SelectorApplication
 -> feature backends
 ```
 
-Import Linter enforces dependency direction and Qt-free backend boundaries.
+Feature packages:
+- `features/ranking`
+- `features/duplicate`
+- `features/composite`
+- `features/auto_crop`
+- `features/source_organizer`
+- `features/text_cleanup`
 
-Auto Crop manual ROI PR #29 passed Python 3.9/3.12 tests, full selector self-test, RectROI smoke, Portable build/EXE self-test, architecture regression, Source Organizer regression, UI regression, and Text Cleanup boundary checks.
+Duplicate Review modularization is AUTO PASS at PR #38 source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`:
+- pHash grouping moved out of `features/ranking.analysis` into `features/duplicate`;
+- duplicate group queries and review mutations are owned by the Duplicate backend;
+- `SelectorApplication` is the Duplicate UI/backend seam;
+- `DuplicateReviewDialog` moved out of `app.py` to `ui/qt/duplicate_review.py`;
+- Ranking keeps only its internal duplicate-aware recommendation behavior and does not depend on the Duplicate sibling feature;
+- Dataset refresh receives duplicate grouping as an optional injected callback, so removing the Duplicate feature does not break refresh/startup;
+- Import Linter enforces sibling independence, backend no-Qt, and UI-through-application boundaries.
 
-Project continuity is now active:
-- `docs/PROJECT_STATE.md` is the canonical current-state entry point;
-- PRs declare whether they change canonical project state;
-- local Project Memory Gate automation is installed on main and the v0.3 product branch;
-- state-impacting PR validation passed in PR #35 / Actions runs #35673375953 and #35673432128;
-- `HANDOFF.md` is supplementary rather than the sole recovery source.
+Validation at that head:
+- Project Memory: PASS;
+- Architecture Boundaries: PASS;
+- Duplicate Boundary Python 3.9 + 3.12: PASS;
+- Duplicate backend smoke: PASS;
+- full selector self-test: PASS;
+- offscreen Duplicate dialog smoke: PASS;
+- physical Duplicate feature absence startup smoke: PASS;
+- Auto Crop Backend: PASS;
+- Auto Crop Manual ROI: PASS;
+- UI Polish Regression: PASS;
+- Text Cleanup Boundary: PASS;
+- Source Organizer: PASS;
+- Portable build + packaged EXE self-test: PASS.
+
+Current Portable candidate built from this head:
+- artifact: `auto-crop-roi-portable-qa`
+- artifact ID: `10673035111`
+- digest: `sha256:a521b912101b7cc6ca6e4b24d3bf5fb404abbbacaaca661cacb950cfad08f907`
+- expires: 2026-09-29
+
+Project continuity is active:
+- `docs/PROJECT_STATE.md` is canonical current state;
+- PRs declare state impact;
+- local Project Memory Gate is validated;
+- `HANDOFF.md` is supplementary only.
 
 ## In progress
 
-### Duplicate Review modularization
+### v0.3 release validation
 
-Duplicate Review is the next modularization target.
+No known implementation blocker remains in the frozen workflow.
 
-Known debt:
-- duplicate grouping primitives still live under `features/ranking`;
-- `DuplicateReviewDialog` remains legacy Qt inside `app.py`.
-
-Target shape:
-```
-features/duplicate
--> SelectorApplication contract
--> thin Qt Duplicate Review presentation
-```
+Remaining work is the planned human/release validation:
+- consolidated HUMAN UNVERIFIED checkpoint in Issue #17;
+- Source Organizer human QA on a disposable/copied dataset;
+- final local Valby end-to-end workflow QA.
 
 ## Blockers / uncertainties
 
-No known missing implementation blocker currently prevents Duplicate modularization.
+No current code blocker is known.
 
-No current blocker is known for Duplicate modularization.
-
-For continuity automation, the cross-private reusable-workflow caller did not trigger under the current repository setup, so this pilot uses the same gate logic locally. The Playbook workflow remains the reference implementation.
+Human QA is intentionally still outstanding. AUTO PASS must not be treated as user acceptance of the real interaction flow.
 
 ## Human QA debt
 
-Issue #17 is authoritative for accumulated HUMAN UNVERIFIED checks.
+Issue #17 is authoritative.
 
 Still intentionally batched includes:
-- Composite continuous flow and per-output keep/reject behavior;
-- generated-files-only incremental analysis;
 - recommendation baseline/manual override behavior after refresh;
-- Auto Crop ROI move/resize/bounds/live preview/persistence/reset/accept/Keep Original/export.
+- Composite continuous flow, per-output keep/reject, and generated-files-only incremental analysis;
+- Duplicate Review post-refactor interaction/persistence checks;
+- Auto Crop ROI real interaction/persistence/reset/export checks;
+- Text Cleanup post-boundary interaction checks.
 
 Source Organizer must be human-tested first on a disposable/copied dataset, never first on original Valby data.
 
-Release still requires the consolidated QA checkpoint, copied-dataset Source Organizer QA, and final local Valby end-to-end QA.
-
 ## Next action
 
-Continue **Duplicate Review modularization**.
+Run the consolidated Portable human-QA checkpoint from Issue #17.
 
-Do not pause for a broad manual-QA pass first unless new work crosses the existing risk-based immediate-validation boundary.
+Then:
+1. Source Organizer human QA on a disposable copied dataset;
+2. final local Valby end-to-end workflow QA;
+3. close remaining production/release issues if all pass.
+
+Do not start a broad UI rewrite before these gates are cleared.
 
 ## Architecture / workflow state
 
-Frozen user workflow:
+Frozen product workflow:
+
 ```
 Initial analysis / recommendation
 -> Duplicate Review
@@ -107,22 +131,16 @@ Initial analysis / recommendation
 -> Final Export
 ```
 
-Current feature packages include:
-- `features/ranking`
-- `features/composite`
-- `features/auto_crop`
-- `features/source_organizer`
-- `features/text_cleanup`
+Known presentation debt:
+- much of the remaining Qt presentation is still concentrated in `app.py`;
+- broader dedicated `ui/qt` / Qt Model-View migration is deferred.
 
-Desired next package:
-- `features/duplicate`
-
-Broad presentation migration out of `app.py` remains deferred. Local UI extraction that naturally belongs to Duplicate modularization is allowed; whole-application UI refactoring is not the current objective.
+This debt is not a current v0.3 implementation blocker.
 
 ## Do not repeat
 
-- Do not stop bounded modularization merely because batched HUMAN UNVERIFIED items exist.
-- Do not start a broad `app.py` / `ui/qt` rewrite now.
+- Do not reopen bounded feature modularization as a broad `app.py` rewrite before release validation.
+- Do not stop for separate low-risk manual QA after every automated fix; use Issue #17 checkpoint.
 - Do not revive failed custom Auto Crop Stage 1 saliency/pose safe-trim.
 - Do not use raw DeepGHS person bbox as final crop boundary.
 - Do not use every non-zero ISNetIS alpha pixel as foreground.
@@ -138,6 +156,6 @@ Broad presentation migration out of `app.py` remains deferred. Local UI extracti
 
 - `docs/ROADMAP_v0.3.md` — v0.3 product roadmap and release gates.
 - Issue #17 — batched HUMAN UNVERIFIED queue.
-- Issue #21 — General Auto Crop production workflow/release tracking.
-- PR #29 — Auto Crop manual ROI implementation.
+- Issue #37 / PR #38 — Duplicate Review modularization.
+- Issue #21 — General Auto Crop production/release tracking.
 - Engineering-Playbook `PROJECT_CONTINUITY.md` — continuity protocol.

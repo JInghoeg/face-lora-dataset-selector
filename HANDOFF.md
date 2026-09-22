@@ -6,39 +6,38 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Last verified product/code baseline: `c3aeabf4ec65c92ca3eb29f2b781d9e71cea8baf` — PR #29
-- Project continuity infrastructure: active; Project Memory Gate validated by PR #35.
+- Duplicate Review implementation validated at PR #38 source head `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`.
+- Project Memory Gate is active.
 
 ## Just completed in this conversation
 
-- Recovered that Auto Crop manual ROI was already implemented and merged.
-- Corrected the stale direction that bounded architecture work must wait for the full human-QA checkpoint.
-- Adopted the Engineering-Playbook write-through continuity protocol.
-- Added canonical `docs/PROJECT_STATE.md`, `AGENTS.md`, PR continuity declaration, and automated Project Memory Gate.
-- Verified the gate on real state-impacting PRs.
-- Kept HUMAN UNVERIFIED items batched in Issue #17.
+- Established write-through project continuity.
+- Corrected stale direction that bounded modularization must wait for human QA.
+- Completed Duplicate Review modularization without broad `app.py` rewrite.
+- Added `features/duplicate` backend.
+- Routed Duplicate through `SelectorApplication`.
+- Moved only Duplicate Review presentation to `ui/qt/duplicate_review.py`.
+- Preserved Ranking sibling independence.
+- Added Duplicate-specific 3.9/3.12 CI and optional-feature-removal smoke.
+- Full architecture/regression/Portable validation passed.
 
 ## Currently in flight
 
-Next product work: **Duplicate Review modularization**.
+PR #38 is being finalized/merged.
 
-Target:
-```
-features/duplicate
--> SelectorApplication contract
--> thin Qt Duplicate Review presentation
-```
-
-Do not broaden this into a whole-`app.py` / `ui/qt` rewrite.
+HUMAN UNVERIFIED remains batched in Issue #17.
 
 ## Immediate next action
 
-Inspect the current Duplicate grouping/state/dialog dependencies and implement the smallest clean feature boundary.
+Run the consolidated Portable human-QA checkpoint from Issue #17.
+
+Then test Source Organizer on a disposable copied dataset and run final local Valby end-to-end QA.
 
 ## Relevant links only
 
 - `docs/PROJECT_STATE.md`
 - `docs/ROADMAP_v0.3.md`
 - Issue #17 — batched HUMAN UNVERIFIED
-- PR #35 — validated Project Memory Gate
+- Issue #37 / PR #38 — Duplicate modularization
+- Issue #21 — Auto Crop production/release tracking
 - Engineering-Playbook `PROJECT_CONTINUITY.md`

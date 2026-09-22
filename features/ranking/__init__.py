@@ -1,8 +1,6 @@
 from .service import (
     SCALES,
     YAWS,
-    group_best,
-    group_entries,
     rank,
     recommend,
     recommendation_blockers,
@@ -12,8 +10,6 @@ from .service import (
 __all__ = [
     "SCALES",
     "YAWS",
-    "group_best",
-    "group_entries",
     "rank",
     "recommend",
     "recommendation_blockers",

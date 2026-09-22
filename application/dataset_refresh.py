@@ -10,16 +10,16 @@ from core.models import derive_eligibility
 from features.ranking.analysis import (
     AnalysisEngine,
     base_status,
-    group_duplicates,
     new_sample_id,
 )
 from infrastructure.filesystem import sha256_file
 
 
 class DatasetRefreshService:
-    def __init__(self, cache, active_files):
+    def __init__(self, cache, active_files, duplicate_grouper=None):
         self.cache = cache
         self.active_files = active_files
+        self.duplicate_grouper = duplicate_grouper
 
     def refresh(self, folder, status=None, progress=None):
         status = status or (lambda _message: None)
@@ -149,7 +149,8 @@ class DatasetRefreshService:
                 )
             derive_eligibility(record)
 
-        group_duplicates(records)
+        if self.duplicate_grouper is not None:
+            self.duplicate_grouper(records)
         base_status(records)
 
         return DatasetRefreshResult(

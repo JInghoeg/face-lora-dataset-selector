@@ -9,7 +9,8 @@ Canonical current-state summary:
 
 - v0.3 correctness redesign.
 - Dataset/View filters and independent sorting.
-- Duplicate Review workflow behavior.
+- Ranking/recommendation backend boundary.
+- Duplicate Review feature module + frontend/backend boundary.
 - AI Review Bundle / patch workflow.
 - Composite Split detector research and production integration.
 - Composite source archive semantics.
@@ -21,70 +22,50 @@ Canonical current-state summary:
 - Text Cleanup frontend/backend separation while preserving detection + repair as one product module.
 - General Auto Crop production backend and review workflow.
 - General Auto Crop manual draggable/resizable ROI edit/reset workflow.
+- repository-resident PROJECT_STATE + Project Memory Gate continuity protocol.
 
-Some interaction changes are AUTO PASS but HUMAN UNVERIFIED; Issue #17 is the authoritative queue.
+Some interaction changes are AUTO PASS but HUMAN UNVERIFIED; Issue #17 is authoritative.
 
 ## Current
 
-### Bounded architecture work — Duplicate Review
+### v0.3 release validation
 
-Continue feature modularization and frontend/backend separation without turning it into a broad UI rewrite.
+The bounded architecture pass for the known main workflow is complete.
 
-Current debt:
-- duplicate grouping primitives still live under `features/ranking`;
-- `DuplicateReviewDialog` remains legacy Qt in `app.py`.
+Current feature boundaries:
+- Ranking
+- Duplicate
+- Composite
+- Auto Crop
+- Source Organizer
+- Text Cleanup
 
-Target:
-```
-features/duplicate
--> SelectorApplication contract
--> thin Qt Duplicate Review presentation
-```
+Duplicate Review AUTO PASS evidence:
+- PR #38 source head: `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`;
+- Python 3.9 + 3.12 Duplicate Boundary: PASS;
+- full selector self-test: PASS;
+- Duplicate backend smoke: PASS;
+- offscreen Duplicate dialog smoke: PASS;
+- optional Duplicate feature removal/startup smoke: PASS;
+- Architecture Boundaries: PASS;
+- Auto Crop / Text Cleanup / Source Organizer / UI regression: PASS;
+- Portable build + packaged EXE self-test: PASS.
 
-This work may proceed while low-risk HUMAN UNVERIFIED items remain batched.
-
-Do **not** interpret the human-QA release gate as a requirement to stop bounded modularization first.
-
-Broad `app.py` / `ui/qt` migration remains deferred.
+Current Portable QA candidate:
+- artifact: `auto-crop-roi-portable-qa`
+- artifact ID: `10673035111`
+- built from PR #38 source head
+- expires: 2026-09-29
 
 ### Human QA queue
 
 Issue #17 remains authoritative for batched HUMAN UNVERIFIED checks.
 
-The current Auto Crop Portable candidate remains useful for the later consolidated checkpoint:
-- head tested before merge: `d8e936f6854670873d6544fca9a86bf487a7cdf5`
-- merged product commit: `c3aeabf4ec65c92ca3eb29f2b781d9e71cea8baf`
-- artifact: `auto-crop-roi-portable-qa`
-- artifact ID: `10652024749`
-- Portable build + packaged EXE self-test: PASS
-
-Automated PASS includes:
-- Python 3.9 + 3.12 full selector self-test;
-- Auto Crop backend regression;
-- Auto Crop manual ROI bounds/persistence/reset/export tests;
-- pyqtgraph RectROI offscreen move/resize smoke;
-- Architecture Boundaries;
-- Source Organizer regression;
-- UI Polish regression;
-- Text Cleanup Boundary;
-- Portable build + packaged EXE self-test.
+The next checkpoint should cover the accumulated real interaction flow, including the newly refactored Duplicate Review.
 
 ### General Auto Crop status
 
-Manual ROI gap is implemented and merged via PR #29.
-
-Behavior:
-- blue dashed immutable automatic proposal;
-- green current ROI;
-- move + four-edge/four-corner resize;
-- ROI bounded to source image;
-- live crop preview;
-- manual edit persists and returns decision to pending;
-- Accept Current Crop explicitly approves current ROI;
-- Reset restores `box = auto_box`;
-- Keep Original remains available;
-- Final Export uses accepted current `box`;
-- source pixels remain untouched until export.
+Manual ROI gap remains implemented and AUTO PASS.
 
 Known non-blocking limitation:
 - occasional foreground/background adhesion may make a proposal too loose;
@@ -92,27 +73,21 @@ Known non-blocking limitation:
 
 ### Architecture state
 
-Backend boundaries currently exist for:
-- Ranking
-- Composite
-- Auto Crop
-- Source Organizer
-- Text Cleanup
+Main backend/feature boundaries are now in place for the frozen workflow.
 
-Next boundary:
-- Duplicate
+Remaining architecture debt:
+- broad presentation concentration in `app.py`;
+- full dedicated `ui/qt` / Qt Model-View migration.
 
-Deferred until later:
-- broad dedicated `ui/qt` package / whole-application Qt Model-View migration.
+These are deferred until after v0.3 release gates; do not turn them into a pre-release rewrite.
 
 ## v0.3 remaining gates
 
 Before v0.3 is considered release-complete:
 
-1. complete the bounded Duplicate modularization work without broad UI refactor;
-2. run the accumulated human-QA checkpoint in Issue #17;
-3. human-test Source Organizer on a disposable copied dataset;
-4. run final local Valby end-to-end workflow QA;
-5. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
+1. run the accumulated human-QA checkpoint in Issue #17;
+2. human-test Source Organizer on a disposable copied dataset;
+3. run final local Valby end-to-end workflow QA;
+4. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
 
-Low-risk automated changes may continue between these gates under the existing risk-based QA policy.
+Low-risk automated fixes may continue between these gates under the existing risk-based QA policy.
