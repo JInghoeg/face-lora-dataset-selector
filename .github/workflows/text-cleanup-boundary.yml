@@ -9,6 +9,8 @@ on:
       - "text_detector.py"
       - "core/**"
       - "features/text_cleanup/**"
+      - "ui/**"
+      - "tests/text_cleanup_ui_smoke.py"
       - "application/**"
       - "infrastructure/**"
       - ".importlinter"
@@ -19,6 +21,8 @@ on:
       - "text_detector.py"
       - "core/**"
       - "features/text_cleanup/**"
+      - "ui/**"
+      - "tests/text_cleanup_ui_smoke.py"
       - "application/**"
       - "infrastructure/**"
       - ".importlinter"
@@ -61,7 +65,7 @@ jobs:
       - name: Compile backend and UI adapters
         shell: pwsh
         run: |
-          python -m compileall features/text_cleanup application app.py text_detector.py
+          python -m compileall features/text_cleanup application ui app.py text_detector.py
 
       - name: Text Cleanup backend self-test
         shell: pwsh
@@ -72,6 +76,11 @@ jobs:
         shell: pwsh
         run: |
           python app.py --self-test
+
+      - name: Text Cleanup Qt presentation smoke
+        shell: pwsh
+        run: |
+          python tests/text_cleanup_ui_smoke.py
 
       - name: Optional Text Cleanup absence startup smoke
         if: ${{ matrix.python == '3.12' }}
