@@ -20,11 +20,11 @@
 
 ## 4. Continuity / drift test
 
-- [ ] 4.1 In a clean-context continuation, recover the active change from repository artifacts without supplying the old chat plan; verify it identifies UX/UI as the active phase and does not jump directly to consolidated QA.
+- [x] 4.1 In a clean-context continuation, recover the active change from repository artifacts without supplying the old chat plan; verify it identifies UX/UI as the active phase and does not jump directly to consolidated QA.
 - [x] 4.2 Incorporate one real planning adjustment discovered from code inspection (shared ImagePreview/ThumbnailWorker), update proposal/design/tasks first, and verify the accepted surrounding phase order remains unchanged.
 - [x] 4.3 Run `openspec validate --all --strict` with OpenSpec 1.13.1+ in an environment with registry/CLI access; verify strict validation passes before claiming the pilot complete.
 
 ## 5. Completion decision
 
-- [ ] 5.1 Verify implementation against proposal/design/tasks (use `/opsx:verify` when expanded workflows are available) and record any mismatch instead of silently updating history.
+- [x] 5.1 Verify implementation against proposal/design/tasks (use `/opsx:verify` when expanded workflows are available) and record any mismatch instead of silently updating history.
 - [ ] 5.2 Only after the recovery + change-evolution tests pass, decide whether to archive this change and whether any lesson is mature enough to consider for Engineering-Playbook; verify no Playbook modification exists before that decision.
