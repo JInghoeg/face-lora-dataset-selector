@@ -41,7 +41,8 @@ Current feature boundaries:
 - Text Cleanup
 
 Duplicate Review AUTO PASS evidence:
-- PR #38 source head: `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`;
+- merged PR #38: `7e25f847b8f3964a8fa8ad79e10dd691f1ec55b8`;
+- validated source head: `4ca1e90b0b4a0e75b2342b3b7c8560d400843f34`;
 - Python 3.9 + 3.12 Duplicate Boundary: PASS;
 - full selector self-test: PASS;
 - Duplicate backend smoke: PASS;
