@@ -18,7 +18,9 @@ Tracking: Issue #52.
 - Modern Qt modules support `QEvent.LanguageChange -> retranslate()`.
 - Standard Qt `.ts -> .qm` compile/package path.
 - Auto Crop / 自动裁剪 is the first fully integrated module.
-- Main window gets one global language selector and only a thin translated shell.
+- Direct v0.3 workflow surfaces exposed in the main shell use the same translation layer: Duplicate Group / 重复组, Composite Split / 组合图拆分, and Source Organizer / 整理源文件.
+- Duplicate Review and Composite Split review surfaces support live retranslation where they are directly user-facing.
+- Main window gets one global language selector and only a thin translated shell; the legacy selector UI is not mass-migrated.
 
 ## Non-goals
 
