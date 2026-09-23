@@ -288,7 +288,7 @@ class DuplicateReviewDialog(QDialog):
             list_item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
             list_item.setToolTip(
                 f"{record.sample_id}\n"
-                self._tr("文件：{size} · {width}×{height}").format(
+                + self._tr("文件：{size} · {width}×{height}").format(
                     size=_human_bytes(record.file_size),
                     width=record.width,
                     height=record.height,
