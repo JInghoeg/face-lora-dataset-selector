@@ -112,7 +112,8 @@ def verify_filmstrip_navigation(qapp, dialog):
     grid_h = dialog.items.gridSize().height()
     viewport_h = dialog.items.viewport().height()
     assert viewport_h >= grid_h - 4, (viewport_h, grid_h)
-    assert viewport_h < grid_h * 2, (viewport_h, grid_h)
+    # The second row must not be partially visible at the default size.
+    assert viewport_h <= grid_h + 8, (viewport_h, grid_h)
 
     vbar = dialog.items.verticalScrollBar()
     compact_max = vbar.maximum()
