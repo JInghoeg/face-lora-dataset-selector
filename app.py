@@ -9,7 +9,7 @@ from typing import Optional
 try:
     import cv2, numpy as np
     from PIL import Image, ImageOps
-    from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer, QRectF
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer, QRectF
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
@@ -17,6 +17,7 @@ try:
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
     from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
@@ -358,11 +359,42 @@ class CompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    @staticmethod
+    def _tr_main(source):
+        return QCoreApplication.translate('MainWindow',source)
+    def retranslate_shell(self):
+        self.setWindowTitle(self._tr_main('LoRA 数据集筛选与字幕清理'))
+        if hasattr(self,'tabs'):
+            self.tabs.setTabText(self.dataset_tab_index,self._tr_main('LoRA 数据集筛选'))
+            if self.text_cleanup_tab_index>=0:
+                self.tabs.setTabText(self.text_cleanup_tab_index,self._tr_main('批量去字幕 / 水印'))
+        if hasattr(self,'language_combo'):
+            manager=get_language_manager();index=self.language_combo.findData(manager.language)
+            if index>=0 and index!=self.language_combo.currentIndex():
+                self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
+        self.update_auto_crop_button()
+    def change_language(self):
+        if not hasattr(self,'language_combo'):return
+        manager=get_language_manager();language=self.language_combo.currentData()
+        if language==manager.language:return
+        if not manager.set_language(language):
+            QMessageBox.warning(self,'Language / 语言',f'无法加载语言资源：\n{manager.last_error}')
+            index=self.language_combo.findData(manager.language)
+            if index>=0:
+                self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
+    def changeEvent(self,event):
+        if event.type()==QEvent.LanguageChange:self.retranslate_shell()
+        super().changeEvent(event)
     def ui(self):
-        tabs=QTabWidget();self.setCentralWidget(tabs);w=QWidget();tabs.addTab(w,'LoRA 数据集筛选');self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE) if BACKEND.feature_available('text_cleanup') else None
-        if self.sub is not None:tabs.addTab(self.sub,'批量去字幕 / 水印')
-        l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);l.addLayout(t)
+        self.tabs=QTabWidget();self.setCentralWidget(self.tabs);w=QWidget();self.dataset_tab_index=self.tabs.addTab(w,'');self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE) if BACKEND.feature_available('text_cleanup') else None
+        self.text_cleanup_tab_index=-1
+        if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
+        l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);self.language_label=QLabel('语言 / Language');self.language_combo=QComboBox()
+        for code,label in SUPPORTED_LANGUAGES:self.language_combo.addItem(label,code)
+        manager=get_language_manager();language_index=self.language_combo.findData(manager.language)
+        if language_index>=0:self.language_combo.setCurrentIndex(language_index)
+        self.language_combo.currentIndexChanged.connect(lambda _=None:self.change_language());t.addWidget(self.language_label);t.addWidget(self.language_combo);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self);self.group.setExclusive(True)
         for n in PRESET_TARGETS:
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
@@ -742,9 +774,9 @@ class Window(QMainWindow):
         try:
             proposals=BACKEND.auto_crop_review_records(self.records);pending=len(BACKEND.pending_auto_crop(self.records));todo=BACKEND.auto_crop_scan_todo(self.records)
         except Exception:return
-        if proposals:self.auto_crop_btn.setText(f'自动裁剪 复核… ({len(proposals)} / 待定 {pending} / 未扫 {todo})')
-        elif todo:self.auto_crop_btn.setText(f'自动裁剪 复核…（未扫 {todo}）')
-        else:self.auto_crop_btn.setText('自动裁剪 复核…')
+        if proposals:self.auto_crop_btn.setText(self._tr_main('自动裁剪 复核… ({total} / 待定 {pending} / 未扫 {todo})').format(total=len(proposals),pending=pending,todo=todo))
+        elif todo:self.auto_crop_btn.setText(self._tr_main('自动裁剪 复核…（未扫 {todo}）').format(todo=todo))
+        else:self.auto_crop_btn.setText(self._tr_main('自动裁剪 复核…'))
     def open_auto_crop_review(self):
         if not BACKEND.feature_available('auto_crop'):return
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
@@ -1041,4 +1073,4 @@ if __name__=='__main__':
         try:sys.exit(self_test())
         except Exception as e:
             print('SELF-TEST FAILED:',e);traceback.print_exc();sys.exit(1)
-    a=QApplication(sys.argv);a.setApplicationName('LoRA 数据集筛选与字幕清理');w=Window();w.show();sys.exit(a.exec())
+    a=QApplication(sys.argv);a.setApplicationName('LoRA 数据集筛选与字幕清理');initialize_i18n(a);w=Window();w.show();sys.exit(a.exec())
