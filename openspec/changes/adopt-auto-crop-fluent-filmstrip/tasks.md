@@ -2,17 +2,17 @@
 
 ## 1. Production presentation
 
-- [ ] 1.1 Move Auto Crop review presentation into `ui/qt/auto_crop_review.py` while preserving `app.AutoCropROIWidget` / `app.AutoCropReviewDialog` compatibility imports.
-- [ ] 1.2 Implement the accepted Fluent Filmstrip layout.
-- [ ] 1.3 Use real thumbnails through the existing `ThumbnailWorker` / cache pipeline with stable sample IDs.
-- [ ] 1.4 Add the top-right Auto Crop-scoped Light/Dark toggle and coherent scoped dark surfaces.
-- [ ] 1.5 Preserve a legacy presentation fallback when Fluent is unavailable.
+- [x] 1.1 Move Auto Crop review presentation into `ui/qt/auto_crop_review.py` while preserving `app.AutoCropROIWidget` / `app.AutoCropReviewDialog` compatibility imports.
+- [x] 1.2 Implement the accepted Fluent Filmstrip layout.
+- [x] 1.3 Use real thumbnails through the existing `ThumbnailWorker` / cache pipeline with stable sample IDs.
+- [x] 1.4 Add the top-right Auto Crop-scoped Light/Dark toggle and coherent scoped dark surfaces.
+- [x] 1.5 Preserve a legacy presentation fallback when Fluent is unavailable.
 
 ## 2. Runtime / packaging
 
-- [ ] 2.1 Add an explicit no-Addons Fluent dependency installer and wire `安装.bat`.
-- [ ] 2.2 Wire Portable CI/build preparation without adding PySide6-Addons.
-- [ ] 2.3 Ensure third-party notices cover newly distributed packages/licenses.
+- [x] 2.1 Add an explicit no-Addons Fluent dependency installer and wire `安装.bat`.
+- [x] 2.2 Wire Portable CI/build preparation without adding PySide6-Addons.
+- [x] 2.3 Ensure third-party notices cover newly distributed packages/licenses.
 
 ## 3. Verification
 
