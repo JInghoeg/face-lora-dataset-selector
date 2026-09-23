@@ -18,3 +18,10 @@ build/
 dist/
 *.zip
 *.sha256
+
+# Local research / benchmark artifacts
+_research_output/
+models/composite_split_cache/
+
+# Generated Qt translation binaries
+translations/*.qm

@@ -1,0 +1,85 @@
+name: Project Memory
+
+on:
+  pull_request:
+    branches:
+      - feature/v0.3-workflow-recovery
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  continuity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate project continuity
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          STATE_PATH: docs/PROJECT_STATE.md
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+          from pathlib import Path
+
+          body = os.environ.get("PR_BODY") or ""
+          state_path = os.environ["STATE_PATH"]
+          yes = bool(re.search(r"^- \[[xX]\]\s+Yes\b", body, re.M))
+          no = bool(re.search(r"^- \[[xX]\]\s+No\b", body, re.M))
+
+          if yes == no:
+              raise SystemExit("Select exactly one Project continuity State impact choice: Yes or No.")
+
+          state = Path(state_path)
+          if not state.exists():
+              raise SystemExit(f"Missing canonical state file: {state_path}")
+
+          required = [
+              "## Current objective",
+              "## Verified complete",
+              "## In progress",
+              "## Blockers / uncertainties",
+              "## Human QA debt",
+              "## Next action",
+              "## Do not repeat",
+          ]
+          content = state.read_text(encoding="utf-8")
+          missing = [h for h in required if h not in content]
+          if missing:
+              raise SystemExit("PROJECT_STATE missing sections: " + ", ".join(missing))
+
+          base = os.environ.get("BASE_REF") or ""
+          subprocess.run(["git", "fetch", "origin", base, "--quiet"], check=True)
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"origin/{base}...HEAD"], text=True
+          ).splitlines()
+
+          if yes and state_path not in changed:
+              raise SystemExit(f"State impact is Yes but {state_path} is unchanged.")
+
+          high_signal = (
+              "features/", "application/", "core/", "infrastructure/",
+              "src/", "app.py", "requirements", "pyproject.toml", ".github/workflows/"
+          )
+          suspicious = [
+              p for p in changed
+              if p != state_path and any(p == x or p.startswith(x) for x in high_signal)
+          ]
+
+          if no and suspicious:
+              summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if summary:
+                  with open(summary, "a", encoding="utf-8") as fh:
+                      fh.write("## Project Memory Gate warning\n\n")
+                      fh.write("Declared **No state impact** while high-signal paths changed. Confirm this is intentional.\n\n")
+                      for p in suspicious:
+                          fh.write(f"- `{p}`\n")
+
+          print("Project Memory Gate: PASS")
+          PY

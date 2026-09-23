@@ -55,6 +55,17 @@ This project uses or redistributes third-party libraries, model files, and resou
 
 Only the detection-side preprocessing / DB post-processing needed by this application is retained locally. Model inference continues to use this project's bundled PP-OCRv5 ONNX detector through ONNX Runtime.
 
+
+
+### DeepGHS imgutils
+
+- Package: `dghs-imgutils`
+- Purpose here: mature anime-style person/head detection used by Composite Split
+- License: MIT License
+- Source: https://github.com/deepghs/imgutils
+
+Composite Split detector weights are not committed to this repository and are not bundled into the Portable ZIP by the build specification. They are downloaded on first use into the application's local `models/composite_split_cache` directory from the upstream model repositories used by `dghs-imgutils`, and remain subject to their upstream terms.
+
 ## Optional model not redistributed in the public release
 
 ### MI-GAN
@@ -72,6 +83,25 @@ Users may also place the same upstream model manually at `models/migan_pipeline_
 ## Python dependencies
 
 Python packages installed through `requirements.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
+
+### PySide6-Fluent-Widgets
+
+- Package: `PySide6-Fluent-Widgets` 1.11.3
+- Purpose here: Fluent visual components for the Auto Crop review surface
+- License: GPL-3.0 / commercial dual-license upstream; this GPL-3.0-only project uses the GPL-compatible path
+- Source: https://github.com/zhiyiYo/PyQt-Fluent-Widgets
+
+The installer intentionally uses the existing `PySide6-Essentials` runtime and installs the Fluent package without its `PySide6` meta-package dependency so `PySide6-Addons` is not pulled into the Portable build.
+
+### PySideSix-Frameless-Window
+
+- Package: `PySideSix-Frameless-Window` 0.8.2
+- Purpose here: runtime dependency used by PySide6-Fluent-Widgets
+- Source: https://pypi.org/project/PySideSix-Frameless-Window/
+
+### darkdetect / pywin32
+
+These lightweight runtime dependencies are installed for the selected Fluent UI package on Windows and retain their upstream licenses.
 
 ## Project license
 

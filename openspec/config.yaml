@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  Project: Face LoRA Dataset Selector v0.3 (brownfield PySide6 desktop app).
+  Product branch: feature/v0.3-workflow-recovery.
+  Architecture invariant: Qt presentation -> SelectorApplication -> independent feature backends.
+  Feature backends remain Qt-free; optional features must not create destructive sibling coupling.
+  Reuse mature components before custom primitives. Do not rewrite validated algorithms for architecture aesthetics.
+  UX/UI quality has two equal release criteria: usability and visual quality. Neither may be traded away for the other.
+  For UX/UI work, prefer actual reuse/adaptation of mature open-source applications, components, templates, and design systems over imitation or self-designed replacements.
+  UI i18n invariant: new/refactored modern UI must use the permanent QTranslator + retranslate/LanguageChange contract; backend/application state remains locale-free.
+  Risk-based QA: low-risk, reversible, automated-test-covered work may remain HUMAN UNVERIFIED until a coherent checkpoint.
+
+  Accepted v0.3 execution order:
+  1. Auto Crop manual ROI.
+  2. A very limited architecture wrap-up: Duplicate feature boundary + Text Cleanup frontend/backend separation through SelectorApplication, without algorithm rewrites.
+  3. Real UX/UI modernization: build/expand ui/qt, progressively move presentation out of app.py, research Qt Model/View and reusable UI components, keep backend stable.
+  4. Only after that, rebuild the unified Portable and run consolidated QA.
+
+  Current phase: step 3, UX/UI modernization.
+  Existing HUMAN UNVERIFIED items remain tracked in GitHub Issue #17 and do not by themselves redefine the current phase.
+
+rules:
+  proposal:
+    - State the current accepted phase and distinguish it from the local change scope.
+    - Do not reorder the accepted four-stage sequence from stale summaries or inferred release status.
+    - Reuse existing GitHub issues/PR evidence instead of rewriting history.
+  design:
+    - Keep SelectorApplication and feature backend contracts stable unless a concrete implementation blocker is documented.
+    - Prefer incremental presentation extraction over a whole-application rewrite.
+    - Keep UI-specific dependencies out of backend packages.
+    - For every UX/UI change, treat usability and visual quality as equal hard requirements; a solution that is functionally mature but visibly rough, or visually polished but awkward to use, is not acceptable.
+    - Before custom UI design, search for mature reusable implementations that solve both interaction and visual presentation. Record source, license, maintenance/integration fit, and what can be reused directly.
+    - Prefer importing/adapting real components, templates, styling systems, or implementation patterns over merely looking at screenshots and then designing a new interface from scratch.
+    - Custom Qt UI is the fallback only after reusable options are shown to be unsuitable; keep any fallback customization minimal and document why reuse was rejected.
+    - New or modernized ui/qt presentation must connect user-visible strings to the permanent i18n catalog and support live retranslation; do not add a second translation system or locale-aware backend state.
+  tasks:
+    - Every task must name an objective verification step.
+    - Keep tasks small enough to stop safely between commits.
+    - Do not require immediate human QA for bounded reversible presentation refactors when automated coverage is meaningful.
