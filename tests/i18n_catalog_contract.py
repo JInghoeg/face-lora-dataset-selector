@@ -42,12 +42,18 @@ def literal_calls(path: Path, method: str, quote: str):
 def main():
     data = catalog()
     assert "AutoCropReviewDialog" in data
+    assert "CompositeSplitReviewDialog" in data
     assert "MainWindow" in data
 
     auto_sources = literal_calls(
         ROOT / "ui" / "qt" / "auto_crop_review.py",
         "self._tr",
         '"',
+    )
+    composite_sources = literal_calls(
+        ROOT / "app.py",
+        "self._tr_composite",
+        "'",
     )
     main_sources = literal_calls(
         ROOT / "app.py",
@@ -56,14 +62,22 @@ def main():
     )
 
     missing_auto = sorted(auto_sources - set(data["AutoCropReviewDialog"]))
+    missing_composite = sorted(
+        composite_sources - set(data["CompositeSplitReviewDialog"])
+    )
     missing_main = sorted(main_sources - set(data["MainWindow"]))
     assert not missing_auto, f"Auto Crop i18n sources missing from TS: {missing_auto}"
+    assert not missing_composite, (
+        f"Composite Split i18n sources missing from TS: {missing_composite}"
+    )
     assert not missing_main, f"MainWindow i18n sources missing from TS: {missing_main}"
 
     print(
         "i18n catalog contract OK:",
         len(data["AutoCropReviewDialog"]),
         "Auto Crop entries,",
+        len(data["CompositeSplitReviewDialog"]),
+        "Composite Split entries,",
         len(data["MainWindow"]),
         "MainWindow entries",
     )
