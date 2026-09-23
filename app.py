@@ -368,7 +368,7 @@ class Window(QMainWindow):
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
         self.custom_mode=QPushButton('自定义');self.custom_mode.setCheckable(True);self.custom_mode.clicked.connect(self.apply_custom_target);self.group.addButton(self.custom_mode,0);rec.addWidget(self.custom_mode)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setToolTip('仅输入数字；点击“应用”后切换到自定义目标。');ap=QPushButton('应用');ap.clicked.connect(self.apply_custom_target);rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('Auto Crop 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('自动裁剪 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -688,7 +688,7 @@ class Window(QMainWindow):
         if not self.folder or not self.records:
             QMessageBox.information(self,'没有数据','请先选择并完成一个数据集的分析。');return
         if self.source_organizer_busy():
-            QMessageBox.information(self,'后台任务进行中','请等待当前分析 / Composite / Auto Crop 任务完成后再整理源文件。');return
+            QMessageBox.information(self,'后台任务进行中','请等待当前分析 / Composite / 自动裁剪 任务完成后再整理源文件。');return
         try:
             plan=BACKEND.build_source_organizer_plan(self.folder,self.records)
         except Exception as e:
@@ -742,31 +742,31 @@ class Window(QMainWindow):
         try:
             proposals=BACKEND.auto_crop_review_records(self.records);pending=len(BACKEND.pending_auto_crop(self.records));todo=BACKEND.auto_crop_scan_todo(self.records)
         except Exception:return
-        if proposals:self.auto_crop_btn.setText(f'Auto Crop 复核… ({len(proposals)} / 待定 {pending} / 未扫 {todo})')
-        elif todo:self.auto_crop_btn.setText(f'Auto Crop 复核…（未扫 {todo}）')
-        else:self.auto_crop_btn.setText('Auto Crop 复核…')
+        if proposals:self.auto_crop_btn.setText(f'自动裁剪 复核… ({len(proposals)} / 待定 {pending} / 未扫 {todo})')
+        elif todo:self.auto_crop_btn.setText(f'自动裁剪 复核…（未扫 {todo}）')
+        else:self.auto_crop_btn.setText('自动裁剪 复核…')
     def open_auto_crop_review(self):
         if not BACKEND.feature_available('auto_crop'):return
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
         if self.auto_crop_thread and self.auto_crop_thread.isRunning():return
         composite_pending=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if composite_pending:
-            QMessageBox.warning(self,'请先完成 Composite Split',f'还有 {len(composite_pending)} 张推荐图等待 Composite Split 复核。\n\nAuto Crop 只处理 Composite 之后的单主体推荐图。');return
+            QMessageBox.warning(self,'请先完成 Composite Split',f'还有 {len(composite_pending)} 张推荐图等待 Composite Split 复核。\n\n自动裁剪 只处理 Composite 之后的单主体推荐图。');return
         todo=BACKEND.auto_crop_scan_todo(self.records)
         if not todo:
             candidates=BACKEND.auto_crop_review_records(self.records)
-            if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 Auto Crop 复核的候选。');return
+            if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 自动裁剪 复核的候选。');return
             AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button();return
-        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(f'Auto Crop 扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型')
-        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(f'Auto Crop {n}/{t}：{name}'));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
+        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(f'自动裁剪 扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型')
+        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(f'自动裁剪 {n}/{t}：{name}'));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
     def auto_crop_scan_done(self,result):
-        self.progress.setText(f'Auto Crop 扫描完成：新扫 {result.scanned} · 候选 {result.candidates} · 无需裁 {result.no_candidate} · 已缓存 {result.skipped_existing}')
+        self.progress.setText(f'自动裁剪 扫描完成：新扫 {result.scanned} · 候选 {result.candidates} · 无需裁 {result.no_candidate} · 已缓存 {result.skipped_existing}')
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.update_auto_crop_button();self.save()
         candidates=BACKEND.auto_crop_review_records(self.records)
         if candidates:AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button()
-        else:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 Auto Crop 复核的候选。')
+        else:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 自动裁剪 复核的候选。')
     def auto_crop_scan_failed(self,error):
-        self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText('Auto Crop 扫描失败');QMessageBox.critical(self,'Auto Crop 扫描失败',error)
+        self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText('自动裁剪 扫描失败');QMessageBox.critical(self,'自动裁剪 扫描失败',error)
     def auto_crop_thread_done(self):
         if self.auto_crop_worker:self.auto_crop_worker.deleteLater()
         if self.auto_crop_thread:self.auto_crop_thread.deleteLater()
@@ -859,10 +859,10 @@ class Window(QMainWindow):
         if BACKEND.feature_available('auto_crop'):
             unscanned=BACKEND.auto_crop_scan_todo(sel)
             if unscanned:
-                QMessageBox.warning(self,'还有 Auto Crop 未扫描',f'推荐图片中还有 {unscanned} 张未完成 Auto Crop 扫描。\n\n请先完成 Auto Crop，再导出训练图片。');return
+                QMessageBox.warning(self,'还有 自动裁剪 未扫描',f'推荐图片中还有 {unscanned} 张未完成 自动裁剪 扫描。\n\n请先完成 自动裁剪，再导出训练图片。');return
             auto_pending=BACKEND.pending_auto_crop(sel)
             if auto_pending:
-                QMessageBox.warning(self,'还有 Auto Crop 待复核',f'推荐图片中还有 {len(auto_pending)} 张 Auto Crop 候选未确认。\n\n请接受裁剪或选择保留原图后再导出。');return
+                QMessageBox.warning(self,'还有 自动裁剪 待复核',f'推荐图片中还有 {len(auto_pending)} 张 自动裁剪 候选未确认。\n\n请接受裁剪或选择保留原图后再导出。');return
         x=QFileDialog.getExistingDirectory(self,'选择导出目录（只写新文件）')
         if not x:return
         dst=Path(x)
@@ -950,7 +950,7 @@ def self_test():
     if recommendation_summary.target!=2 or recommendation_summary.automatic_recommended!=2:raise RuntimeError('application recommendation contract self-test failed')
     if not BACKEND.feature_available('ranking'):raise RuntimeError('mandatory ranking feature registry self-test failed')
     if not BACKEND.feature_available('duplicates'):raise RuntimeError('Duplicate feature registry self-test failed')
-    if not BACKEND.feature_available('auto_crop'):raise RuntimeError('Auto Crop feature registry self-test failed')
+    if not BACKEND.feature_available('auto_crop'):raise RuntimeError('自动裁剪 feature registry self-test failed')
     auto_crop_backend_self_test()
     if not BACKEND.feature_available('source_organizer'):raise RuntimeError('Source Organizer feature registry self-test failed')
     source_organizer_backend_self_test()
@@ -1021,16 +1021,16 @@ def self_test():
         }
         BACKEND.update_auto_crop_box(crop_photo,[20,10,80,70],(100,80));BACKEND.accept_auto_crop(crop_photo)
         exported=BACKEND.export_recommended([crop_photo],dst)
-        if exported.written!=1:raise RuntimeError('Auto Crop export count self-test failed')
+        if exported.written!=1:raise RuntimeError('自动裁剪 export count self-test failed')
         out=next(dst.iterdir())
         with Image.open(out) as check:
-            if check.size!=(60,60):raise RuntimeError(f'Auto Crop edited export size self-test failed: {check.size}')
+            if check.size!=(60,60):raise RuntimeError(f'自动裁剪 edited export size self-test failed: {check.size}')
         keep=root/'keep.png';Image.new('RGB',(64,48),(1,2,3)).save(keep)
         keep_photo=Photo(keep);keep_photo.manual_status='推荐'
         BACKEND.export_recommended([keep_photo],dst)
         copied=[p for p in dst.iterdir() if p.name.startswith('keep')]
         if len(copied)!=1:
-            raise RuntimeError('Auto Crop Keep Original export self-test failed')
+            raise RuntimeError('自动裁剪 Keep Original export self-test failed')
         with Image.open(copied[0]) as check:
             if check.size!=(64,48):raise RuntimeError('Keep Original dimensions changed')
     pose_smoke_test()
