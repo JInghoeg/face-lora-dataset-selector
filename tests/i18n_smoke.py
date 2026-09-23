@@ -5,6 +5,7 @@ production dialog.  Switching language must not mutate dataset/backend state.
 """
 from __future__ import annotations
 
+import argparse
 import copy
 import os
 from pathlib import Path
@@ -117,6 +118,12 @@ def select_language(window, code: str):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", type=Path)
+    args = parser.parse_args()
+    if args.out:
+        args.out.mkdir(parents=True, exist_ok=True)
+
     qapp = QApplication.instance() or QApplication([])
 
     with tempfile.TemporaryDirectory() as td:
@@ -232,6 +239,16 @@ def main() -> int:
             window.tabs.tabText(window.dataset_tab_index),
             window.tabs.tabText(window.text_cleanup_tab_index),
         )
+
+        if args.out:
+            window.tabs.setCurrentIndex(window.dataset_tab_index)
+            qapp.processEvents()
+            assert window.grab().save(str(args.out / "dataset_selector_en.png"))
+            window.tabs.setCurrentIndex(window.text_cleanup_tab_index)
+            qapp.processEvents()
+            assert window.grab().save(str(args.out / "text_cleanup_en.png"))
+            window.tabs.setCurrentIndex(window.dataset_tab_index)
+            qapp.processEvents()
 
         assert_no_han(
             window.pick.text(),
