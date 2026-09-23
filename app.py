@@ -388,6 +388,8 @@ class Window(QMainWindow):
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
+    def _display_value(self,value):
+        return self._tr_main(str(value)) if value not in (None,'') else self._tr_main('无')
     def _retranslate_combo(self, combo, items, default_value):
         current=combo_value(combo) if combo.count() else default_value
         combo.blockSignals(True);combo.clear()
@@ -491,7 +493,7 @@ class Window(QMainWindow):
         manager=ui_language_manager();language=self.language_combo.currentData()
         if language==manager.language:return
         if not manager.set_language(language):
-            QMessageBox.warning(self,'Language / 语言',f'无法加载语言资源：\n{manager.last_error}')
+            QMessageBox.warning(self,'Language / 语言',self._tr_main('无法加载语言资源：\n{error}').format(error=manager.last_error))
             index=self.language_combo.findData(manager.language)
             if index>=0:
                 self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
@@ -583,7 +585,7 @@ class Window(QMainWindow):
         aib.addWidget(self.accept_ai_btn);aib.addWidget(self.reject_ai_btn);aib.addWidget(self.clear_ai_btn);ail.addLayout(aib);sl.addWidget(self.ai_box);sl.addStretch(1)
         self.dataset_splitter.addWidget(side);self.dataset_splitter.setSizes([1030,370]);l.addWidget(self.dataset_splitter,1)
     def choose(self):
-        x=QFileDialog.getExistingDirectory(self,'选择训练图片目录',str(self.folder or APP_DIR))
+        x=QFileDialog.getExistingDirectory(self,self._tr_main('选择训练图片目录'),str(self.folder or APP_DIR))
         if x:
             self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.target_mode=infer_target_mode(self.target,d.get('target_mode'));self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
             for item in d.get('pending_composite_outputs',[]):
@@ -593,7 +595,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
-        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 {n}/{t}：{name}'));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,'分析失败',e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
+        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('分析 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,self._tr_main('分析失败'),e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
         self.records=rs
         if self.pending_composite_outputs:
@@ -602,7 +604,7 @@ class Window(QMainWindow):
                 k=key(r.path);item=self.pending_composite_outputs.get(k)
                 if item:r.manual_status=item['status'];r.composite_scan_version=BACKEND.composite_proposal_version;r.composite_proposal=None;found.append(k)
             for k in found:self.pending_composite_outputs.pop(k,None)
-        BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(f'刷新完成：新增 {self.worker.added_count} / 删除 {self.worker.deleted_count} / 修改 {self.worker.modified_count} / 未变 {self.worker.unchanged_count}' if self.worker and self.worker.had_v3_cache else f'分析完成：{len(rs)} 张');self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button()
+        BACKEND.recompute_recommendations(rs,self.target);self.page=0;self.progress.setText(self._tr_main('刷新完成：新增 {added} / 删除 {deleted} / 修改 {modified} / 未变 {unchanged}').format(added=self.worker.added_count,deleted=self.worker.deleted_count,modified=self.worker.modified_count,unchanged=self.worker.unchanged_count) if self.worker and self.worker.had_v3_cache else self._tr_main('分析完成：{count} 张').format(count=len(rs)));self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button()
         if self.pending_last_view:
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
@@ -636,7 +638,7 @@ class Window(QMainWindow):
         self.saved_view_combo.blockSignals(False)
     def save_current_view(self):
         if not self.folder:return
-        name,ok=QInputDialog.getText(self,'保存当前视图','视图名称：')
+        name,ok=QInputDialog.getText(self,self._tr_main('保存当前视图'),self._tr_main('视图名称：'))
         name=name.strip()
         if not ok or not name:return
         spec=self.current_view_spec(name);existing=next((i for i,v in enumerate(self.saved_views) if v.name==name),None)
@@ -729,21 +731,24 @@ class Window(QMainWindow):
             child=self.stat_layout.takeAt(0)
             if child.widget():child.widget().deleteLater()
         st=Counter(r.status for r in self.records);sel=[r for r in self.records if r.status=='推荐'];sc=Counter(r.person_scale for r in sel);yw=Counter(r.angle_class for r in sel);pt=Counter(r.pitch_class for r in sel);grp={r.duplicate_group for r in sel if r.duplicate_group};du=sum(r.status!='推荐' and r.eligibility!='REJECT' and r.duplicate_group and (self.qualified_group_rank(r)[0]>1 or r.duplicate_group in grp) for r in self.records);bad=sum(r.eligibility=='REJECT' for r in self.records);review=sum(r.eligibility=='REVIEW' for r in self.records);group_count=len({r.duplicate_group for r in self.records if r.duplicate_group})
-        auto_sel=sum(r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records);self.stats.setText(f'自动目标 / 自动推荐：{self.target} / {auto_sel} · 人工追加：{manual_add} · 总推荐：{len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · 重复组：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
-        self.stat_layout.addWidget(QLabel('状态（点击筛选）'),0,0,1,3)
-        for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{value} {st[value]}','status',value,1,col)
-        self.stat_layout.addWidget(QLabel('景别（推荐）'),2,0,1,3)
-        for n,value in enumerate(SCALES):self.stat_button(f'{value} {sc[value]}','scale',value,3+n//2,n%2)
-        self.stat_layout.addWidget(QLabel('水平角度（推荐）'),5,0,1,3)
-        for n,value in enumerate(YAWS):self.stat_button(f'{value} {yw[value]}','yaw',value,6+n//2,n%2)
-        self.stat_layout.addWidget(QLabel('俯仰（推荐）'),9,0,1,3)
-        for n,value in enumerate(PITCHES):self.stat_button(f'{value} {pt[value]}','pitch',value,10+n//2,n%2)
+        auto_sel=sum(r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records)
+        self.stats.setText(self._tr_main('自动目标 / 自动推荐：{target} / {auto} · 人工追加：{manual} · 总推荐：{total}\n来源目录/视频：{sources} · 重复组：{groups}\n因近重复未推荐：{duplicate} · 需复核：{review} · 硬淘汰：{reject}').format(target=self.target,auto=auto_sel,manual=manual_add,total=len(sel),sources=len({r.source for r in self.records}),groups=group_count,duplicate=du,review=review,reject=bad))
+        self.stat_layout.addWidget(QLabel(self._tr_main('状态（点击筛选）')),0,0,1,3)
+        for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{self._display_value(value)} {st[value]}','status',value,1,col)
+        self.stat_layout.addWidget(QLabel(self._tr_main('景别（推荐）')),2,0,1,3)
+        for n,value in enumerate(SCALES):self.stat_button(f'{self._display_value(value)} {sc[value]}','scale',value,3+n//2,n%2)
+        self.stat_layout.addWidget(QLabel(self._tr_main('水平角度（推荐）')),5,0,1,3)
+        for n,value in enumerate(YAWS):self.stat_button(f'{self._display_value(value)} {yw[value]}','yaw',value,6+n//2,n%2)
+        self.stat_layout.addWidget(QLabel(self._tr_main('俯仰（推荐）')),9,0,1,3)
+        for n,value in enumerate(PITCHES):self.stat_button(f'{self._display_value(value)} {pt[value]}','pitch',value,10+n//2,n%2)
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);old_page=self.page;scroll=self.grid.verticalScrollBar().value();self.page,pages=clamp_page(self.page,len(visible));self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE];rows=[]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);reason=r.recommendation_reasons[0] if r.recommendation_reasons else '无';tooltip=f'{r.status} · {r.eligibility} · AI {r.ai_suggestion.decision if r.ai_suggestion else "无"} · 人脸 {r.faces} · {r.person_scale} · {r.angle_class} · eDifFIQA {r.face_quality:.3f} · 组 {gr}/{gs}\n推荐/备选原因：{reason}';rows.append(DatasetViewRow(i,r.sample_id,r.path.name,tooltip,QIcon(pix),QColor(COLORS[r.status])))
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);reason=r.recommendation_reasons[0] if r.recommendation_reasons else self._tr_main('无')
+            tooltip=self._tr_main('{status} · {eligibility} · AI {ai} · 人脸 {faces} · {scale} · {angle} · eDifFIQA {quality} · 组 {rank}/{size}\n推荐/备选原因：{reason}').format(status=self._display_value(r.status),eligibility=r.eligibility,ai=self._display_value(r.ai_suggestion.decision if r.ai_suggestion else '无'),faces=r.faces,scale=self._display_value(r.person_scale),angle=self._display_value(r.angle_class),quality=f'{r.face_quality:.3f}',rank=gr,size=gs,reason=reason)
+            rows.append(DatasetViewRow(i,r.sample_id,r.path.name,tooltip,QIcon(pix),QColor(COLORS[r.status])))
         self.dataset_model.set_rows(rows)
-        self.page_label.setText(f'第 {self.page+1}/{pages} 页');self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(f'当前视图\n{self.view_description()}\n显示：{len(visible)} / {len(base)} 张');self.refresh_stats();self.start_thumbnails(page_indices)
+        self.page_label.setText(self._tr_main('第 {page}/{pages} 页').format(page=self.page+1,pages=pages));self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(self._tr_main('当前视图\n{description}\n显示：{visible} / {base} 张').format(description=self.view_description(),visible=len(visible),base=len(base)));self.refresh_stats();self.start_thumbnails(page_indices)
         if self.page==old_page:QTimer.singleShot(0,lambda v=scroll:self.grid.verticalScrollBar().setValue(v))
     def change(self,d):
         n=self.page+d
@@ -764,16 +769,17 @@ class Window(QMainWindow):
     def details(self,index):
         r=self.record_from_view(index)
         if r is None:return
-        flags='；'.join(finding_text(x) for x in r.review_flags) or '无';rejects='；'.join(finding_text(x) for x in r.hard_rejects) or '无';gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=f'第 {r.duplicate_group} 组' if r.duplicate_group else '无（独立图片）';primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else '无';status_source='人工' if r.manual_status else '自动';rank_text=qr if qr else '未达推荐门槛';reason_text='；'.join(r.recommendation_reasons) or '无';self.detail.setText(f'文件：{r.path.name}\n样本 ID：{r.sample_id}\n\n状态：{r.status}（{status_source}）\n判定状态：{r.eligibility}\n分辨率：{r.width} × {r.height}\n人脸检测数：{r.faces}\n主脸置信度：{pconf}\n主脸占比：{r.face_ratio*100:.1f}%\n主脸实际尺寸：{r.face_px}px\neDifFIQA-T：{r.face_quality:.4f}（高更好）\nBRISQUE：{r.brisque:.2f}（低更好）\nLaplacian 清晰度：{r.blur:.1f}\n平均亮度：{r.brightness:.1f}\nyaw / pitch / roll：{r.yaw:.1f}° / {r.pitch:.1f}° / {r.roll:.1f}°\n水平角度分类：{r.angle_class}\n俯仰分类：{r.pitch_class}\n景别：{r.person_scale}\n重复组：{dup}\n组内数量：{gs}\n组内排名：{gr} / {gs}\n合格成员排名：{rank_text} / {qs}\n\n推荐/备选原因：{reason_text}\n需复核：{flags}\n硬淘汰：{rejects}');self.update_ai_panel(r)
+        none=self._tr_main('无');flags='；'.join(finding_text(x) for x in r.review_flags) or none;rejects='；'.join(finding_text(x) for x in r.hard_rejects) or none;gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=self._tr_main('第 {group} 组').format(group=r.duplicate_group) if r.duplicate_group else self._tr_main('无（独立图片）');primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else none;status_source=self._tr_main('人工') if r.manual_status else self._tr_main('自动');rank_text=qr if qr else self._tr_main('未达推荐门槛');reason_text='；'.join(r.recommendation_reasons) or none
+        self.detail.setText(self._tr_main('文件：{file}\n样本 ID：{sample_id}\n\n状态：{status}（{source}）\n判定状态：{eligibility}\n分辨率：{width} × {height}\n人脸检测数：{faces}\n主脸置信度：{confidence}\n主脸占比：{ratio}%\n主脸实际尺寸：{face_px}px\neDifFIQA-T：{fiqa}（高更好）\nBRISQUE：{brisque}（低更好）\nLaplacian 清晰度：{sharpness}\n平均亮度：{brightness}\nyaw / pitch / roll：{yaw}° / {pitch}° / {roll}°\n水平角度分类：{angle}\n俯仰分类：{pitch_class}\n景别：{scale}\n重复组：{duplicate}\n组内数量：{group_size}\n组内排名：{group_rank} / {group_size}\n合格成员排名：{qualified_rank} / {qualified_size}\n\n推荐/备选原因：{reason}\n需复核：{flags}\n硬淘汰：{rejects}').format(file=r.path.name,sample_id=r.sample_id,status=self._display_value(r.status),source=status_source,eligibility=r.eligibility,width=r.width,height=r.height,faces=r.faces,confidence=pconf,ratio=f'{r.face_ratio*100:.1f}',face_px=r.face_px,fiqa=f'{r.face_quality:.4f}',brisque=f'{r.brisque:.2f}',sharpness=f'{r.blur:.1f}',brightness=f'{r.brightness:.1f}',yaw=f'{r.yaw:.1f}',pitch=f'{r.pitch:.1f}',roll=f'{r.roll:.1f}',angle=self._display_value(r.angle_class),pitch_class=self._display_value(r.pitch_class),scale=self._display_value(r.person_scale),duplicate=dup,group_size=gs,group_rank=gr,qualified_rank=rank_text,qualified_size=qs,reason=reason_text,flags=flags,rejects=rejects));self.update_ai_panel(r)
     def update_ai_panel(self,r=None):
         r=r or self.selected()
-        if not r or not r.ai_suggestion:self.ai_label.setText('当前图片没有 AI 建议');return
-        a=r.ai_suggestion;parts=[f'状态：{a.decision}']
-        if a.suggested_eligibility:parts.append(f'建议 Eligibility：{a.suggested_eligibility}')
-        if a.suggested_status:parts.append(f'建议状态：{a.suggested_status}')
-        if a.flags:parts.append('Flags：'+'、'.join(a.flags))
-        if a.note:parts.append('备注：'+a.note)
-        if a.request_full_resolution:parts.append('请求：需要原图复核')
+        if not r or not r.ai_suggestion:self.ai_label.setText(self._tr_main('当前图片没有 AI 建议'));return
+        a=r.ai_suggestion;parts=[self._tr_main('状态：{state}').format(state=self._display_value(a.decision))]
+        if a.suggested_eligibility:parts.append(self._tr_main('建议 Eligibility：{value}').format(value=a.suggested_eligibility))
+        if a.suggested_status:parts.append(self._tr_main('建议状态：{value}').format(value=self._display_value(a.suggested_status)))
+        if a.flags:parts.append(self._tr_main('Flags：{flags}').format(flags='、'.join(a.flags)))
+        if a.note:parts.append(self._tr_main('备注：{note}').format(note=a.note))
+        if a.request_full_resolution:parts.append(self._tr_main('请求：需要原图复核'))
         self.ai_label.setText('\n'.join(parts))
     def accept_ai_suggestion(self):
         r=self.selected()
@@ -794,12 +800,12 @@ class Window(QMainWindow):
     def ai_export_records(self,scope):
         return list(self.records) if scope=='dataset' else [self.records[i] for i in self.indices(True)]
     def export_ai_bundle(self,scope):
-        if not self.folder or not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        if not self.folder or not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         records=self.ai_export_records(scope)
-        if not records:QMessageBox.information(self,'当前视图为空','当前视图没有可导出的图片。');return
-        out=QFileDialog.getExistingDirectory(self,'选择 AI 审核包保存目录',str(self.folder.parent))
+        if not records:QMessageBox.information(self,self._tr_main('当前视图为空'),self._tr_main('当前视图没有可导出的图片。'));return
+        out=QFileDialog.getExistingDirectory(self,self._tr_main('选择 AI 审核包保存目录'),str(self.folder.parent))
         if not out:return
-        include_originals=QMessageBox.question(self,'是否包含原图','是否把当前导出范围的原图一起放进 AI 审核包？\n\n不包含时仍会生成 Contact Sheets、完整指标和统计。',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        include_originals=QMessageBox.question(self,self._tr_main('是否包含原图'),self._tr_main('是否把当前导出范围的原图一起放进 AI 审核包？\n\n不包含时仍会生成 Contact Sheets、完整指标和统计。'),QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
         bundle_id='bundle_'+time.strftime('%Y%m%d_%H%M%S',time.gmtime())+'_'+uuid.uuid4().hex[:8];created=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime());dest=Path(out);stage=dest/f'.{bundle_id}.building';zip_path=dest/f'{bundle_id}.zip'
         try:
             if stage.exists():shutil.rmtree(stage)
@@ -822,28 +828,28 @@ class Window(QMainWindow):
             if zip_path.exists():zip_path.unlink()
             made=Path(shutil.make_archive(str(zip_path.with_suffix('')),'zip',stage))
             self.exported_bundle_ids.append(bundle_id);self.exported_bundle_ids=self.exported_bundle_ids[-100:];self.save()
-            QMessageBox.information(self,'AI 审核包导出完成',f'已导出 {len(records)} 张图片的审核信息。\n\n{made}')
-        except Exception as e:QMessageBox.critical(self,'AI 审核包导出失败',str(e))
+            QMessageBox.information(self,self._tr_main('AI 审核包导出完成'),self._tr_main('已导出 {count} 张图片的审核信息。\n\n{path}').format(count=len(records),path=made))
+        except Exception as e:QMessageBox.critical(self,self._tr_main('AI 审核包导出失败'),str(e))
         finally:
             try:
                 if stage.exists():shutil.rmtree(stage)
             except Exception:pass
     def import_ai_patch(self):
-        if not self.records:QMessageBox.information(self,'没有数据','请先加载并分析数据集。');return
-        filename,_=QFileDialog.getOpenFileName(self,'选择 review_patch.json',str(self.folder or APP_DIR),'JSON (*.json)')
+        if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先加载并分析数据集。'));return
+        filename,_=QFileDialog.getOpenFileName(self,self._tr_main('选择 review_patch.json'),str(self.folder or APP_DIR),'JSON (*.json)')
         if not filename:return
         try:
             data=json.loads(Path(filename).read_text(encoding='utf-8'));bundle_id,pending,unknown,stale=prepare_review_patch(data,self.records,Path(filename).stem)
             if bundle_id not in self.exported_bundle_ids:
-                ans=QMessageBox.question(self,'外部或历史审核包',f'本地记录中找不到 bundle_id：\n{bundle_id}\n\n如果这是历史导出的审核包，仍可按 sample_id + 内容哈希安全匹配。是否继续？',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)
+                ans=QMessageBox.question(self,self._tr_main('外部或历史审核包'),self._tr_main('本地记录中找不到 bundle_id：\n{bundle_id}\n\n如果这是历史导出的审核包，仍可按 sample_id + 内容哈希安全匹配。是否继续？').format(bundle_id=bundle_id),QMessageBox.Yes|QMessageBox.No,QMessageBox.No)
                 if ans!=QMessageBox.Yes:return
             for target,suggestion in pending:target.ai_suggestion=suggestion
             self.save();self.refresh();self.update_ai_panel()
-            msg=f'已导入 AI 建议：{len(pending)} 条'
-            if unknown:msg+=f'\n未知 sample_id：{len(unknown)} 条（已跳过）'
-            if stale:msg+=f'\n内容已变化：{len(stale)} 条（已跳过）'
-            QMessageBox.information(self,'AI 建议导入完成',msg)
-        except Exception as e:QMessageBox.critical(self,'AI 建议导入失败',str(e))
+            msg=self._tr_main('已导入 AI 建议：{count} 条').format(count=len(pending))
+            if unknown:msg+='\n'+self._tr_main('未知 sample_id：{count} 条（已跳过）').format(count=len(unknown))
+            if stale:msg+='\n'+self._tr_main('内容已变化：{count} 条（已跳过）').format(count=len(stale))
+            QMessageBox.information(self,self._tr_main('AI 建议导入完成'),msg)
+        except Exception as e:QMessageBox.critical(self,self._tr_main('AI 建议导入失败'),str(e))
     def manual(self,v):
         r=self.selected()
         if r:r.manual_status=v;BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
@@ -1035,7 +1041,7 @@ class Window(QMainWindow):
     def composite_review_changed(self):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):
-        if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         DuplicateReviewDialog(BACKEND,self.records,self.duplicate_review_changed,self).exec()
     def duplicate_review_changed(self,regroup=False):
         if regroup:BACKEND.regroup_duplicates(self.records)
@@ -1044,15 +1050,15 @@ class Window(QMainWindow):
         r=self.record_from_view(index)
         if r is None:return
         try:os.startfile(str(r.path))
-        except OSError as e:QMessageBox.warning(self,'无法打开图片',str(e))
+        except OSError as e:QMessageBox.warning(self,self._tr_main('无法打开图片'),str(e))
     def save(self):
         if self.folder and self.records:
             try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()),self.target_mode)
-            except Exception:self.progress.setText('缓存保存失败')
+            except Exception:self.progress.setText(self._tr_main('缓存保存失败'))
     def closeEvent(self,e):self.save();self.sub.save() if self.sub is not None else None;e.accept()
     def exported(self):
         sel=[r for r in self.records if r.status=='推荐']
-        if not sel:QMessageBox.information(self,'没有可导出的图片','当前没有推荐图片。');return
+        if not sel:QMessageBox.information(self,self._tr_main('没有可导出的图片'),self._tr_main('当前没有推荐图片。'));return
         pending=[r for r in sel if r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if pending:
             QMessageBox.warning(self,self._tr_main('还有组合图拆分待复核'),self._tr_main('推荐图片中还有 {count} 张组合图拆分建议未确认。\n\n请先完成组合图拆分复核，再导出训练图片。').format(count=len(pending)));return
@@ -1063,14 +1069,14 @@ class Window(QMainWindow):
             auto_pending=BACKEND.pending_auto_crop(sel)
             if auto_pending:
                 QMessageBox.warning(self,self._tr_main('还有自动裁剪待复核'),self._tr_main('推荐图片中还有 {count} 张自动裁剪候选未确认。\n\n请接受裁剪或选择保留原图后再导出。').format(count=len(auto_pending)));return
-        x=QFileDialog.getExistingDirectory(self,'选择导出目录（只写新文件）')
+        x=QFileDialog.getExistingDirectory(self,self._tr_main('选择导出目录（只写新文件）'))
         if not x:return
         dst=Path(x)
-        if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,'请选择新目录','导出目录不能是源目录或其子目录。');return
+        if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,self._tr_main('请选择新目录'),self._tr_main('导出目录不能是源目录或其子目录。'));return
         try:
             result=BACKEND.export_recommended(self.records,dst)
-            QMessageBox.information(self,'导出完成',self._tr_main('已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。').format(count=result.written))
-        except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
+            QMessageBox.information(self,self._tr_main('导出完成'),self._tr_main('已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。').format(count=result.written))
+        except Exception as e:QMessageBox.critical(self,self._tr_main('导出失败'),str(e))
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
