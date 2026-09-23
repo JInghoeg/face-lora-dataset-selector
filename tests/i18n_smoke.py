@@ -80,8 +80,21 @@ def main() -> int:
 
         assert window.windowTitle() == "LoRA 数据集筛选与字幕清理"
         assert window.tabs.tabText(window.dataset_tab_index) == "LoRA 数据集筛选"
+        assert window.duplicate_review_btn.text() == "重复组 复核…"
         assert window.composite_btn.text() == "组合图拆分 复核…"
+        assert window.organizer_btn.text() == "整理源文件…"
         assert window.language_combo.currentData() == "zh_CN"
+
+        duplicate_dialog = app.DuplicateReviewDialog(
+            app.BACKEND,
+            [],
+            lambda _regroup=False: None,
+            window,
+        )
+        duplicate_dialog.show()
+        qapp.processEvents()
+        assert duplicate_dialog.windowTitle() == "重复组人工复核"
+        assert duplicate_dialog.group_label.text() == "当前没有重复组"
 
         record = build_record(root)
         original_state = copy.deepcopy(record.feature_state)
@@ -105,8 +118,12 @@ def main() -> int:
         assert manager.language == "en_US"
         assert window.windowTitle() == "LoRA Dataset Selector & Text Cleanup"
         assert window.tabs.tabText(window.dataset_tab_index) == "LoRA Dataset Selector"
+        assert window.duplicate_review_btn.text() == "Duplicate Group Review…"
         assert window.composite_btn.text() == "Composite Split Review…"
+        assert window.organizer_btn.text() == "Organize Source Files…"
         assert window.auto_crop_btn.text() == "Auto Crop Review…"
+        assert duplicate_dialog.windowTitle() == "Duplicate Group Review"
+        assert duplicate_dialog.group_label.text() == "No Duplicate Groups"
         assert dialog.windowTitle() == "Auto Crop Review"
         assert dialog.accept_button.text() == "Accept Current Crop"
         assert dialog.keep_button.text() == "Keep Original"
@@ -126,8 +143,12 @@ def main() -> int:
         assert window.windowTitle() == "LoRA 数据集筛选与字幕清理"
         assert dialog.windowTitle() == "自动裁剪复核"
         assert dialog.accept_button.text() == "接受当前裁剪框"
+        assert window.duplicate_review_btn.text() == "重复组 复核…"
         assert window.composite_btn.text() == "组合图拆分 复核…"
+        assert window.organizer_btn.text() == "整理源文件…"
         assert window.auto_crop_btn.text() == "自动裁剪 复核…"
+        assert duplicate_dialog.windowTitle() == "重复组人工复核"
+        assert duplicate_dialog.group_label.text() == "当前没有重复组"
         assert "状态：" in dialog.info.text()
         assert "主体遮罩触及原图边缘" in dialog.info.text()
         assert record.feature_state == original_state
@@ -138,6 +159,7 @@ def main() -> int:
         assert settings.value("ui/language") == "zh_CN"
 
         dialog.close()
+        duplicate_dialog.close()
         window.close()
         qapp.processEvents()
 
