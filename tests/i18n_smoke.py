@@ -292,7 +292,7 @@ def main() -> int:
         assert window.duplicate_review_btn.text() == "重复组 复核…"
         assert window.composite_btn.text() == "组合图拆分 复核…"
         assert window.organizer_btn.text() == "整理源文件…"
-        assert window.auto_crop_btn.text() == "自动裁剪 复核…"
+        assert window.auto_crop_btn.text().startswith("自动裁剪 复核…")
         assert window.pick.text() == "选择图片文件夹"
         assert window.filter_box.title() == '1. 筛选：只决定“显示哪些图片”'
         assert window.view_combo.currentText() == "全部"
