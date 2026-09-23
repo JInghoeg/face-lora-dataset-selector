@@ -1,4 +1,4 @@
-"""Auto Crop Qt review presentation.
+"""自动裁剪 Qt review presentation.
 
 The feature/backend contract remains outside this module.  QFluentWidgets is an
 optional presentation dependency: normal installers/Portable include it, while
@@ -204,7 +204,7 @@ class AutoCropROIWidget(QWidget):
 
 
 class AutoCropReviewDialog(QDialog):
-    """Production Auto Crop review dialog.
+    """Production 自动裁剪 review dialog.
 
     QFluentWidgets presentation is preferred when installed.  Backend methods
     are injected explicitly and remain the source of truth for all decisions.
@@ -240,7 +240,7 @@ class AutoCropReviewDialog(QDialog):
             )
 
         self.setObjectName("AutoCropReviewDialog")
-        self.setWindowTitle("Auto Crop 复核")
+        self.setWindowTitle("自动裁剪复核")
         self.resize(1450, 860)
 
         if self._fluent:
@@ -279,7 +279,7 @@ class AutoCropReviewDialog(QDialog):
 
         header = QHBoxLayout()
         header.setSpacing(8)
-        header.addWidget(api["StrongBodyLabel"]("Auto Crop 复核"))
+        header.addWidget(api["StrongBodyLabel"]("自动裁剪复核"))
         header.addStretch(1)
         self.count_label = api["CaptionLabel"]("0 / 0")
         header.addWidget(self.count_label)
@@ -313,7 +313,7 @@ class AutoCropReviewDialog(QDialog):
         inspector_layout.setContentsMargins(10, 10, 10, 10)
         inspector_layout.setSpacing(8)
         inspector_layout.addWidget(api["StrongBodyLabel"]("当前裁剪结果"))
-        self.info = api["BodyLabel"]("选择 Auto Crop 候选")
+        self.info = api["BodyLabel"]("选择自动裁剪候选")
         self.info.setWordWrap(True)
         inspector_layout.addWidget(self.info)
         self.crop_preview = QLabel()
@@ -395,7 +395,7 @@ class AutoCropReviewDialog(QDialog):
         self.count_label = QLabel("0 / 0")
         self.film_count = QLabel("0 张")
         self.theme_button = None
-        self.info = QLabel("选择 Auto Crop 候选")
+        self.info = QLabel("选择自动裁剪候选")
         self.info.setWordWrap(True)
         self.info.setStyleSheet("font-weight:600;")
         right_layout.addWidget(self.info)
@@ -517,7 +517,7 @@ class AutoCropReviewDialog(QDialog):
             self.current_sample_id = None
             self.current_image = None
             self.count_label.setText("0 / 0")
-            self.info.setText("当前没有 Auto Crop 候选")
+            self.info.setText("当前没有自动裁剪候选")
             self.roi_preview.set_data(None, [0, 0, 1, 1], [0, 0, 1, 1])
             self.crop_preview.clear()
             return
@@ -772,6 +772,19 @@ class AutoCropReviewDialog(QDialog):
                 "background:rgba(255,255,255,18); }"
                 "QListWidget#AutoCropFilmstrip::item:selected { "
                 "background:rgba(96,205,255,34); border:1px solid #60cdff; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar:vertical { "
+                "background:#202020; width:10px; margin:2px 1px 2px 1px; "
+                "border:none; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::handle:vertical { "
+                "background:#686868; min-height:28px; border-radius:5px; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::handle:vertical:hover { "
+                "background:#858585; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::add-line:vertical, "
+                "QListWidget#AutoCropFilmstrip QScrollBar::sub-line:vertical { "
+                "height:0px; background:transparent; border:none; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
+                "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
+                "background:transparent; }"
             )
         else:
             self.setStyleSheet(
@@ -786,6 +799,19 @@ class AutoCropReviewDialog(QDialog):
                 "background:rgba(0,0,0,10); }"
                 "QListWidget#AutoCropFilmstrip::item:selected { "
                 "background:rgba(0,120,212,24); border:1px solid #0078d4; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar:vertical { "
+                "background:#f3f3f3; width:10px; margin:2px 1px 2px 1px; "
+                "border:none; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::handle:vertical { "
+                "background:#b7b7b7; min-height:28px; border-radius:5px; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::handle:vertical:hover { "
+                "background:#969696; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::add-line:vertical, "
+                "QListWidget#AutoCropFilmstrip QScrollBar::sub-line:vertical { "
+                "height:0px; background:transparent; border:none; }"
+                "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
+                "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
+                "background:transparent; }"
             )
 
         if self._fluent:
