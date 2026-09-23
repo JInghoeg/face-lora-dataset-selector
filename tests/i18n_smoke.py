@@ -42,7 +42,7 @@ def build_record(root: Path) -> Photo:
         removed_area_ratio=0.25,
         alpha_min=0.10,
         padding_px=32,
-        warnings=[],
+        warnings=["subject_mask_touches_source_edge"],
         manually_adjusted=True,
         image_size=[640, 480],
     )
@@ -104,10 +104,12 @@ def main() -> int:
         assert manager.language == "en_US"
         assert window.windowTitle() == "LoRA Dataset Selector & Text Cleanup"
         assert window.tabs.tabText(window.dataset_tab_index) == "LoRA Dataset Selector"
+        assert window.auto_crop_btn.text() == "Auto Crop Review…"
         assert dialog.windowTitle() == "Auto Crop Review"
         assert dialog.accept_button.text() == "Accept Current Crop"
         assert dialog.keep_button.text() == "Keep Original"
         assert "Status:" in dialog.info.text()
+        assert "Subject mask touches the source edge" in dialog.info.text()
 
         # Locale changes are presentation-only.
         assert record.feature_state == original_state
@@ -122,7 +124,9 @@ def main() -> int:
         assert window.windowTitle() == "LoRA 数据集筛选与字幕清理"
         assert dialog.windowTitle() == "自动裁剪复核"
         assert dialog.accept_button.text() == "接受当前裁剪框"
+        assert window.auto_crop_btn.text() == "自动裁剪 复核…"
         assert "状态：" in dialog.info.text()
+        assert "主体遮罩触及原图边缘" in dialog.info.text()
         assert record.feature_state == original_state
         assert dialog.current_sample_id == original_sample_id
         assert dialog.roi_preview.box() == original_box
