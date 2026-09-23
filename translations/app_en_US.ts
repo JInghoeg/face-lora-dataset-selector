@@ -72,6 +72,13 @@
     <message><source>组合图拆分扫描完成：{count} 张推荐候选</source><translation>Composite Split scan complete: {count} recommended candidates</translation></message>
     <message><source>组合图拆分扫描失败</source><translation>Composite Split Scan Failed</translation></message>
     <message><source>组合图拆分写入失败</source><translation>Composite Split Write Failed</translation></message>
+    <message><source>组合图拆分已落盘：{name} → 推荐 {kept} / 淘汰 {rejected}；原图已隔离</source><translation>Composite Split materialized: {name} → Recommended {kept} / Rejected {rejected}; original archived</translation></message>
+    <message><source>分析组合图拆分新生成图片：0/{count}</source><translation>Analyzing new Composite Split outputs: 0/{count}</translation></message>
+    <message><source>分析组合图拆分新图 {current}/{total}：{name}</source><translation>Analyzing Composite Split output {current}/{total}: {name}</translation></message>
+    <message><source>组合图拆分新图分析完成：新增 {count} 张（仅分析本轮生成图片）</source><translation>Composite Split output analysis complete: {count} new images (only outputs from this run were analyzed)</translation></message>
+    <message><source>组合图拆分新图增量分析失败；状态已保留，可刷新恢复</source><translation>Incremental analysis of Composite Split outputs failed; state was preserved and can be recovered by refreshing</translation></message>
+    <message><source>组合图拆分新图分析失败</source><translation>Composite Split Output Analysis Failed</translation></message>
+    <message><source>请等待当前分析 / 组合图拆分 / 自动裁剪任务完成后再整理源文件。</source><translation>Wait for the current analysis / Composite Split / Auto Crop task to finish before organizing source files.</translation></message>
     <message><source>还有组合图拆分待复核</source><translation>Composite Split Review Pending</translation></message>
     <message><source>推荐图片中还有 {count} 张组合图拆分建议未确认。\n\n请先完成组合图拆分复核，再导出训练图片。</source><translation>{count} recommended images still have unconfirmed Composite Split suggestions.\n\nComplete Composite Split review before exporting training images.</translation></message>
     <message><source>已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。</source><translation>Exported {count} current recommended images.\n\nComposite Split outputs were materialized earlier in the workflow; archived originals are excluded from export.\nSource images were not modified.</translation></message>
