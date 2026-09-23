@@ -1,10 +1,24 @@
 name: Composite Runtime Compatibility
+# Consolidated v0.3 QA checkpoint workflow.
 
 on:
   push:
     branches:
       - feature/v0.3-composite-split
+      - feature/v0.3-workflow-recovery
+      - refactor/v0.3-architecture-boundaries
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "portable.spec"
+      - "build_portable.ps1"
+      - ".github/workflows/composite-runtime.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -43,6 +57,24 @@ jobs:
         run: |
           python app.py --self-test
 
+      - name: Optional Composite absence smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\composite"
+          $featureOff = "features\composite.__disabled_for_smoke__"
+          $adapter = "composite_split.py"
+          $adapterOff = "composite_split.__disabled_for_smoke__.py"
+          try {
+            if (Test-Path $feature) { Move-Item $feature $featureOff }
+            if (Test-Path $adapter) { Move-Item $adapter $adapterOff }
+            python -c "import app; assert not app.BACKEND.feature_available('composite'); print('optional Composite absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Composite feature" }
+          }
+          finally {
+            if (Test-Path $adapterOff) { Move-Item $adapterOff $adapter }
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
 
   detector-parity:
     needs: runtime

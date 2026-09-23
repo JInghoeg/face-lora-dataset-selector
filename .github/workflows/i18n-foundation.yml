@@ -1,0 +1,137 @@
+name: I18n Foundation
+
+on:
+  push:
+    branches:
+      - ux/i18n-foundation
+    paths:
+      - "ui/i18n/**"
+      - "ui/qt/auto_crop_review.py"
+      - "translations/**"
+      - "compile_translations.py"
+      - "app.py"
+      - "安装.bat"
+      - "build_portable.ps1"
+      - "portable.spec"
+      - "tests/i18n_smoke.py"
+      - "openspec/changes/add-i18n-foundation/**"
+      - ".github/workflows/i18n-foundation.yml"
+  pull_request:
+    paths:
+      - "ui/i18n/**"
+      - "ui/qt/auto_crop_review.py"
+      - "translations/**"
+      - "compile_translations.py"
+      - "app.py"
+      - "安装.bat"
+      - "build_portable.ps1"
+      - "portable.spec"
+      - "tests/i18n_smoke.py"
+      - "openspec/changes/add-i18n-foundation/**"
+      - ".github/workflows/i18n-foundation.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  live-switch:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+          python install_ui_dependencies.py
+
+      - name: Compile Qt translations
+        shell: pwsh
+        run: |
+          python compile_translations.py
+          if (-not (Test-Path "translations\app_en_US.qm")) {
+            throw "Compiled English QM catalog not found"
+          }
+
+      - name: Compile i18n integration
+        shell: pwsh
+        run: |
+          python -m compileall ui app.py compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
+
+      - name: Validate catalog contract
+        shell: pwsh
+        run: |
+          python tests/i18n_catalog_contract.py
+
+      - name: Live language switch smoke
+        shell: pwsh
+        run: |
+          python tests/i18n_smoke.py
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+  portable-i18n:
+    needs: live-switch
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python install_ui_dependencies.py
+
+      - name: Build Portable with translations
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Verify packaged translation catalog
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $qm = Get-ChildItem $root -Recurse -Filter "app_en_US.qm" | Select-Object -First 1
+          if (-not $qm) { throw "Packaged app_en_US.qm not found" }
+          Write-Host "Packaged translation: $($qm.FullName)"
+          $exe = Join-Path $root "Face LoRA Dataset Selector.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+          $i18n = Start-Process -FilePath $exe -ArgumentList "--i18n-self-test" -Wait -PassThru
+          if ($i18n.ExitCode -ne 0) {
+            throw "Portable i18n self-test failed with exit code $($i18n.ExitCode)"
+          }

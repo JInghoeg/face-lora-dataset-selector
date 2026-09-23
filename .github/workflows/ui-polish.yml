@@ -1,0 +1,111 @@
+name: UI Polish Regression
+
+on:
+  push:
+    branches:
+      - fix/v0.3-ui-polish-checkpoint
+  pull_request:
+    paths:
+      - "app.py"
+      - "ui/qt/dataset_view.py"
+      - "tests/dataset_view_ui_smoke.py"
+      - "infrastructure/cache_store.py"
+      - "application/selector.py"
+      - ".github/workflows/ui-polish.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  ui-polish:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Offscreen target-mode UI smoke
+        shell: pwsh
+        run: |
+          @'
+          import tempfile
+          from pathlib import Path
+
+          from PySide6.QtWidgets import QApplication
+
+          import app
+          from core.models import Photo
+          from infrastructure.cache_store import DatasetCache
+
+          qapp = QApplication.instance() or QApplication([])
+          window = app.Window()
+
+          assert window.custom.prefix() == ""
+          assert window.group.button(60).isChecked()
+          assert not window.custom_mode.isChecked()
+
+          window.run_rec(137, "custom")
+          assert window.target == 137
+          assert window.target_mode == "custom"
+          assert window.custom.value() == 137
+          assert window.custom_mode.isChecked()
+
+          window.run_rec(70, "preset")
+          assert window.target == 70
+          assert window.target_mode == "preset"
+          assert window.group.button(70).isChecked()
+          assert not window.custom_mode.isChecked()
+
+          assert app.clamp_page(2, 250, 120) == (2, 3)
+          assert app.clamp_page(2, 121, 120) == (1, 2)
+
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td) / "dataset"
+              root.mkdir()
+              cache = DatasetCache(
+                  Path(td) / "cache",
+                  Path(td) / "legacy",
+                  analysis_version=4,
+              )
+              record = Photo(root / "x.jpg")
+              cache.save_data(root, [record], 60, target_mode="custom")
+              data = cache.load_data(root)
+              assert data["target"] == 60
+              assert data["target_mode"] == "custom"
+
+          window.close()
+          print("UI polish offscreen smoke OK")
+          '@ | python -
+
+      - name: Dataset View Model/View smoke
+        shell: pwsh
+        run: |
+          python tests/dataset_view_ui_smoke.py

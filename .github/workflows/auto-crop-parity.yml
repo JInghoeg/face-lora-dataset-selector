@@ -1,0 +1,68 @@
+name: Auto Crop Runtime Parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/v0.3-auto-crop-backend
+    paths:
+      - "features/auto_crop/runtime.py"
+      - "infrastructure/model_download.py"
+      - ".github/scripts/auto_crop_parity.py"
+      - ".github/workflows/auto-crop-parity.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[parity]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Download public parity image
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/deepghs/imgutils/main/test/testfile/genshin_post.jpg" -OutFile "genshin_post.jpg"
+
+      - name: Run production runtime and download model once
+        shell: pwsh
+        run: |
+          python .github/scripts/auto_crop_parity.py vendor --image genshin_post.jpg --cache _parity_model_cache --out vendor.npy --model-path-file model_path.txt
+
+      - name: Create official imgutils reference environment
+        shell: pwsh
+        run: |
+          python -m venv .parity-ref
+          .\.parity-ref\Scripts\python.exe -m pip install --upgrade pip
+          .\.parity-ref\Scripts\python.exe -m pip install --no-cache-dir "dghs-imgutils==0.19.0"
+
+      - name: Run official imgutils with the same ONNX file
+        shell: pwsh
+        run: |
+          $model = Get-Content model_path.txt
+          .\.parity-ref\Scripts\python.exe .github/scripts/auto_crop_parity.py official --image genshin_post.jpg --model "$model" --out official.npy
+
+      - name: Compare masks
+        shell: pwsh
+        run: |
+          python .github/scripts/auto_crop_parity.py compare --vendor vendor.npy --official official.npy
