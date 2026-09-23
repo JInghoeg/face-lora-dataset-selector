@@ -1,6 +1,6 @@
 # v0.3 Roadmap
 
-Status date: 2026-09-22
+Status date: 2026-09-23
 
 Canonical current-state summary:
 `docs/PROJECT_STATE.md`
@@ -53,7 +53,9 @@ Completed PR #46 evidence:
 
 The older QA-first state was intentionally retained long enough to test recovery drift detection. That test passed; the completed change is archived at `openspec/changes/archive/2026-09-22-extract-text-cleanup-presentation/` and final post-archive workflows are green.
 
-Next bounded Stage 3 tracker: Issue #47 — main Dataset View Model/View modernization. It must use mature Qt Model/View primitives, preserve current application/backend boundaries, and freeze pagination/thumbnail/stable-ID behavior before implementation.
+PR #48 completed the next bounded Stage 3 slice and merged at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`: the main Dataset View now uses a `QAbstractListModel` / `QListView` seam with stable-ID action mapping while preserving existing ViewSpec and pagination behavior. Its OpenSpec change is archived under `openspec/changes/archive/2026-09-23-modernize-dataset-view-model/`.
+
+Current bounded Stage 3 tracker: Issue #49 — Auto Crop review-surface reusable UI spike. This is intentionally the final release-facing UX/UI experiment before the unified Portable / consolidated QA gate unless a concrete blocker appears. Reusable UI candidates must satisfy visual quality and usability equally; custom UI invention is fallback only.
 
 ### Human QA queue
 
