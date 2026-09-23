@@ -737,6 +737,22 @@ class AutoCropReviewDialog(QDialog):
                 )
 
         self.roi_preview.set_theme(dark)
+
+        # SimpleCardWidget uses a translucent animated background.  When it is
+        # embedded in a plain QDialog (rather than FluentWindow), explicitly
+        # synchronize its normal brush to the upstream light/dark values so
+        # scoped Dark does not leave light-gray cards behind.
+        if self._fluent:
+            card_color = QColor(255, 255, 255, 13 if dark else 170)
+            for card in (
+                self.roi_card,
+                self.inspector_card,
+                self.filmstrip_card,
+            ):
+                if hasattr(card, "setBackgroundColor"):
+                    card.setBackgroundColor(card_color)
+                card.update()
+
         if dark:
             self.setStyleSheet(
                 "QDialog#AutoCropReviewDialog { background:#202020; color:#f2f2f2; }"
