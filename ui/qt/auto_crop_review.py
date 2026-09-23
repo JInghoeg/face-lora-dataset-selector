@@ -203,28 +203,6 @@ class AutoCropROIWidget(QWidget):
             self.regionChangeFinished.emit(box)
 
 
-class FilmstripListWidget(QListWidget):
-    """Horizontal thumbnail strip with natural mouse-wheel scrolling."""
-
-    def wheelEvent(self, event):
-        bar = self.horizontalScrollBar()
-        delta = event.pixelDelta().y() or event.angleDelta().y()
-        if not delta:
-            delta = event.pixelDelta().x() or event.angleDelta().x()
-
-        if delta:
-            # Trackpads may provide pixel deltas while wheel mice use 120-unit
-            # angle steps. Keep both feeling responsive without vertical wrap.
-            step = int(delta)
-            if abs(step) >= 120:
-                step = int(step / 120 * max(48, self.iconSize().width() // 2))
-            bar.setValue(bar.value() - step)
-            event.accept()
-            return
-
-        super().wheelEvent(event)
-
-
 class AutoCropReviewDialog(QDialog):
     """Production Auto Crop review dialog.
 
@@ -360,11 +338,11 @@ class AutoCropReviewDialog(QDialog):
         # QFluentWidgets ListWidget is row-oriented and its delegate compresses
         # IconMode thumbnails.  Use Qt's mature native icon view inside the
         # Fluent card so the Filmstrip shows real, useful thumbnails.
-        self.items = FilmstripListWidget()
+        self.items = QListWidget()
         self.items.setObjectName("AutoCropFilmstrip")
         self.items.setViewMode(QListView.ViewMode.IconMode)
         self.items.setFlow(QListView.Flow.LeftToRight)
-        self.items.setWrapping(False)
+        self.items.setWrapping(True)
         self.items.setMovement(QListView.Movement.Static)
         self.items.setResizeMode(QListView.ResizeMode.Adjust)
         self.items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -373,9 +351,9 @@ class AutoCropReviewDialog(QDialog):
         self.items.setSpacing(2)
         self.items.setUniformItemSizes(True)
         self.items.setMinimumHeight(116)
-        self.items.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.items.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.items.itemClicked.connect(self.show_item)
         film_layout.addWidget(self.items)
 
