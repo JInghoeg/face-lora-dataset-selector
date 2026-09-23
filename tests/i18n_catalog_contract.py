@@ -1,6 +1,7 @@
 """Static contract checks for the permanent Qt i18n catalog."""
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -31,69 +32,85 @@ def catalog():
     return result
 
 
-def literal_calls(path: Path, method: str, quote: str):
-    text = path.read_text(encoding="utf-8")
-    pattern = re.compile(
-        rf"{re.escape(method)}\(\s*{quote}([^\n{quote}]+){quote}"
-    )
-    return set(pattern.findall(text))
+def literal_calls(path: Path, method: str):
+    """Read literal translation calls using Python semantics, including newlines."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != method:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            found.add(first.value)
+    return found
 
 
 def main():
     data = catalog()
-    assert "AutoCropReviewDialog" in data
-    assert "CompositeSplitReviewDialog" in data
-    assert "DuplicateReviewDialog" in data
-    assert "MainWindow" in data
+    for context in (
+        "AutoCropReviewDialog",
+        "CompositeSplitReviewDialog",
+        "DuplicateReviewDialog",
+        "MainWindow",
+        "TextCleanupTab",
+    ):
+        assert context in data, context
 
     auto_sources = literal_calls(
         ROOT / "ui" / "qt" / "auto_crop_review.py",
-        "self._tr",
-        '"',
+        "_tr",
     )
     composite_sources = literal_calls(
         ROOT / "app.py",
-        "self._tr_composite",
-        "'",
+        "_tr_composite",
     )
     duplicate_sources = literal_calls(
         ROOT / "ui" / "qt" / "duplicate_review.py",
-        "self._tr",
-        '"',
+        "_tr",
     )
     main_sources = literal_calls(
         ROOT / "app.py",
-        "self._tr_main",
-        "'",
+        "_tr_main",
+    )
+    text_cleanup_sources = literal_calls(
+        ROOT / "ui" / "qt" / "text_cleanup.py",
+        "_tr",
     )
 
-    missing_auto = sorted(auto_sources - set(data["AutoCropReviewDialog"]))
-    missing_composite = sorted(
-        composite_sources - set(data["CompositeSplitReviewDialog"])
+    checks = (
+        ("Auto Crop", auto_sources, data["AutoCropReviewDialog"]),
+        ("Composite Split", composite_sources, data["CompositeSplitReviewDialog"]),
+        ("Duplicate Review", duplicate_sources, data["DuplicateReviewDialog"]),
+        ("MainWindow", main_sources, data["MainWindow"]),
+        ("Text Cleanup", text_cleanup_sources, data["TextCleanupTab"]),
     )
-    missing_duplicate = sorted(
-        duplicate_sources - set(data["DuplicateReviewDialog"])
-    )
-    missing_main = sorted(main_sources - set(data["MainWindow"]))
-    assert not missing_auto, f"Auto Crop i18n sources missing from TS: {missing_auto}"
-    assert not missing_composite, (
-        f"Composite Split i18n sources missing from TS: {missing_composite}"
-    )
-    assert not missing_duplicate, (
-        f"Duplicate Review i18n sources missing from TS: {missing_duplicate}"
-    )
-    assert not missing_main, f"MainWindow i18n sources missing from TS: {missing_main}"
+    for label, sources, messages in checks:
+        missing = sorted(sources - set(messages))
+        assert not missing, f"{label} i18n sources missing from TS: {missing}"
+
+    # Runtime strings with real line breaks must be represented by real line
+    # breaks in TS. A literal backslash-n silently compiles but never matches.
+    for context, messages in data.items():
+        for source in messages:
+            assert "\\n" not in source, (
+                f"Literal backslash-n in TS source: {context}: {source!r}"
+            )
 
     print(
         "i18n catalog contract OK:",
-        len(data["AutoCropReviewDialog"]),
-        "Auto Crop entries,",
-        len(data["CompositeSplitReviewDialog"]),
-        "Composite Split entries,",
-        len(data["DuplicateReviewDialog"]),
-        "Duplicate Review entries,",
-        len(data["MainWindow"]),
-        "MainWindow entries",
+        ", ".join(
+            f"{name}={len(data[name])}"
+            for name in (
+                "AutoCropReviewDialog",
+                "CompositeSplitReviewDialog",
+                "DuplicateReviewDialog",
+                "MainWindow",
+                "TextCleanupTab",
+            )
+        ),
     )
     return 0
 
