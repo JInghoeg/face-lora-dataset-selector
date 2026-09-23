@@ -15,11 +15,11 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Prove TS -> QM compilation on supported Python/PySide runtime.
-- [ ] 3.2 Verify locale preference persistence.
-- [ ] 3.3 Verify a live-open Auto Crop dialog switches zh_CN -> en_US -> zh_CN without restart.
-- [ ] 3.4 Verify backend state/records remain unchanged across language switch.
-- [ ] 3.5 Build Portable and verify packaged translation loads.
+- [x] 3.1 Prove TS -> QM compilation on supported Python/PySide runtime.
+- [x] 3.2 Verify locale preference persistence.
+- [x] 3.3 Verify a live-open Auto Crop dialog switches zh_CN -> en_US -> zh_CN without restart.
+- [x] 3.4 Verify backend state/records remain unchanged across language switch.
+- [x] 3.5 Build Portable and verify packaged translation loads.
 
 ## 4. Review / closeout
 
