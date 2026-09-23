@@ -33,13 +33,28 @@ def main():
     run(["install", "--no-cache-dir", *BASE])
     run(["install", "--no-cache-dir", "--no-deps", *NODEPS])
 
-    import qfluentwidgets  # noqa: F401
+    # pywin32 modifies interpreter search/DLL paths at interpreter startup.
+    # Because this installer invokes pip from the current process, verify the
+    # newly installed Fluent stack in a fresh Python process instead of
+    # importing it here immediately.
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib.util, qfluentwidgets; "
+                "print('QFluentWidgets import OK'); "
+                "print('PySide6-Addons present:', "
+                "importlib.util.find_spec('PySide6.QtCharts') is not None)"
+            ),
+        ]
+    )
 
     addons = importlib.util.find_spec("PySide6.QtCharts") is not None
     if addons:
         print(
-            "WARNING: PySide6-Addons is already present in this environment; "
-            "this installer did not install it."
+            "WARNING: PySide6-Addons was already present in the parent "
+            "environment; this installer did not request it."
         )
     else:
         print("Fluent UI runtime installed with PySide6-Essentials only.")
