@@ -8,6 +8,7 @@
 - [x] 1.4 Add the top-right Auto Crop-scoped Light/Dark toggle and coherent scoped dark surfaces.
 - [x] 1.5 Preserve a legacy presentation fallback when Fluent is unavailable.
 - [x] 1.6 Make the candidate area vertically resizable via QSplitter, wrap thumbnails into more rows as height grows, and use mouse wheel + native vertical scrollbar for overflow.
+- [x] 1.7 Localize all user-facing Auto Crop text to “自动裁剪” and style the candidate scrollbar coherently for Light/Dark.
 
 ## 2. Runtime / packaging
 
@@ -24,6 +25,7 @@
 - [ ] 3.5 Verify app startup still works with Fluent physically unavailable.
 - [ ] 3.6 Build Portable, run packaged self-test, and record final size delta.
 - [ ] 3.7 Verify candidate overflow exposes a vertical scrollbar, mouse-wheel scrolling changes its position, and increasing candidate-area height reveals more rows / reduces scroll range.
+- [ ] 3.8 Verify the production title is localized to “自动裁剪复核” and Dark mode applies the scoped dark scrollbar style.
 
 ## 4. Closeout
 
