@@ -200,6 +200,7 @@ def main():
         qapp.processEvents()
 
         assert dialog._fluent is not None, "production Fluent UI was not loaded"
+        assert dialog.windowTitle() == "自动裁剪复核"
         assert dialog.items.viewMode() == QListView.ViewMode.IconMode
         assert dialog.items.flow() == QListView.Flow.LeftToRight
         assert dialog.items.count() == 12
@@ -242,6 +243,8 @@ def main():
         qapp.processEvents()
         assert dialog._preferred_theme == "dark"
         assert "#202020" in dialog.styleSheet()
+        assert "QScrollBar:vertical" in dialog.styleSheet()
+        assert "background:#686868" in dialog.styleSheet()
         if args.out:
             assert dialog.grab().save(str(args.out / "auto_crop_fluent_dark.png"))
 
