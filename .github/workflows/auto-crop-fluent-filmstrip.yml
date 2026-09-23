@@ -1,0 +1,190 @@
+name: Auto Crop Fluent Filmstrip
+
+on:
+  push:
+    branches:
+      - ux/auto-crop-fluent-filmstrip
+    paths:
+      - "app.py"
+      - "ui/qt/auto_crop_review.py"
+      - "ui/qt/thumbnail.py"
+      - "ui/qt/__init__.py"
+      - "install_ui_dependencies.py"
+      - "安装.bat"
+      - "portable.spec"
+      - "tests/auto_crop_review_ui_smoke.py"
+      - "openspec/changes/adopt-auto-crop-fluent-filmstrip/**"
+      - ".github/workflows/auto-crop-fluent-filmstrip.yml"
+  pull_request:
+    paths:
+      - "app.py"
+      - "ui/qt/auto_crop_review.py"
+      - "ui/qt/thumbnail.py"
+      - "ui/qt/__init__.py"
+      - "install_ui_dependencies.py"
+      - "安装.bat"
+      - "portable.spec"
+      - "tests/auto_crop_review_ui_smoke.py"
+      - "openspec/changes/adopt-auto-crop-fluent-filmstrip/**"
+      - ".github/workflows/auto-crop-fluent-filmstrip.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  production-ui:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+          python install_ui_dependencies.py
+
+      - name: Prove Essentials-only Fluent runtime
+        shell: pwsh
+        run: |
+          python -c "import qfluentwidgets; print('QFluentWidgets OK')"
+          python -c "import importlib.util; assert importlib.util.find_spec('PySide6.QtCharts') is None, 'PySide6-Addons unexpectedly installed'; print('PySide6-Essentials only OK')"
+
+      - name: Compile production UI
+        shell: pwsh
+        run: |
+          python -m compileall ui app.py install_ui_dependencies.py tests/auto_crop_review_ui_smoke.py
+
+      - name: Full selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Auto Crop Fluent production smoke
+        shell: pwsh
+        run: |
+          if ("${{ matrix.python }}" -eq "3.12") {
+            python tests/auto_crop_review_ui_smoke.py --out production-render
+          } else {
+            python tests/auto_crop_review_ui_smoke.py
+          }
+
+      - name: Upload Light Dark production screenshots
+        if: ${{ matrix.python == '3.12' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-crop-fluent-production-screenshots
+          path: production-render/*.png
+          if-no-files-found: error
+          retention-days: 7
+
+  fallback-without-fluent:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install base runtime only
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: App and Auto Crop fallback startup
+        shell: pwsh
+        run: |
+          @'
+          import tempfile
+          from pathlib import Path
+          from PySide6.QtWidgets import QApplication
+          import app
+
+          qapp = QApplication.instance() or QApplication([])
+          window = app.Window()
+          dialog = app.AutoCropReviewDialog(app.BACKEND, [], lambda: None, Path(tempfile.gettempdir()) / "ac-thumbs")
+          assert dialog._fluent is None
+          dialog.close()
+          window.close()
+          print("Auto Crop fallback without Fluent OK")
+          '@ | python -
+
+  portable:
+    needs: [production-ui, fallback-without-fluent]
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python install_ui_dependencies.py
+          python -c "import importlib.util; assert importlib.util.find_spec('PySide6.QtCharts') is None"
+
+      - name: Build Portable
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) { throw "Portable executable not found: $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) { Get-Content $err }
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Record Portable size
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $bytes = (Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum
+          "portable_bytes=$bytes" | Out-File portable-size.txt -Encoding ascii
+          Write-Host "Portable bytes: $bytes"
+
+      - name: Upload production Portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-crop-fluent-portable-qa
+          path: |
+            dist/Face-LoRA-Dataset-Selector
+            portable-size.txt
+          retention-days: 7
