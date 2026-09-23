@@ -745,7 +745,7 @@ class Window(QMainWindow):
         if not self.folder or not self.records:
             QMessageBox.information(self,'没有数据','请先选择并完成一个数据集的分析。');return
         if self.source_organizer_busy():
-            QMessageBox.information(self,'后台任务进行中','请等待当前分析 / Composite / 自动裁剪 任务完成后再整理源文件。');return
+            QMessageBox.information(self,'后台任务进行中',self._tr_main('请等待当前分析 / 组合图拆分 / 自动裁剪任务完成后再整理源文件。'));return
         try:
             plan=BACKEND.build_source_organizer_plan(self.folder,self.records)
         except Exception as e:
@@ -765,7 +765,7 @@ class Window(QMainWindow):
             f"推荐 {counts.get('推荐',0)} · 备选 {counts.get('备选',0)} · 淘汰 {counts.get('淘汰',0)}\n"
             f"保持不动 {plan.unchanged} · 跳过 {plan.skipped}\n\n"
             "文件会按当前最终状态移动到 推荐 / 备选 / 淘汰，并保留原相对来源目录。\n"
-            "_CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。\n"
+            "组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。\n"
             "执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。"
         )
         details=[]
@@ -838,7 +838,7 @@ class Window(QMainWindow):
         self.composite_btn.setText(self._tr_main('组合图拆分 复核… ({total} / 待定 {pending})').format(total=len(proposals),pending=pending) if proposals else self._tr_main('组合图拆分 复核…'))
     def open_composite_review(self):
         if not BACKEND.feature_available('composite'):return
-        if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.composite_thread and self.composite_thread.isRunning():return
         todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
@@ -866,7 +866,7 @@ class Window(QMainWindow):
             QMessageBox.critical(self,self._tr_main('组合图拆分写入失败'),f'{source.name}\n\n{e}')
             return False
         for out,status in assigned:self.pending_composite_outputs[key(out)]={'path':str(out.resolve()),'status':status}
-        self.records=[x for x in self.records if x is not r];kept=sum(status=='推荐' for _,status in assigned);rejected=len(assigned)-kept;self.progress.setText(f'Composite 已落盘：{source.name} → 推荐 {kept} / 淘汰 {rejected}；原图已隔离');return True
+        self.records=[x for x in self.records if x is not r];kept=sum(status=='推荐' for _,status in assigned);rejected=len(assigned)-kept;self.progress.setText(self._tr_main('组合图拆分已落盘：{name} → 推荐 {kept} / 淘汰 {rejected}；原图已隔离').format(name=source.name,kept=kept,rejected=rejected));return True
     def start_incremental_composite_analysis(self):
         if self.incremental_thread and self.incremental_thread.isRunning():return
         items=[]
@@ -874,15 +874,15 @@ class Window(QMainWindow):
             path=Path(item['path'])
             if path.exists():items.append((path,item['status']))
         if not items:self.refresh();self.save();return
-        self.refresh();self.save();self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.progress.setText(f'分析 Composite 新生成图片：0/{len(items)}');self.incremental_thread=QThread(self);self.incremental_worker=IncrementalAnalysisWorker(items);self.incremental_worker.moveToThread(self.incremental_thread);self.incremental_thread.started.connect(self.incremental_worker.run);self.incremental_worker.progress.connect(lambda n,t,name:self.progress.setText(f'分析 Composite 新图 {n}/{t}：{name}'));self.incremental_worker.finished.connect(self.incremental_composite_done);self.incremental_worker.failed.connect(self.incremental_composite_failed);self.incremental_worker.finished.connect(self.incremental_thread.quit);self.incremental_worker.failed.connect(self.incremental_thread.quit);self.incremental_thread.finished.connect(self.incremental_composite_thread_done);self.incremental_thread.start()
+        self.refresh();self.save();self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.progress.setText(self._tr_main('分析组合图拆分新生成图片：0/{count}').format(count=len(items)));self.incremental_thread=QThread(self);self.incremental_worker=IncrementalAnalysisWorker(items);self.incremental_worker.moveToThread(self.incremental_thread);self.incremental_thread.started.connect(self.incremental_worker.run);self.incremental_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('分析组合图拆分新图 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.incremental_worker.finished.connect(self.incremental_composite_done);self.incremental_worker.failed.connect(self.incremental_composite_failed);self.incremental_worker.finished.connect(self.incremental_thread.quit);self.incremental_worker.failed.connect(self.incremental_thread.quit);self.incremental_thread.finished.connect(self.incremental_composite_thread_done);self.incremental_thread.start()
     def incremental_composite_done(self,new_records):
         existing={key(r.path) for r in self.records};added=[]
         for r in new_records:
             if key(r.path) not in existing:self.records.append(r);existing.add(key(r.path));added.append(r)
             self.pending_composite_outputs.pop(key(r.path),None)
-        BACKEND.regroup_duplicates(self.records);BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button();self.progress.setText(f'Composite 新图分析完成：新增 {len(added)} 张（仅分析本轮生成图片）')
+        BACKEND.regroup_duplicates(self.records);BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save();self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.update_auto_crop_button();self.progress.setText(self._tr_main('组合图拆分新图分析完成：新增 {count} 张（仅分析本轮生成图片）').format(count=len(added)))
     def incremental_composite_failed(self,error):
-        self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText('Composite 新图增量分析失败；状态已保留，可刷新恢复');self.save();QMessageBox.critical(self,'Composite 新图分析失败',error)
+        self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText(self._tr_main('组合图拆分新图增量分析失败；状态已保留，可刷新恢复'));self.save();QMessageBox.critical(self,self._tr_main('组合图拆分新图分析失败'),error)
     def incremental_composite_thread_done(self):
         if self.incremental_worker:self.incremental_worker.deleteLater()
         if self.incremental_thread:self.incremental_thread.deleteLater()
