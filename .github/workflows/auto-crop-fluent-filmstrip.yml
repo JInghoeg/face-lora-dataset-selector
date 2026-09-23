@@ -79,6 +79,14 @@ jobs:
         run: |
           python app.py --self-test
 
+      - name: Download temporary CJK font for production screenshots
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "AUTO_CROP_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Auto Crop Fluent production smoke
         shell: pwsh
         run: |
