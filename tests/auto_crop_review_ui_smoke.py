@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image, ImageDraw
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QListView
 
 import app
@@ -32,6 +33,7 @@ def make_image(path: Path, seed: int):
 
 def make_record(path: Path, decision: str, edited: bool, offset: int):
     photo = Photo(path)
+    photo.sample_id = f"smoke-{path.stem}"
     photo.auto_status = "推荐"
     try:
         stat = path.stat()
@@ -145,7 +147,7 @@ def main():
 
         # Stable sample-id selection, not transient row identity.
         second = dialog.items.item(1)
-        expected_id = second.data(0x0100)  # Qt.UserRole
+        expected_id = second.data(Qt.UserRole)
         dialog.show_item(second)
         assert dialog.current_sample_id == expected_id
         assert dialog.records[dialog.current].sample_id == expected_id
