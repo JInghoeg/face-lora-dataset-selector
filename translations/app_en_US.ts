@@ -35,10 +35,46 @@
     <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
   </context>
   <context>
+    <name>CompositeSplitReviewDialog</name>
+    <message><source>组合图拆分复核</source><translation>Composite Split Review</translation></message>
+    <message><source>建议输出预览（默认全选；取消勾选 = 生成后直接送入淘汰）</source><translation>Suggested output preview (all selected by default; uncheck to send the generated output directly to Rejected)</translation></message>
+    <message><source>接受建议</source><translation>Accept Suggestion</translation></message>
+    <message><source>拒绝</source><translation>Reject</translation></message>
+    <message><source>恢复待定</source><translation>Restore Pending</translation></message>
+    <message><source>关闭</source><translation>Close</translation></message>
+    <message><source>当前没有待复核的组合图拆分推荐图</source><translation>No recommended images are awaiting Composite Split review</translation></message>
+    <message><source>已接受</source><translation>Accepted</translation></message>
+    <message><source>已拒绝</source><translation>Rejected</translation></message>
+    <message><source>待定</source><translation>Pending</translation></message>
+    <message><source>拆分</source><translation>Split</translation></message>
+    <message><source>群组裁剪</source><translation>Group Crop</translation></message>
+    <message><source>{mode} · {count} 个输出</source><translation>{mode} · {count} outputs</translation></message>
+    <message><source>拆成独立人物/视角</source><translation>Split into individual subjects/views</translation></message>
+    <message><source>重叠多人合并裁剪</source><translation>Combined crop for overlapping subjects</translation></message>
+    <message><source>{mode} · 输出 {count} 张</source><translation>{mode} · {count} outputs</translation></message>
+    <message><source>状态：{state}</source><translation>Status: {state}</translation></message>
+    <message><source>推荐</source><translation>Recommended</translation></message>
+    <message><source>淘汰</source><translation>Rejected</translation></message>
+    <message><source>输出 {index}</source><translation>Output {index}</translation></message>
+  </context>
+  <context>
     <name>MainWindow</name>
     <message><source>LoRA 数据集筛选与字幕清理</source><translation>LoRA Dataset Selector &amp; Text Cleanup</translation></message>
     <message><source>LoRA 数据集筛选</source><translation>LoRA Dataset Selector</translation></message>
     <message><source>批量去字幕 / 水印</source><translation>Batch Text / Watermark Cleanup</translation></message>
+    <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
+    <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
+    <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
+    <message><source>还有 {count} 张推荐图等待组合图拆分复核。\n\n自动裁剪只处理组合图拆分之后的单主体推荐图。</source><translation>{count} recommended images are still waiting for Composite Split review.\n\nAuto Crop only processes single-subject recommended images after Composite Split.</translation></message>
+    <message><source>当前推荐图片中没有检测到需要组合图拆分的图片。</source><translation>No current recommended images require Composite Split.</translation></message>
+    <message><source>组合图拆分扫描准备中：{todo} 张待检查</source><translation>Preparing Composite Split scan: {todo} images to check</translation></message>
+    <message><source>组合图拆分 {current}/{total}：{name}</source><translation>Composite Split {current}/{total}: {name}</translation></message>
+    <message><source>组合图拆分扫描完成：{count} 张推荐候选</source><translation>Composite Split scan complete: {count} recommended candidates</translation></message>
+    <message><source>组合图拆分扫描失败</source><translation>Composite Split Scan Failed</translation></message>
+    <message><source>组合图拆分写入失败</source><translation>Composite Split Write Failed</translation></message>
+    <message><source>还有组合图拆分待复核</source><translation>Composite Split Review Pending</translation></message>
+    <message><source>推荐图片中还有 {count} 张组合图拆分建议未确认。\n\n请先完成组合图拆分复核，再导出训练图片。</source><translation>{count} recommended images still have unconfirmed Composite Split suggestions.\n\nComplete Composite Split review before exporting training images.</translation></message>
+    <message><source>已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。</source><translation>Exported {count} current recommended images.\n\nComposite Split outputs were materialized earlier in the workflow; archived originals are excluded from export.\nSource images were not modified.</translation></message>
     <message><source>自动裁剪 复核…</source><translation>Auto Crop Review…</translation></message>
     <message><source>自动裁剪 复核… ({total} / 待定 {pending} / 未扫 {todo})</source><translation>Auto Crop Review… ({total} / Pending {pending} / Unscanned {todo})</translation></message>
     <message><source>自动裁剪 复核…（未扫 {todo}）</source><translation>Auto Crop Review… (Unscanned {todo})</translation></message>
