@@ -43,6 +43,7 @@ def main():
     data = catalog()
     assert "AutoCropReviewDialog" in data
     assert "CompositeSplitReviewDialog" in data
+    assert "DuplicateReviewDialog" in data
     assert "MainWindow" in data
 
     auto_sources = literal_calls(
@@ -55,6 +56,11 @@ def main():
         "self._tr_composite",
         "'",
     )
+    duplicate_sources = literal_calls(
+        ROOT / "ui" / "qt" / "duplicate_review.py",
+        "self._tr",
+        '"',
+    )
     main_sources = literal_calls(
         ROOT / "app.py",
         "self._tr_main",
@@ -65,10 +71,16 @@ def main():
     missing_composite = sorted(
         composite_sources - set(data["CompositeSplitReviewDialog"])
     )
+    missing_duplicate = sorted(
+        duplicate_sources - set(data["DuplicateReviewDialog"])
+    )
     missing_main = sorted(main_sources - set(data["MainWindow"]))
     assert not missing_auto, f"Auto Crop i18n sources missing from TS: {missing_auto}"
     assert not missing_composite, (
         f"Composite Split i18n sources missing from TS: {missing_composite}"
+    )
+    assert not missing_duplicate, (
+        f"Duplicate Review i18n sources missing from TS: {missing_duplicate}"
     )
     assert not missing_main, f"MainWindow i18n sources missing from TS: {missing_main}"
 
@@ -78,6 +90,8 @@ def main():
         "Auto Crop entries,",
         len(data["CompositeSplitReviewDialog"]),
         "Composite Split entries,",
+        len(data["DuplicateReviewDialog"]),
+        "Duplicate Review entries,",
         len(data["MainWindow"]),
         "MainWindow entries",
     )
