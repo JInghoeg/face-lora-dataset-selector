@@ -124,3 +124,15 @@ User review added two final pre-merge presentation corrections:
 - the candidate area's vertical scrollbar receives a dialog-scoped Fluent-compatible Light/Dark style so Dark mode does not leave a light scrollbar.
 
 These changes are presentation-only and do not alter Auto Crop backend semantics.
+
+
+## Default one-row candidate viewport
+
+Final user approval retained the accepted resizable candidate area with one presentation correction:
+
+- the initial candidate viewport shows one fully visible thumbnail row;
+- extra dialog height belongs to the primary work area rather than expanding the Filmstrip automatically;
+- the vertical splitter remains draggable upward to reveal additional wrapped rows;
+- overflow continues to use the native vertical scrollbar and mouse wheel.
+
+This changes only the initial splitter allocation and does not alter candidate size, selection, scrolling, or backend behavior.
