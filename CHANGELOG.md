@@ -1,5 +1,56 @@
 # Changelog
 
+## v0.3.0 — 2026-09-24
+
+v0.3 turns the selector from a mostly single-pass quality filter into a complete, human-authoritative LoRA dataset workflow.
+
+### Dataset workflow
+
+- Add explicit Dataset / View filtering, independent sorting, pagination, saved views and stable sample IDs.
+- Add a dedicated Duplicate Review workflow with persistent group decisions and all-groups review.
+- Add AI Review Bundle export plus suggestion-only `review_patch.json` import.
+- Keep automatic recommendation as an independent baseline; manual 推荐 / 备选 / 淘汰 remains an overlay instead of consuming the automatic quota.
+- Make F5 an incremental folder refresh that preserves unchanged analysis state.
+
+### Composite Split
+
+- Add production Composite Split review for multi-view / multi-person source images.
+- Support independent output selection: selected outputs become 推荐, deselected outputs become 淘汰.
+- Materialize accepted outputs as real active-dataset files, then analyze only those generated files.
+- Archive accepted source composites under `_CompositeSplit_Originals/` and exclude that archive from downstream workflows.
+- Keep obvious thumbnail/UI grids out of Composite proposals.
+
+### General Auto Crop
+
+- Add conservative ISNetIS-based crop proposals for current active 推荐 images after Composite resolution.
+- Keep crop proposals as metadata until Final Training Export; source pixels are not rewritten by Auto Crop.
+- Add draggable/resizable pyqtgraph RectROI, reset, Accept, Keep Original and Restore Pending.
+- Add Fluent Filmstrip review UI with real candidate thumbnails, scoped Light/Dark, vertical scrolling and a one-row default candidate viewport.
+- Download and SHA-verify the Auto Crop segmentation model on first use instead of bloating the base Portable package.
+
+### Source Organizer and Text Cleanup
+
+- Add optional transactional Source Organizer for moving active files into 推荐 / 备选 / 淘汰 while preserving relative provenance.
+- Add dry-run/confirmation, collision checks and rollback safeguards for source moves.
+- Keep Text Cleanup detection + repair as one feature behind the application boundary while preserving PP-OCRv5, MI-GAN, TELEA and Navier-Stokes behavior.
+- Keep training export, text repair output and Auto Crop output separate from source-image pixel data.
+
+### Interface, i18n and architecture
+
+- Add permanent live Qt i18n infrastructure with Chinese (`zh_CN`) as the source/default locale and English (`en_US`) as the first translated locale.
+- Persist language choice and allow live switching without restarting the app.
+- Establish the bounded UI -> `SelectorApplication` -> feature-backend architecture seam.
+- Enforce sibling feature independence and Qt-free backend boundaries in CI.
+- Keep PySide6-Essentials; PySide6-Addons is not required.
+
+### Verification
+
+- Python 3.9 / 3.12 production and feature regression coverage.
+- Windows Portable packaged EXE self-test.
+- Consolidated Stage 4 human QA: PASS.
+- Source Organizer human validation performed on a disposable copied dataset before release trust.
+- Auto Crop Light/Dark production review: PASS.
+
 ## v0.2.0 — 2026-09-19
 
 This release focuses on making the project usable by people who did not build the original development environment.

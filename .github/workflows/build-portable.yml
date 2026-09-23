@@ -98,22 +98,33 @@ jobs:
           if-no-files-found: error
 
       - name: Attach portable build to GitHub Release
-        if: "${{ startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: v0.2.0') }}"
+        if: "${{ startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: v')) }}"
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           $zip = "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
           $sum = "$zip.sha256"
+
           if ("${{ github.ref }}" -like "refs/tags/*") {
             $tag = "${{ github.ref_name }}"
           } else {
-            $tag = "v0.2.0"
+            $firstLine = (($env:RELEASE_COMMIT_MESSAGE -split "\r?\n")[0]).Trim()
+            if ($firstLine -notmatch '^release:\s+(v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)) {
+              throw "Release commit message must start with: release: vX.Y.Z"
+            }
+            $tag = $Matches[1]
+          }
+
+          $notes = "RELEASE_NOTES_$tag.md"
+          if (-not (Test-Path $notes)) {
+            $notes = "CHANGELOG.md"
           }
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $zip $sum --clobber
           } else {
-            gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file "RELEASE_NOTES_v0.2.0.md"
+            gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
           }
