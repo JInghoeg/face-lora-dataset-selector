@@ -350,7 +350,9 @@ class AutoCropReviewDialog(QDialog):
         self.items.setGridSize(QSize(136, 146))
         self.items.setSpacing(2)
         self.items.setUniformItemSizes(True)
-        self.items.setMinimumHeight(116)
+        # Default to one fully visible candidate row. The surrounding vertical
+        # splitter still lets users drag this area upward to reveal more rows.
+        self.items.setMinimumHeight(150)
         self.items.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -361,7 +363,12 @@ class AutoCropReviewDialog(QDialog):
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.addWidget(work)
         self.main_splitter.addWidget(self.filmstrip_card)
-        self.main_splitter.setSizes([660, 170])
+        # Give spare dialog height to the work area, not the Filmstrip. This
+        # keeps the initial candidate viewport to one row while preserving
+        # manual expansion through the splitter.
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setSizes([640, 190])
         root.addWidget(self.main_splitter, 1)
 
         actions = QHBoxLayout()
