@@ -41,6 +41,8 @@ echo Installing dependencies...
 if errorlevel 1 goto :failed
 ".venv\Scripts\python.exe" install_ui_dependencies.py
 if errorlevel 1 goto :failed
+".venv\Scripts\python.exe" compile_translations.py
+if errorlevel 1 goto :failed
 
 echo.
 echo Installation complete.
