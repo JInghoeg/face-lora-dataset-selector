@@ -38,13 +38,14 @@ def _load_fluent():
         from qfluentwidgets import (
             BodyLabel,
             CaptionLabel,
-            ListWidget,
+            FluentIcon,
             PrimaryPushButton,
             PushButton,
             SimpleCardWidget,
             StrongBodyLabel,
             Theme,
             TransparentPushButton,
+            TransparentToolButton,
             isDarkTheme,
             setTheme,
         )
@@ -53,13 +54,14 @@ def _load_fluent():
     return {
         "BodyLabel": BodyLabel,
         "CaptionLabel": CaptionLabel,
-        "ListWidget": ListWidget,
+        "FluentIcon": FluentIcon,
         "PrimaryPushButton": PrimaryPushButton,
         "PushButton": PushButton,
         "SimpleCardWidget": SimpleCardWidget,
         "StrongBodyLabel": StrongBodyLabel,
         "Theme": Theme,
         "TransparentPushButton": TransparentPushButton,
+        "TransparentToolButton": TransparentToolButton,
         "isDarkTheme": isDarkTheme,
         "setTheme": setTheme,
     }
@@ -281,8 +283,11 @@ class AutoCropReviewDialog(QDialog):
         header.addStretch(1)
         self.count_label = api["CaptionLabel"]("0 / 0")
         header.addWidget(self.count_label)
-        self.theme_button = api["TransparentPushButton"]("☾")
-        self.theme_button.setFixedSize(38, 32)
+        self.theme_button = api["TransparentToolButton"](
+            api["FluentIcon"].QUIET_HOURS
+        )
+        self.theme_button.setFixedSize(36, 32)
+        self.theme_button.setIconSize(QSize(16, 16))
         self.theme_button.clicked.connect(self.toggle_theme)
         header.addWidget(self.theme_button)
         root.addLayout(header)
@@ -331,17 +336,22 @@ class AutoCropReviewDialog(QDialog):
         film_head.addWidget(self.film_count)
         film_layout.addLayout(film_head)
 
-        self.items = api["ListWidget"]()
+        # QFluentWidgets ListWidget is row-oriented and its delegate compresses
+        # IconMode thumbnails.  Use Qt's mature native icon view inside the
+        # Fluent card so the Filmstrip shows real, useful thumbnails.
+        self.items = QListWidget()
+        self.items.setObjectName("AutoCropFilmstrip")
         self.items.setViewMode(QListView.ViewMode.IconMode)
         self.items.setFlow(QListView.Flow.LeftToRight)
         self.items.setWrapping(False)
         self.items.setMovement(QListView.Movement.Static)
         self.items.setResizeMode(QListView.ResizeMode.Adjust)
         self.items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.items.setIconSize(QSize(112, 112))
-        self.items.setGridSize(QSize(140, 150))
+        self.items.setIconSize(QSize(116, 116))
+        self.items.setGridSize(QSize(136, 146))
         self.items.setSpacing(2)
-        self.items.setMaximumHeight(158)
+        self.items.setUniformItemSizes(True)
+        self.items.setFixedHeight(150)
         self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.items.itemClicked.connect(self.show_item)
@@ -717,7 +727,11 @@ class AutoCropReviewDialog(QDialog):
                 self._fluent["Theme"].DARK if dark else self._fluent["Theme"].LIGHT
             )
             if self.theme_button is not None:
-                self.theme_button.setText("☀" if dark else "☾")
+                self.theme_button.setIcon(
+                    self._fluent["FluentIcon"].BRIGHTNESS
+                    if dark
+                    else self._fluent["FluentIcon"].QUIET_HOURS
+                )
                 self.theme_button.setToolTip(
                     "切换到浅色模式" if dark else "切换到深色模式"
                 )
@@ -728,12 +742,28 @@ class AutoCropReviewDialog(QDialog):
                 "QDialog#AutoCropReviewDialog { background:#202020; color:#f2f2f2; }"
                 "QLabel#AutoCropCropPreview { background:#171717; "
                 "border:1px solid #3a3a3a; border-radius:6px; }"
+                "QListWidget#AutoCropFilmstrip { background:transparent; "
+                "border:none; outline:none; color:#f2f2f2; }"
+                "QListWidget#AutoCropFilmstrip::item { border:1px solid transparent; "
+                "border-radius:6px; padding:3px; }"
+                "QListWidget#AutoCropFilmstrip::item:hover { "
+                "background:rgba(255,255,255,18); }"
+                "QListWidget#AutoCropFilmstrip::item:selected { "
+                "background:rgba(96,205,255,34); border:1px solid #60cdff; }"
             )
         else:
             self.setStyleSheet(
                 "QDialog#AutoCropReviewDialog { background:#f7f8fa; color:#202020; }"
                 "QLabel#AutoCropCropPreview { background:#f1f3f5; "
                 "border:1px solid #e0e3e7; border-radius:6px; }"
+                "QListWidget#AutoCropFilmstrip { background:transparent; "
+                "border:none; outline:none; color:#202020; }"
+                "QListWidget#AutoCropFilmstrip::item { border:1px solid transparent; "
+                "border-radius:6px; padding:3px; }"
+                "QListWidget#AutoCropFilmstrip::item:hover { "
+                "background:rgba(0,0,0,10); }"
+                "QListWidget#AutoCropFilmstrip::item:selected { "
+                "background:rgba(0,120,212,24); border:1px solid #0078d4; }"
             )
 
         if self._fluent:
