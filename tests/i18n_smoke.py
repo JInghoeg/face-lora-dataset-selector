@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image
 from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QAbstractButton, QComboBox, QGroupBox, QLabel, QWidget
 
 import app
@@ -125,6 +126,14 @@ def main() -> int:
         args.out.mkdir(parents=True, exist_ok=True)
 
     qapp = QApplication.instance() or QApplication([])
+
+    font_path = os.environ.get("I18N_VISUAL_FONT")
+    if font_path and Path(font_path).exists():
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id >= 0:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                qapp.setFont(QFont(families[0], 10))
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
