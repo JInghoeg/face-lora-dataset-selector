@@ -127,7 +127,11 @@
     <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
     <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
     <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
-    <message><source>还有 {count} 张推荐图等待组合图拆分复核。\n\n自动裁剪只处理组合图拆分之后的单主体推荐图。</source><translation>{count} recommended images are still waiting for Composite Split review.\n\nAuto Crop only processes single-subject recommended images after Composite Split.</translation></message>
+    <message><source>还有 {count} 张推荐图等待组合图拆分复核。
+
+自动裁剪只处理组合图拆分之后的单主体推荐图。</source><translation>{count} recommended images are still waiting for Composite Split review.
+
+Auto Crop only processes single-subject recommended images after Composite Split.</translation></message>
     <message><source>当前推荐图片中没有检测到需要组合图拆分的图片。</source><translation>No current recommended images require Composite Split.</translation></message>
     <message><source>组合图拆分扫描准备中：{todo} 张待检查</source><translation>Preparing Composite Split scan: {todo} images to check</translation></message>
     <message><source>组合图拆分 {current}/{total}：{name}</source><translation>Composite Split {current}/{total}: {name}</translation></message>
@@ -142,8 +146,18 @@
     <message><source>组合图拆分新图分析失败</source><translation>Composite Split Output Analysis Failed</translation></message>
     <message><source>请等待当前分析 / 组合图拆分 / 自动裁剪任务完成后再整理源文件。</source><translation>Wait for the current analysis / Composite Split / Auto Crop task to finish before organizing source files.</translation></message>
     <message><source>还有组合图拆分待复核</source><translation>Composite Split Review Pending</translation></message>
-    <message><source>推荐图片中还有 {count} 张组合图拆分建议未确认。\n\n请先完成组合图拆分复核，再导出训练图片。</source><translation>{count} recommended images still have unconfirmed Composite Split suggestions.\n\nComplete Composite Split review before exporting training images.</translation></message>
-    <message><source>已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。</source><translation>Exported {count} current recommended images.\n\nComposite Split outputs were materialized earlier in the workflow; archived originals are excluded from export.\nSource images were not modified.</translation></message>
+    <message><source>推荐图片中还有 {count} 张组合图拆分建议未确认。
+
+请先完成组合图拆分复核，再导出训练图片。</source><translation>{count} recommended images still have unconfirmed Composite Split suggestions.
+
+Complete Composite Split review before exporting training images.</translation></message>
+    <message><source>已导出 {count} 张当前推荐图片。
+
+组合图拆分已在前置阶段实体化，隔离原图不会进入导出。
+源图片未被修改。</source><translation>Exported {count} current recommended images.
+
+Composite Split outputs were materialized earlier in the workflow; archived originals are excluded from export.
+Source images were not modified.</translation></message>
     <message><source>自动裁剪 复核…</source><translation>Auto Crop Review…</translation></message>
     <message><source>自动裁剪 复核… ({total} / 待定 {pending} / 未扫 {todo})</source><translation>Auto Crop Review… ({total} / Pending {pending} / Unscanned {todo})</translation></message>
     <message><source>自动裁剪 复核…（未扫 {todo}）</source><translation>Auto Crop Review… (Unscanned {todo})</translation></message>
@@ -156,9 +170,17 @@
     <message><source>自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}</source><translation>Auto Crop scan complete: Scanned {scanned} · Candidates {candidates} · No crop needed {no_candidate} · Cached {cached}</translation></message>
     <message><source>自动裁剪扫描失败</source><translation>Auto Crop Scan Failed</translation></message>
     <message><source>还有自动裁剪未扫描</source><translation>Auto Crop Scan Incomplete</translation></message>
-    <message><source>推荐图片中还有 {count} 张未完成自动裁剪扫描。\n\n请先完成自动裁剪，再导出训练图片。</source><translation>{count} recommended images have not completed Auto Crop scanning.\n\nComplete Auto Crop before exporting training images.</translation></message>
+    <message><source>推荐图片中还有 {count} 张未完成自动裁剪扫描。
+
+请先完成自动裁剪，再导出训练图片。</source><translation>{count} recommended images have not completed Auto Crop scanning.
+
+Complete Auto Crop before exporting training images.</translation></message>
     <message><source>还有自动裁剪待复核</source><translation>Auto Crop Review Pending</translation></message>
-    <message><source>推荐图片中还有 {count} 张自动裁剪候选未确认。\n\n请接受裁剪或选择保留原图后再导出。</source><translation>{count} Auto Crop candidates are still unconfirmed.\n\nAccept the crop or choose Keep Original before exporting.</translation></message>
+    <message><source>推荐图片中还有 {count} 张自动裁剪候选未确认。
+
+请接受裁剪或选择保留原图后再导出。</source><translation>{count} Auto Crop candidates are still unconfirmed.
+
+Accept the crop or choose Keep Original before exporting.</translation></message>
       <message><source>选择图片文件夹</source><translation>Select Image Folder</translation></message>
     <message><source>刷新文件夹（F5）</source><translation>Refresh Folder (F5)</translation></message>
     <message><source>重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。</source><translation>Rescan the current folder: analyze only new/modified images, remove deleted files from the list, and reuse cached results for unchanged images.</translation></message>
@@ -403,6 +425,8 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{scale} / {angle}）</source><translation>Passed the baseline, but was not selected within the current {target}-image shot-size × angle allocation ({scale} / {angle}).</translation></message>
     <message><source>人工状态优先：{manual}（自动基线：{auto}）</source><translation>Manual status takes priority: {manual} (automatic baseline: {auto})</translation></message>
     <message><source>分析 {count} 张变化图片；其余恢复缓存…</source><translation>Analyzing {count} changed images; restoring the rest from cache…</translation></message>
+    <message><source>无法打开图片</source><translation>Unable to Open Image</translation></message>
+    <message><source>状态：{state}</source><translation>Status: {state}</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
