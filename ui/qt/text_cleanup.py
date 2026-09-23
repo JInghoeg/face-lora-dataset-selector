@@ -445,9 +445,12 @@ class SubtitleTab(QWidget):
     def status_text(self, record):
         good = self.eligible(record)
         return (
-            f"{record.path.name}\n检测 {len(good)} · "
-            f"建议 {sum(record.selected[index] for index in good)}"
-            + (" · 人工" if any(record.manual) else "")
+            f"{record.path.name}\n"
+            + self._tr("检测 {detected} · 建议 {suggested}{manual}").format(
+                detected=len(good),
+                suggested=sum(record.selected[index] for index in good),
+                manual=self._tr(" · 人工") if any(record.manual) else "",
+            )
         )
 
     def placeholder(self):
@@ -477,8 +480,12 @@ class SubtitleTab(QWidget):
             self.list.addItem(item)
             self.item_by_record[index] = item
         self.page_label.setText(
-            f"第 {self.page + 1}/{pages} 页 · "
-            f"显示 {len(shown)} / {len(self.visible)} 张"
+            self._tr("第 {page}/{pages} 页 · 显示 {shown} / {total} 张").format(
+                page=self.page + 1,
+                pages=pages,
+                shown=len(shown),
+                total=len(self.visible),
+            )
         )
         self.prev_page.setEnabled(self.page > 0)
         self.next_page.setEnabled(self.page + 1 < pages)
@@ -570,13 +577,16 @@ class SubtitleTab(QWidget):
             for index, box in enumerate(record.boxes):
                 points = np.asarray(box)
                 state = (
-                    "建议修复"
+                    self._tr("建议修复")
                     if index < len(record.suggested) and record.suggested[index]
-                    else "检测到文字"
+                    else self._tr("检测到文字")
                 )
-                state += "（人工）" if record.manual[index] else ""
+                state += self._tr("（人工）") if record.manual[index] else ""
                 item = QListWidgetItem(
-                    f"{state} · 区域 {index + 1}: "
+                    self._tr("{state} · 区域 {index}: ").format(
+                        state=state,
+                        index=index + 1,
+                    )
                     f"{points[:, 0].min()},{points[:, 1].min()} - "
                     f"{points[:, 0].max()},{points[:, 1].max()}"
                 )
