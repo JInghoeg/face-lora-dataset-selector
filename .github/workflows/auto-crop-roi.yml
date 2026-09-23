@@ -111,6 +111,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python install_ui_dependencies.py
 
       - name: Build Portable
         shell: pwsh
