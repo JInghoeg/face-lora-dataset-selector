@@ -1076,6 +1076,19 @@ def self_test():
     return 0
 
 if __name__=='__main__':
+    if '--i18n-self-test' in sys.argv:
+        try:
+            a=QApplication(sys.argv);a.setApplicationName('LoRA 数据集筛选与字幕清理')
+            with tempfile.TemporaryDirectory() as td:
+                manager=initialize_i18n(a,settings_path=Path(td)/'ui.ini')
+                if not manager.set_language('en_US'):raise RuntimeError(manager.last_error or 'English catalog failed to load')
+                if QCoreApplication.translate('MainWindow','LoRA 数据集筛选')!='LoRA Dataset Selector':raise RuntimeError('packaged English catalog translation failed')
+                if QCoreApplication.translate('AutoCropReviewDialog','自动裁剪复核')!='Auto Crop Review':raise RuntimeError('packaged Auto Crop catalog translation failed')
+                if not manager.set_language('zh_CN'):raise RuntimeError('failed to restore source language')
+                if QCoreApplication.translate('AutoCropReviewDialog','自动裁剪复核')!='自动裁剪复核':raise RuntimeError('source language restore failed')
+            sys.exit(0)
+        except Exception as e:
+            print('I18N SELF-TEST FAILED:',e);traceback.print_exc();sys.exit(1)
     if '--self-test' in sys.argv:
         try:sys.exit(self_test())
         except Exception as e:
