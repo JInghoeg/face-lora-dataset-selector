@@ -183,6 +183,12 @@ def verify_roi(qapp, dialog):
     assert after_split != before_split, (before_split, after_split)
     assert after_split[1] > before_split[1], (before_split, after_split)
 
+    # Reflowing the horizontal panes must keep the complete source visible.
+    qapp.processEvents()
+    x_range, y_range = dialog.roi_preview.view.viewRange()
+    assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
+    assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
+
     before = dialog.roi_preview.box()
     edited = [before[0] + 8, before[1] + 6, before[2] - 10, before[3] - 8]
     dialog.roi_preview.set_box(edited)
