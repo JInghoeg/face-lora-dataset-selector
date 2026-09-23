@@ -1,6 +1,11 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+python -c "import qfluentwidgets" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "Missing Fluent UI runtime. Run: python install_ui_dependencies.py"
+}
+
 $build = Join-Path $PSScriptRoot "build"
 $dist = Join-Path $PSScriptRoot "dist"
 
