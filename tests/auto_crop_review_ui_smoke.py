@@ -111,9 +111,19 @@ def verify_filmstrip_navigation(qapp, dialog):
     # visible while additional wrapped rows overflow vertically.
     grid_h = dialog.items.gridSize().height()
     viewport_h = dialog.items.viewport().height()
-    assert viewport_h >= grid_h - 4, (viewport_h, grid_h)
-    # The second row must not be partially visible at the default size.
-    assert viewport_h <= grid_h + 8, (viewport_h, grid_h)
+
+    # Judge the real laid-out item geometry rather than a fixed pixel margin:
+    # row 1 must be fully visible and row 2 must start outside the viewport.
+    rects = [
+        dialog.items.visualItemRect(dialog.items.item(row))
+        for row in range(dialog.items.count())
+    ]
+    row_tops = sorted({rect.top() for rect in rects if rect.isValid()})
+    assert len(row_tops) >= 2, row_tops
+    first_top, second_top = row_tops[:2]
+    first_bottom = max(rect.bottom() for rect in rects if rect.top() == first_top)
+    assert first_bottom < viewport_h, (first_bottom, viewport_h, grid_h)
+    assert second_top >= viewport_h, (second_top, viewport_h, grid_h)
 
     vbar = dialog.items.verticalScrollBar()
     compact_max = vbar.maximum()
