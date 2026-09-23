@@ -398,6 +398,8 @@ class Window(QMainWindow):
             manager=ui_language_manager();index=self.language_combo.findData(manager.language)
             if index>=0 and index!=self.language_combo.currentIndex():
                 self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
+        if hasattr(self,'duplicate_review_btn'):self.duplicate_review_btn.setText(self._tr_main('重复组 复核…'))
+        if hasattr(self,'organizer_btn'):self.organizer_btn.setText(self._tr_main('整理源文件…'));self.organizer_btn.setToolTip(self._tr_main('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。'))
         self.update_composite_button();self.update_auto_crop_button()
     def change_language(self):
         if not hasattr(self,'language_combo'):return
@@ -425,7 +427,7 @@ class Window(QMainWindow):
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
         self.custom_mode=QPushButton('自定义');self.custom_mode.setCheckable(True);self.custom_mode.clicked.connect(self.apply_custom_target);self.group.addButton(self.custom_mode,0);rec.addWidget(self.custom_mode)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setToolTip('仅输入数字；点击“应用”后切换到自定义目标。');ap=QPushButton('应用');ap.clicked.connect(self.apply_custom_target);rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('自动裁剪 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);self.duplicate_review_btn=QPushButton('');self.duplicate_review_btn.clicked.connect(self.open_duplicate_review);self.duplicate_review_btn.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(self.duplicate_review_btn);self.composite_btn=QPushButton('');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('自动裁剪 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -590,7 +592,7 @@ class Window(QMainWindow):
             child=self.stat_layout.takeAt(0)
             if child.widget():child.widget().deleteLater()
         st=Counter(r.status for r in self.records);sel=[r for r in self.records if r.status=='推荐'];sc=Counter(r.person_scale for r in sel);yw=Counter(r.angle_class for r in sel);pt=Counter(r.pitch_class for r in sel);grp={r.duplicate_group for r in sel if r.duplicate_group};du=sum(r.status!='推荐' and r.eligibility!='REJECT' and r.duplicate_group and (self.qualified_group_rank(r)[0]>1 or r.duplicate_group in grp) for r in self.records);bad=sum(r.eligibility=='REJECT' for r in self.records);review=sum(r.eligibility=='REVIEW' for r in self.records);group_count=len({r.duplicate_group for r in self.records if r.duplicate_group})
-        auto_sel=sum(r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records);self.stats.setText(f'自动目标 / 自动推荐：{self.target} / {auto_sel} · 人工追加：{manual_add} · 总推荐：{len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · Duplicate Group：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
+        auto_sel=sum(r.auto_status=='推荐' for r in self.records);manual_add=sum(r.manual_status=='推荐' and r.auto_status!='推荐' for r in self.records);self.stats.setText(f'自动目标 / 自动推荐：{self.target} / {auto_sel} · 人工追加：{manual_add} · 总推荐：{len(sel)}\n来源目录/视频：{len({r.source for r in self.records})} · 重复组：{group_count}\n因近重复未推荐：{du} · 需复核：{review} · 硬淘汰：{bad}')
         self.stat_layout.addWidget(QLabel('状态（点击筛选）'),0,0,1,3)
         for col,value in enumerate(('推荐','备选','淘汰')):self.stat_button(f'{value} {st[value]}','status',value,1,col)
         self.stat_layout.addWidget(QLabel('景别（推荐）'),2,0,1,3)
@@ -756,7 +758,7 @@ class Window(QMainWindow):
                 self.save()
                 self.progress.setText(f'源文件已经是目标结构：无需移动 · 保持 {result.unchanged} · 跳过 {result.skipped}')
             except Exception as e:
-                QMessageBox.critical(self,'Source Organizer 失败',str(e))
+                QMessageBox.critical(self,self._tr_main('整理源文件失败'),str(e))
             return
         counts=plan.counts_by_status()
         box=QMessageBox(self);box.setWindowTitle('确认整理源文件');box.setIcon(QMessageBox.Warning)
@@ -780,15 +782,15 @@ class Window(QMainWindow):
         box.setDetailedText('\n'.join(details));box.setStandardButtons(QMessageBox.Yes|QMessageBox.Cancel);box.setDefaultButton(QMessageBox.Cancel)
         if box.exec()!=QMessageBox.Yes:return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False)
-        self.progress.setText(f'Source Organizer 0/{len(plan.moves)*2}：准备事务')
-        self.organizer_thread=QThread(self);self.organizer_worker=SourceOrganizerWorker(plan);self.organizer_worker.moveToThread(self.organizer_thread);self.organizer_thread.started.connect(self.organizer_worker.run);self.organizer_worker.progress.connect(lambda n,t,name:self.progress.setText(f'Source Organizer {n}/{t}：{name}'));self.organizer_worker.finished.connect(self.source_organizer_done);self.organizer_worker.failed.connect(self.source_organizer_failed);self.organizer_worker.finished.connect(self.organizer_thread.quit);self.organizer_worker.failed.connect(self.organizer_thread.quit);self.organizer_thread.finished.connect(self.source_organizer_thread_done);self.organizer_thread.start()
+        self.progress.setText(self._tr_main('整理源文件 0/{total}：准备事务').format(total=len(plan.moves)*2))
+        self.organizer_thread=QThread(self);self.organizer_worker=SourceOrganizerWorker(plan);self.organizer_worker.moveToThread(self.organizer_thread);self.organizer_thread.started.connect(self.organizer_worker.run);self.organizer_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('整理源文件 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.organizer_worker.finished.connect(self.source_organizer_done);self.organizer_worker.failed.connect(self.source_organizer_failed);self.organizer_worker.finished.connect(self.organizer_thread.quit);self.organizer_worker.failed.connect(self.organizer_thread.quit);self.organizer_thread.finished.connect(self.source_organizer_thread_done);self.organizer_thread.start()
     def source_organizer_done(self,result):
         self.thumb_generation+=1;self.thumb_memory.clear();self.save();self.refresh()
         self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True)
-        self.update_composite_button();self.update_auto_crop_button();self.progress.setText(f'Source Organizer 完成：移动 {result.moved} · 保持 {result.unchanged} · 跳过 {result.skipped}；未重新分析图片')
+        self.update_composite_button();self.update_auto_crop_button();self.progress.setText(self._tr_main('整理源文件完成：移动 {moved} · 保持 {unchanged} · 跳过 {skipped}；未重新分析图片').format(moved=result.moved,unchanged=result.unchanged,skipped=result.skipped))
     def source_organizer_failed(self,error):
         self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True)
-        self.progress.setText('Source Organizer 失败；已尝试自动回滚');QMessageBox.critical(self,'Source Organizer 失败',error)
+        self.progress.setText(self._tr_main('整理源文件失败；已尝试自动回滚'));QMessageBox.critical(self,self._tr_main('整理源文件失败'),error)
     def source_organizer_thread_done(self):
         if self.organizer_worker:self.organizer_worker.deleteLater()
         if self.organizer_thread:self.organizer_thread.deleteLater()
