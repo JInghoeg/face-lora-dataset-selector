@@ -201,9 +201,16 @@ class AutoCropROIWidget(QWidget):
             yMin=-h * 0.25,
             yMax=h * 1.25,
         )
+        # With lockAspect=True, setting xRange/yRange separately lets the
+        # second axis override the first and can crop the source. Fit one
+        # complete padded rect atomically instead.
         self.view.setRange(
-            xRange=(-pad_x, w + pad_x),
-            yRange=(-pad_y, h + pad_y),
+            rect=QRectF(
+                -pad_x,
+                -pad_y,
+                w + pad_x * 2,
+                h + pad_y * 2,
+            ),
             padding=0,
         )
 
