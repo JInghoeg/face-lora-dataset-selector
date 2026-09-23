@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QApplication, QAbstractButton, QComboBox, QGroupBox, QLabel
+from PySide6.QtWidgets import QApplication, QAbstractButton, QComboBox, QGroupBox, QLabel, QWidget
 
 import app
 from core.models import AnalysisFinding, Photo
@@ -89,7 +89,7 @@ def assert_no_han(*values):
 
 def visible_widget_texts(root):
     values = []
-    for widget in [root, *root.findChildren(object)]:
+    for widget in [root, *root.findChildren(QWidget)]:
         if hasattr(widget, "isVisible") and not widget.isVisible():
             continue
         if isinstance(widget, QAbstractButton):
