@@ -737,6 +737,12 @@ class AutoCropReviewDialog(QDialog):
         crop = self.current_image[y0:y1, x0:x1]
         self.crop_preview.setPixmap(self.pixmap_from_bgr(crop, 360, 360))
 
+    def warning_text(self, code):
+        source = {
+            "subject_mask_touches_source_edge": "主体遮罩触及原图边缘",
+        }.get(code, code)
+        return self._tr(source)
+
     def update_info(self, proposal, box):
         if self.current_image is None or self.current < 0:
             return
@@ -754,7 +760,11 @@ class AutoCropReviewDialog(QDialog):
             if list(box) != list(proposal.auto_box)
             else self._tr("自动建议")
         )
-        warning = "；".join(proposal.warnings) if proposal.warnings else self._tr("无")
+        warning = (
+            "；".join(self.warning_text(code) for code in proposal.warnings)
+            if proposal.warnings
+            else self._tr("无")
+        )
         self.info.setText(
             f"{self.records[self.current].path.name}\n"
             + self._tr(
