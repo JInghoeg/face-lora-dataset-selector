@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 
@@ -52,6 +53,14 @@ def build_record(root: Path) -> Photo:
         "proposal": proposal.to_dict(),
     }
     return photo
+
+
+HAN = re.compile(r"[\u4e00-\u9fff]")
+
+
+def assert_no_han(*values):
+    leaked = [value for value in values if HAN.search(str(value))]
+    assert not leaked, f"Chinese leaked into English UI: {leaked}"
 
 
 def select_language(window, code: str):
@@ -122,6 +131,54 @@ def main() -> int:
         assert window.composite_btn.text() == "Composite Split Review…"
         assert window.organizer_btn.text() == "Organize Source Files…"
         assert window.auto_crop_btn.text() == "Auto Crop Review…"
+
+        # The primary product surface must actually be English, not just the
+        # shell buttons. Display labels are translated while internal values
+        # remain stable for filtering/ranking logic.
+        assert window.pick.text() == "Select Image Folder"
+        assert window.rescan.text() == "Refresh Folder (F5)"
+        assert window.filter_box.title().startswith("1. Filters:")
+        assert [window.view_combo.itemText(i) for i in range(window.view_combo.count())] == [
+            "All", "Recommended", "Backup", "Rejected"
+        ]
+        assert app.combo_value(window.view_combo) == "全部"
+        assert window.sort_box.title().startswith("2. Sort:")
+        assert window.sort_field_combo.currentText() == "Original Order"
+        assert app.combo_value(window.sort_field_combo) == "默认顺序"
+        assert window.extreme_box.title().startswith("3. Extreme Check:")
+        assert window.saved_view_label.text() == "Saved View"
+        assert window.stat_box.title().startswith("Statistics")
+        assert window.analysis_box.title() == "Image Analysis"
+        assert window.manual_box.title().startswith("Manual Status")
+        assert window.ai_box.title() == "AI Review Suggestions"
+
+        text_tab = window.sub
+        assert text_tab is not None
+        assert text_tab.pick_input_btn.text() == "Select Input Folder"
+        assert text_tab.scan.text() == "Scan Text"
+        assert text_tab.method.currentText() == "AI Repair (MI-GAN)"
+        assert text_tab.method.currentData() == "AI 修复（MI-GAN）"
+        assert text_tab.view.currentText() == "All Images"
+        assert text_tab.view.currentData() == "全部图片"
+
+        assert_no_han(
+            window.pick.text(),
+            window.rescan.text(),
+            window.filter_box.title(),
+            *(window.view_combo.itemText(i) for i in range(window.view_combo.count())),
+            window.sort_box.title(),
+            window.extreme_box.title(),
+            window.saved_view_label.text(),
+            window.stat_box.title(),
+            window.analysis_box.title(),
+            window.manual_box.title(),
+            window.ai_box.title(),
+            text_tab.pick_input_btn.text(),
+            text_tab.scan.text(),
+            text_tab.method.currentText(),
+            text_tab.view.currentText(),
+        )
+
         assert duplicate_dialog.windowTitle() == "Duplicate Group Review"
         assert duplicate_dialog.group_label.text() == "No Duplicate Groups"
         assert dialog.windowTitle() == "Auto Crop Review"
@@ -147,6 +204,13 @@ def main() -> int:
         assert window.composite_btn.text() == "组合图拆分 复核…"
         assert window.organizer_btn.text() == "整理源文件…"
         assert window.auto_crop_btn.text() == "自动裁剪 复核…"
+        assert window.pick.text() == "选择图片文件夹"
+        assert window.filter_box.title() == '1. 筛选：只决定“显示哪些图片”'
+        assert window.view_combo.currentText() == "全部"
+        assert app.combo_value(window.view_combo) == "全部"
+        assert window.sub.pick_input_btn.text() == "选择输入目录"
+        assert window.sub.method.currentText() == "AI 修复（MI-GAN）"
+        assert window.sub.method.currentData() == "AI 修复（MI-GAN）"
         assert duplicate_dialog.windowTitle() == "重复组人工复核"
         assert duplicate_dialog.group_label.text() == "当前没有重复组"
         assert "状态：" in dialog.info.text()
