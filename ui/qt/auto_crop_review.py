@@ -68,6 +68,22 @@ def _load_fluent():
     }
 
 
+class AutoCropFilmstripList(QListWidget):
+    """Native icon view with a one-row default size hint and normal expansion."""
+
+    DEFAULT_HEIGHT = 150
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setHeight(self.DEFAULT_HEIGHT)
+        return hint
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setHeight(self.DEFAULT_HEIGHT)
+        return hint
+
+
 class AutoCropROIWidget(QWidget):
     regionChanged = Signal(object)
     regionChangeFinished = Signal(object)
@@ -339,7 +355,7 @@ class AutoCropReviewDialog(QDialog):
         # QFluentWidgets ListWidget is row-oriented and its delegate compresses
         # IconMode thumbnails.  Use Qt's mature native icon view inside the
         # Fluent card so the Filmstrip shows real, useful thumbnails.
-        self.items = QListWidget()
+        self.items = AutoCropFilmstripList()
         self.items.setObjectName("AutoCropFilmstrip")
         self.items.setViewMode(QListView.ViewMode.IconMode)
         self.items.setFlow(QListView.Flow.LeftToRight)
@@ -353,8 +369,8 @@ class AutoCropReviewDialog(QDialog):
         self.items.setUniformItemSizes(True)
         # Default to one fully visible candidate row. The surrounding vertical
         # splitter still lets users drag this area upward to reveal more rows.
-        self.items.setMinimumHeight(150)
-        self.items.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        self.items.setMinimumHeight(AutoCropFilmstripList.DEFAULT_HEIGHT)
+        self.items.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.items.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
