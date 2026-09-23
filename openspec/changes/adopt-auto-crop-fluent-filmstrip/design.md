@@ -99,3 +99,16 @@ The first real production render exposed two presentation-specific issues withou
    - CI also loads a temporary CJK font only for screenshots because GitHub Windows runners do not include the user's normal Chinese UI fonts.
 
 These adjustments preserve the user-approved Fluent + Filmstrip + thumbnail + scoped Light/Dark direction.
+
+
+## Filmstrip sizing and navigation adjustment
+
+User review of the production layout added one bounded interaction requirement before merge:
+
+- the primary work area and bottom Filmstrip are separated by a vertical `QSplitter`, so the Filmstrip height can be dragged up/down;
+- the Filmstrip remains a single horizontal row rather than wrapping into a gallery;
+- when candidates overflow, Qt's native horizontal scrollbar appears as needed;
+- a normal mouse wheel pans the Filmstrip horizontally, in addition to direct scrollbar dragging;
+- no additional splitter is added inside the right inspector.
+
+This remains presentation-only and does not change Auto Crop backend or review semantics.
