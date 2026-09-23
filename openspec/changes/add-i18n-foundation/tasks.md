@@ -27,7 +27,7 @@
 
 ## 4. Review / closeout
 
-- [ ] 4.1 Present initial English translations to user for wording review.
-- [ ] 4.2 Apply user translation corrections.
-- [ ] 4.3 Reconcile implementation against proposal/design/tasks.
+- [x] 4.1 Present initial English translations to user for wording review.
+- [x] 4.2 Apply user translation corrections.
+- [x] 4.3 Reconcile implementation against proposal/design/tasks.
 - [ ] 4.4 Archive only after translation review and final CI.
