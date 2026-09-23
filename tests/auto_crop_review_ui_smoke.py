@@ -163,6 +163,26 @@ def verify_filmstrip_navigation(qapp, dialog):
 
 def verify_roi(qapp, dialog):
     assert dialog.roi_preview.roi is not None
+
+    # The reviewer must see the complete source boundary and every resize
+    # handle, including when a proposal touches an image edge.
+    x_range, y_range = dialog.roi_preview.view.viewRange()
+    w, h = dialog.roi_preview.image_size
+    assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
+    assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
+    assert len(dialog.roi_preview.roi.handles) == 8, len(dialog.roi_preview.roi.handles)
+
+    # Horizontal comparison panes need an obvious, usable splitter rather than
+    # two effectively fixed cards.
+    assert dialog.work_splitter.handleWidth() >= 8
+    assert not dialog.work_splitter.childrenCollapsible()
+    before_split = dialog.work_splitter.sizes()
+    dialog.work_splitter.setSizes([600, 700])
+    qapp.processEvents()
+    after_split = dialog.work_splitter.sizes()
+    assert after_split != before_split, (before_split, after_split)
+    assert after_split[1] > before_split[1], (before_split, after_split)
+
     before = dialog.roi_preview.box()
     edited = [before[0] + 8, before[1] + 6, before[2] - 10, before[3] - 8]
     dialog.roi_preview.set_box(edited)
