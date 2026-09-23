@@ -49,6 +49,13 @@ def set_combo_value(combo,value):
     if i<0:i=combo.findText(value)
     if i>=0:combo.setCurrentIndex(i)
 
+def ui_language_manager():
+    try:return get_language_manager()
+    except RuntimeError:
+        app=QApplication.instance()
+        if app is None:raise
+        return initialize_i18n(app)
+
 def clamp_page(page,item_count,page_size=PAGE):
     pages=max(1,math.ceil(max(0,item_count)/page_size))
     return max(0,min(int(page),pages-1)),pages
@@ -370,13 +377,13 @@ class Window(QMainWindow):
             if self.text_cleanup_tab_index>=0:
                 self.tabs.setTabText(self.text_cleanup_tab_index,self._tr_main('批量去字幕 / 水印'))
         if hasattr(self,'language_combo'):
-            manager=get_language_manager();index=self.language_combo.findData(manager.language)
+            manager=ui_language_manager();index=self.language_combo.findData(manager.language)
             if index>=0 and index!=self.language_combo.currentIndex():
                 self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
         self.update_auto_crop_button()
     def change_language(self):
         if not hasattr(self,'language_combo'):return
-        manager=get_language_manager();language=self.language_combo.currentData()
+        manager=ui_language_manager();language=self.language_combo.currentData()
         if language==manager.language:return
         if not manager.set_language(language):
             QMessageBox.warning(self,'Language / 语言',f'无法加载语言资源：\n{manager.last_error}')
@@ -392,7 +399,7 @@ class Window(QMainWindow):
         if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
         l=QVBoxLayout(w);t=QHBoxLayout();self.pick=QPushButton('选择图片文件夹');self.pick.clicked.connect(self.choose);self.rescan=QPushButton('刷新文件夹（F5）');self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setToolTip('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。');self.rescan.setEnabled(False);self.folder_label=QLabel('尚未选择文件夹');self.progress=QLabel('准备就绪');t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);self.language_label=QLabel('语言 / Language');self.language_combo=QComboBox()
         for code,label in SUPPORTED_LANGUAGES:self.language_combo.addItem(label,code)
-        manager=get_language_manager();language_index=self.language_combo.findData(manager.language)
+        manager=ui_language_manager();language_index=self.language_combo.findData(manager.language)
         if language_index>=0:self.language_combo.setCurrentIndex(language_index)
         self.language_combo.currentIndexChanged.connect(lambda _=None:self.change_language());t.addWidget(self.language_label);t.addWidget(self.language_combo);l.addLayout(t)
         rec=QHBoxLayout();rec.addWidget(QLabel('自动推荐目标：'));self.group=QButtonGroup(self);self.group.setExclusive(True)
