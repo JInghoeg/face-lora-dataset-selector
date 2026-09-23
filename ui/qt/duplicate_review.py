@@ -118,15 +118,29 @@ class DuplicateReviewDialog(QDialog):
     def _tr(source):
         return QCoreApplication.translate("DuplicateReviewDialog", source)
 
+    def status_text(self, value):
+        return {
+            "推荐": self._tr("推荐"),
+            "备选": self._tr("备选"),
+            "淘汰": self._tr("淘汰"),
+        }.get(value, value)
+
+    def category_text(self, value):
+        return {
+            "近景/头肩": self._tr("近景/头肩"),
+            "半身": self._tr("半身"),
+            "大半身": self._tr("大半身"),
+            "全身": self._tr("全身"),
+            "正脸": self._tr("正脸"),
+            "左3/4": self._tr("左3/4"),
+            "右3/4": self._tr("右3/4"),
+            "左侧脸": self._tr("左侧脸"),
+            "右侧脸": self._tr("右侧脸"),
+        }.get(value, value)
+
     def retranslate(self):
         self.setWindowTitle(self._tr("重复组人工复核"))
-        self.hint.setText(
-            self._tr(
-                "勾选只是本窗口里的临时选择；切换重复组不会丢失。"
-                "点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。"
-                "双击图片可打开原图。"
-            )
-        )
+        self.hint.setText(self._tr("勾选只是本窗口里的临时选择；切换重复组不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。"))
         self.best_button.setText(self._tr("保留组内最佳"))
         self.selected_button.setText(self._tr("完成本组：勾选推荐 / 未勾淘汰"))
         self.all_groups_button.setText(self._tr("完成全部组"))
@@ -254,9 +268,10 @@ class DuplicateReviewDialog(QDialog):
             text = (
                 f"{prefix}{record.path.name}\n"
                 f"{_human_bytes(record.file_size)} · {record.width}×{record.height}\n"
-                f"FIQA {record.face_quality:.3f} · BRISQUE {record.brisque:.1f} · "
-                self._tr("清晰度 {value}").format(value=f"{record.blur:.0f}") + "\n"
-                f"{record.person_scale} · {record.angle_class}"
+                + f"FIQA {record.face_quality:.3f} · BRISQUE {record.brisque:.1f} · "
+                + self._tr("清晰度 {value}").format(value=f"{record.blur:.0f}")
+                + "\n"
+                + f"{self.category_text(record.person_scale)} · {self.category_text(record.angle_class)}"
             )
             eligibility_text = (
                 self._tr("可直接用")
@@ -280,7 +295,7 @@ class DuplicateReviewDialog(QDialog):
                 )
                 + "\n"
                 + self._tr("状态：{status} · 判定：{eligibility}").format(
-                    status=record.status,
+                    status=self.status_text(record.status),
                     eligibility=eligibility_text,
                 )
             )
