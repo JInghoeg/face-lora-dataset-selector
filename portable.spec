@@ -14,6 +14,7 @@ datas = [
     ('models/pose_landmarker_lite.task', 'models'),
     ('models/ppocrv5_mobile_det/inference.onnx', 'models/ppocrv5_mobile_det'),
     ('models/ppocrv5_mobile_det/inference.yml', 'models/ppocrv5_mobile_det'),
+    ('translations/app_en_US.qm', 'translations'),
 ]
 
 # QFluentWidgets loads packaged QSS/resources at runtime.  The selected Auto
