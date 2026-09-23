@@ -300,7 +300,7 @@ class IncrementalAnalysisWorker(QObject):
 class CompositeSplitReviewDialog(QDialog):
     def __init__(self,records,changed,accept_materialized,parent=None):
         super().__init__(parent);self.records=[r for r in records if r.status=='推荐' and r.composite_proposal is not None];self.changed=changed;self.accept_materialized=accept_materialized;self.current=-1;self.output_keep={}
-        self.setWindowTitle('Composite Split 复核');self.resize(1320,820);self.ui();self.reload()
+        self.resize(1320,820);self.ui();self.retranslate();self.reload()
     @staticmethod
     def quad(box):
         x0,y0,x1,y1=map(int,box);return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]]
@@ -312,13 +312,31 @@ class CompositeSplitReviewDialog(QDialog):
     def ui(self):
         root=QVBoxLayout(self);split=QSplitter(Qt.Horizontal)
         self.items=QListWidget();self.items.setMinimumWidth(310);self.items.itemClicked.connect(self.show_item);split.addWidget(self.items)
-        right=QWidget();rl=QVBoxLayout(right);self.info=QLabel('选择候选图');self.info.setWordWrap(True);self.info.setStyleSheet('font-weight:600;');rl.addWidget(self.info)
+        right=QWidget();rl=QVBoxLayout(right);self.info=QLabel('');self.info.setWordWrap(True);self.info.setStyleSheet('font-weight:600;');rl.addWidget(self.info)
         self.preview=ImagePreview();rl.addWidget(self.preview,1)
-        rl.addWidget(QLabel('建议输出预览（默认全选；取消勾选 = 生成后直接送入淘汰）'));self.outputs=QListWidget();self.outputs.setViewMode(QListWidget.IconMode);self.outputs.setResizeMode(QListWidget.Adjust);self.outputs.setMovement(QListWidget.Static);self.outputs.setIconSize(QSize(220,220));self.outputs.setGridSize(QSize(250,280));self.outputs.setMaximumHeight(320);self.outputs.itemChanged.connect(self.output_selection_changed);rl.addWidget(self.outputs)
-        actions=QHBoxLayout();accept=QPushButton('接受建议');accept.clicked.connect(lambda:self.set_decision('accepted'));reject=QPushButton('拒绝');reject.clicked.connect(lambda:self.set_decision('rejected'));pending=QPushButton('恢复待定');pending.clicked.connect(lambda:self.set_decision('pending'));actions.addWidget(accept);actions.addWidget(reject);actions.addWidget(pending);actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);rl.addLayout(actions)
+        self.output_hint=QLabel('');rl.addWidget(self.output_hint);self.outputs=QListWidget();self.outputs.setViewMode(QListWidget.IconMode);self.outputs.setResizeMode(QListWidget.Adjust);self.outputs.setMovement(QListWidget.Static);self.outputs.setIconSize(QSize(220,220));self.outputs.setGridSize(QSize(250,280));self.outputs.setMaximumHeight(320);self.outputs.itemChanged.connect(self.output_selection_changed);rl.addWidget(self.outputs)
+        actions=QHBoxLayout();self.accept_button=QPushButton('');self.accept_button.clicked.connect(lambda:self.set_decision('accepted'));self.reject_button=QPushButton('');self.reject_button.clicked.connect(lambda:self.set_decision('rejected'));self.pending_button=QPushButton('');self.pending_button.clicked.connect(lambda:self.set_decision('pending'));actions.addWidget(self.accept_button);actions.addWidget(self.reject_button);actions.addWidget(self.pending_button);actions.addStretch(1);self.close_button=QPushButton('');self.close_button.clicked.connect(self.accept);actions.addWidget(self.close_button);rl.addLayout(actions)
         split.addWidget(right);split.setSizes([330,990]);root.addWidget(split)
+    @staticmethod
+    def _tr_composite(source):
+        return QCoreApplication.translate('CompositeSplitReviewDialog',source)
+    def decision_text(self,value):
+        return {'accepted':self._tr_composite('已接受'),'rejected':self._tr_composite('已拒绝'),'pending':self._tr_composite('待定')}.get(value,value)
+    def retranslate(self):
+        self.setWindowTitle(self._tr_composite('组合图拆分复核'))
+        self.output_hint.setText(self._tr_composite('建议输出预览（默认全选；取消勾选 = 生成后直接送入淘汰）'))
+        self.accept_button.setText(self._tr_composite('接受建议'));self.reject_button.setText(self._tr_composite('拒绝'));self.pending_button.setText(self._tr_composite('恢复待定'));self.close_button.setText(self._tr_composite('关闭'))
+        if not self.records:self.info.setText(self._tr_composite('当前没有待复核的组合图拆分推荐图'))
+        for row,r in enumerate(self.records):
+            item=self.items.item(row)
+            if item is not None:item.setText(self.label(r))
+        current=self.items.currentItem()
+        if current is not None:self.show_item(current)
+    def changeEvent(self,event):
+        if event.type()==QEvent.LanguageChange and hasattr(self,'accept_button'):self.retranslate()
+        super().changeEvent(event)
     def label(self,r):
-        p=r.composite_proposal;mark={'accepted':'✓','rejected':'×','pending':'•'}.get(p.decision,'•');mode='拆分' if p.mode=='split_people' else '群组裁剪';return f'{mark} {r.path.name}\n{mode} · {len(p.output_boxes)} 个输出'
+        p=r.composite_proposal;mark={'accepted':'✓','rejected':'×','pending':'•'}.get(p.decision,'•');mode=self._tr_composite('拆分') if p.mode=='split_people' else self._tr_composite('群组裁剪');return f'{mark} {r.path.name}\n'+self._tr_composite('{mode} · {count} 个输出').format(mode=mode,count=len(p.output_boxes))
     def reload(self,select=None):
         self.items.clear()
         for i,r in enumerate(self.records):
@@ -337,21 +355,21 @@ class CompositeSplitReviewDialog(QDialog):
             im=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
         except Exception:return
         boxes=[self.quad(b) for b in p.output_boxes];self.preview.set_data(im,boxes,[True]*len(boxes),[False]*len(boxes))
-        mode='拆成独立人物/视角' if p.mode=='split_people' else '重叠多人合并裁剪'
-        self.info.setText(f'{r.path.name}\n{mode} · 输出 {len(p.output_boxes)} 张\n状态：{p.decision}\n{p.detail}')
+        mode=self._tr_composite('拆成独立人物/视角') if p.mode=='split_people' else self._tr_composite('重叠多人合并裁剪')
+        self.info.setText(f'{r.path.name}\n'+self._tr_composite('{mode} · 输出 {count} 张').format(mode=mode,count=len(p.output_boxes))+'\n'+self._tr_composite('状态：{state}').format(state=self.decision_text(p.decision))+f'\n{p.detail}')
         record_key=r.sample_id or key(r.path);keep=self.output_keep.get(record_key)
         if not isinstance(keep,list) or len(keep)!=len(p.output_boxes):keep=[True]*len(p.output_boxes);self.output_keep[record_key]=keep
         self.outputs.blockSignals(True);self.outputs.clear()
         h,w=im.shape[:2]
         for n,b in enumerate(p.output_boxes,1):
             x0,y0,x1,y1=map(int,b);x0=max(0,min(w,x0));x1=max(0,min(w,x1));y0=max(0,min(h,y0));y1=max(0,min(h,y1));crop=im[y0:y1,x0:x1]
-            state='推荐' if keep[n-1] else '淘汰';item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),f'输出 {n}\n{x1-x0} × {y1-y0}\n→ {state}');item.setData(Qt.UserRole,n-1);item.setFlags(item.flags()|Qt.ItemIsUserCheckable);item.setCheckState(Qt.Checked if keep[n-1] else Qt.Unchecked);self.outputs.addItem(item)
+            state=self._tr_composite('推荐') if keep[n-1] else self._tr_composite('淘汰');item=QListWidgetItem(QIcon(self.pixmap_from_bgr(crop)),self._tr_composite('输出 {index}').format(index=n)+f'\n{x1-x0} × {y1-y0}\n→ {state}');item.setData(Qt.UserRole,n-1);item.setFlags(item.flags()|Qt.ItemIsUserCheckable);item.setCheckState(Qt.Checked if keep[n-1] else Qt.Unchecked);self.outputs.addItem(item)
         self.outputs.blockSignals(False)
     def output_selection_changed(self,item):
         if self.current<0:return
         r=self.records[self.current];record_key=r.sample_id or key(r.path);p=r.composite_proposal;keep=self.output_keep.setdefault(record_key,[True]*len(p.output_boxes));index=item.data(Qt.UserRole)
         if isinstance(index,int) and 0<=index<len(keep):
-            keep[index]=item.checkState()==Qt.Checked;self.outputs.blockSignals(True);item.setText(item.text().rsplit('\n→ ',1)[0]+f"\n→ {'推荐' if keep[index] else '淘汰'}");self.outputs.blockSignals(False)
+            keep[index]=item.checkState()==Qt.Checked;self.outputs.blockSignals(True);state=self._tr_composite('推荐') if keep[index] else self._tr_composite('淘汰');item.setText(item.text().rsplit('\n→ ',1)[0]+f"\n→ {state}");self.outputs.blockSignals(False)
     def set_decision(self,value):
         if self.current<0:return
         r=self.records[self.current]
@@ -361,7 +379,7 @@ class CompositeSplitReviewDialog(QDialog):
             self.records.pop(self.current);self.changed()
             if self.records:self.reload(min(self.current,len(self.records)-1))
             else:
-                self.current=-1;self.items.clear();self.outputs.clear();self.info.setText('当前没有待复核的 Composite Split 推荐图');self.preview.set_data(None,[],[],[])
+                self.current=-1;self.items.clear();self.outputs.clear();self.info.setText(self._tr_composite('当前没有待复核的组合图拆分推荐图'));self.preview.set_data(None,[],[],[])
             return
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
@@ -380,7 +398,7 @@ class Window(QMainWindow):
             manager=ui_language_manager();index=self.language_combo.findData(manager.language)
             if index>=0 and index!=self.language_combo.currentIndex():
                 self.language_combo.blockSignals(True);self.language_combo.setCurrentIndex(index);self.language_combo.blockSignals(False)
-        self.update_auto_crop_button()
+        self.update_composite_button();self.update_auto_crop_button()
     def change_language(self):
         if not hasattr(self,'language_combo'):return
         manager=ui_language_manager();language=self.language_combo.currentData()
@@ -407,7 +425,7 @@ class Window(QMainWindow):
             b=QPushButton(str(n));b.setCheckable(True);b.setChecked(n==60);b.clicked.connect(lambda _,x=n:self.run_rec(x,'preset'));self.group.addButton(b,n);rec.addWidget(b)
         self.custom_mode=QPushButton('自定义');self.custom_mode.setCheckable(True);self.custom_mode.clicked.connect(self.apply_custom_target);self.group.addButton(self.custom_mode,0);rec.addWidget(self.custom_mode)
         self.custom=QSpinBox();self.custom.setRange(1,3000);self.custom.setValue(60);self.custom.setToolTip('仅输入数字；点击“应用”后切换到自定义目标。');ap=QPushButton('应用');ap.clicked.connect(self.apply_custom_target);rec.addWidget(self.custom);rec.addWidget(ap);rec.addSpacing(14)
-        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('Composite Split 复核…');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('自动裁剪 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
+        self.show_face_boxes=QCheckBox('显示人脸检测框');self.show_face_boxes.toggled.connect(lambda _=False:self.refresh());rec.addWidget(self.show_face_boxes);dup_review=QPushButton('Duplicate Group 复核…');dup_review.clicked.connect(self.open_duplicate_review);dup_review.setVisible(BACKEND.feature_available('duplicates'));rec.addWidget(dup_review);self.composite_btn=QPushButton('');self.composite_btn.clicked.connect(self.open_composite_review);self.composite_btn.setEnabled(False);self.composite_btn.setVisible(BACKEND.feature_available('composite'));rec.addWidget(self.composite_btn);self.auto_crop_btn=QPushButton('自动裁剪 复核…');self.auto_crop_btn.clicked.connect(self.open_auto_crop_review);self.auto_crop_btn.setEnabled(False);self.auto_crop_btn.setVisible(BACKEND.feature_available('auto_crop'));rec.addWidget(self.auto_crop_btn);self.organizer_btn=QPushButton('整理源文件…');self.organizer_btn.clicked.connect(self.open_source_organizer);self.organizer_btn.setEnabled(False);self.organizer_btn.setVisible(BACKEND.feature_available('source_organizer'));self.organizer_btn.setToolTip('可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。');rec.addWidget(self.organizer_btn);rec.addStretch(1);self.export=QPushButton('导出推荐图片…');self.export.clicked.connect(self.exported);self.export.setEnabled(False);rec.addWidget(self.export);l.addLayout(rec)
 
         filter_box=QGroupBox('1. 筛选：只决定“显示哪些图片”');fg=QHBoxLayout(filter_box)
         self.view_combo=QComboBox();self.view_combo.addItems(['全部','推荐','备选','淘汰']);self.view_combo.currentTextChanged.connect(self.filters_changed);fg.addWidget(QLabel('最终状态'));fg.addWidget(self.view_combo)
@@ -790,7 +808,7 @@ class Window(QMainWindow):
         if self.auto_crop_thread and self.auto_crop_thread.isRunning():return
         composite_pending=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if composite_pending:
-            QMessageBox.warning(self,self._tr_main('请先完成 Composite Split'),self._tr_main('还有 {count} 张推荐图等待 Composite Split 复核。\n\n自动裁剪只处理 Composite 之后的单主体推荐图。').format(count=len(composite_pending)));return
+            QMessageBox.warning(self,self._tr_main('请先完成组合图拆分'),self._tr_main('还有 {count} 张推荐图等待组合图拆分复核。\n\n自动裁剪只处理组合图拆分之后的单主体推荐图。').format(count=len(composite_pending)));return
         todo=BACKEND.auto_crop_scan_todo(self.records)
         if not todo:
             candidates=BACKEND.auto_crop_review_records(self.records)
@@ -817,7 +835,7 @@ class Window(QMainWindow):
         if not hasattr(self,'composite_btn'):return
         proposals=[r.composite_proposal for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
         pending=sum(p.decision=='pending' for p in proposals)
-        self.composite_btn.setText(f'Composite Split 复核… ({len(proposals)} / 待定 {pending})' if proposals else 'Composite Split 复核…')
+        self.composite_btn.setText(self._tr_main('组合图拆分 复核… ({total} / 待定 {pending})').format(total=len(proposals),pending=pending) if proposals else self._tr_main('组合图拆分 复核…'))
     def open_composite_review(self):
         if not BACKEND.feature_available('composite'):return
         if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
@@ -825,16 +843,16 @@ class Window(QMainWindow):
         todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
-            if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。');return
+            if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'));return
             CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review();return
-        self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.progress.setText(f'Composite Split 扫描准备中：{todo} 张待检查')
-        self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(lambda n,t,name:self.progress.setText(f'Composite Split {n}/{t}：{name}'));self.composite_worker.finished.connect(self.composite_scan_done);self.composite_worker.failed.connect(self.composite_scan_failed);self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start()
+        self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.progress.setText(self._tr_main('组合图拆分扫描准备中：{todo} 张待检查').format(todo=todo))
+        self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('组合图拆分 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.composite_worker.finished.connect(self.composite_scan_done);self.composite_worker.failed.connect(self.composite_scan_failed);self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start()
     def composite_scan_done(self,records):
-        self.records=records;count=sum(r.status=='推荐' and r.composite_proposal is not None for r in records);self.progress.setText(f'Composite Split 扫描完成：{count} 张推荐候选');self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.save()
+        self.records=records;count=sum(r.status=='推荐' and r.composite_proposal is not None for r in records);self.progress.setText(self._tr_main('组合图拆分扫描完成：{count} 张推荐候选').format(count=count));self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.save()
         if count:CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review()
-        else:QMessageBox.information(self,'没有候选','当前推荐图片中没有检测到需要 Composite Split 的图片。')
+        else:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'))
     def composite_scan_failed(self,error):
-        self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText('Composite Split 扫描失败');QMessageBox.critical(self,'Composite Split 扫描失败',error)
+        self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText(self._tr_main('组合图拆分扫描失败'));QMessageBox.critical(self,self._tr_main('组合图拆分扫描失败'),error)
     def composite_thread_done(self):
         if self.composite_worker:self.composite_worker.deleteLater()
         if self.composite_thread:self.composite_thread.deleteLater()
@@ -845,7 +863,7 @@ class Window(QMainWindow):
         try:
             result=BACKEND.accept_composite(self.folder,source,r.composite_proposal,keep_mask);assigned=[(item.path,item.status) for item in result.outputs]
         except Exception as e:
-            QMessageBox.critical(self,'Composite Split 写入失败',f'{source.name}\n\n{e}')
+            QMessageBox.critical(self,self._tr_main('组合图拆分写入失败'),f'{source.name}\n\n{e}')
             return False
         for out,status in assigned:self.pending_composite_outputs[key(out)]={'path':str(out.resolve()),'status':status}
         self.records=[x for x in self.records if x is not r];kept=sum(status=='推荐' for _,status in assigned);rejected=len(assigned)-kept;self.progress.setText(f'Composite 已落盘：{source.name} → 推荐 {kept} / 淘汰 {rejected}；原图已隔离');return True
@@ -894,7 +912,7 @@ class Window(QMainWindow):
         if not sel:QMessageBox.information(self,'没有可导出的图片','当前没有推荐图片。');return
         pending=[r for r in sel if r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if pending:
-            QMessageBox.warning(self,'还有 Composite Split 待复核',f'推荐图片中还有 {len(pending)} 张 Composite Split 建议未确认。\n\n请先完成 Composite Split 复核，再导出训练图片。');return
+            QMessageBox.warning(self,self._tr_main('还有组合图拆分待复核'),self._tr_main('推荐图片中还有 {count} 张组合图拆分建议未确认。\n\n请先完成组合图拆分复核，再导出训练图片。').format(count=len(pending)));return
         if BACKEND.feature_available('auto_crop'):
             unscanned=BACKEND.auto_crop_scan_todo(sel)
             if unscanned:
@@ -908,7 +926,7 @@ class Window(QMainWindow):
         if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,'请选择新目录','导出目录不能是源目录或其子目录。');return
         try:
             result=BACKEND.export_recommended(self.records,dst)
-            QMessageBox.information(self,'导出完成',f'已导出 {result.written} 张当前推荐图片。\n\nComposite Split 已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。')
+            QMessageBox.information(self,'导出完成',self._tr_main('已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。').format(count=result.written))
         except Exception as e:QMessageBox.critical(self,'导出失败',str(e))
 
 def self_test():
