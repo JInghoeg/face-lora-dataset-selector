@@ -12,6 +12,8 @@
 - [x] 2.1 Add one global language selector to the main window shell.
 - [x] 2.2 Make Auto Crop the first complete live-retranslated modern UI module.
 - [x] 2.3 Keep legacy main-UI translation deliberately thin; do not mass-migrate obsolete presentation.
+- [x] 2.4 Localize direct v0.3 workflow surfaces exposed in the shell: Duplicate Group / 重复组, Composite Split / 组合图拆分, and Source Organizer / 整理源文件.
+- [x] 2.5 Make Duplicate Review and Composite Split review surfaces live-retranslated without changing backend/internal identifiers.
 
 ## 3. Verification
 
@@ -20,6 +22,8 @@
 - [x] 3.3 Verify a live-open Auto Crop dialog switches zh_CN -> en_US -> zh_CN without restart.
 - [x] 3.4 Verify backend state/records remain unchanged across language switch.
 - [x] 3.5 Build Portable and verify packaged translation loads.
+- [x] 3.6 Add catalog-contract coverage for Auto Crop, Composite Split, Duplicate Review, and translated shell strings.
+- [x] 3.7 Add live-switch smoke coverage for Auto Crop, Duplicate Review, and workflow shell entries.
 
 ## 4. Review / closeout
 
