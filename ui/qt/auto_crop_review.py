@@ -201,18 +201,8 @@ class AutoCropROIWidget(QWidget):
             yMin=-h * 0.25,
             yMax=h * 1.25,
         )
-        # With lockAspect=True, setting xRange/yRange separately lets the
-        # second axis override the first and can crop the source. Fit one
-        # complete padded rect atomically instead.
-        self.view.setRange(
-            rect=QRectF(
-                -pad_x,
-                -pad_y,
-                w + pad_x * 2,
-                h + pad_y * 2,
-            ),
-            padding=0,
-        )
+        self._fit_padding = (pad_x, pad_y)
+        self._fit_source()
 
         auto = self.normalized_box(auto_box, (w, h))
         ax0, ay0, ax1, ay1 = auto
@@ -258,6 +248,55 @@ class AutoCropROIWidget(QWidget):
         self.roi.sigRegionChanged.connect(self._changed)
         self.roi.sigRegionChangeFinished.connect(self._finished)
         self._loading = False
+        # The dialog may not have its final splitter geometry yet. Re-fit once
+        # Qt completes the layout, and again on later resize events.
+        QTimer.singleShot(0, self._fit_source)
+
+    def _fit_source(self):
+        w, h = self.image_size
+        if w <= 0 or h <= 0:
+            return
+        pad_x, pad_y = getattr(
+            self,
+            "_fit_padding",
+            (max(16.0, w * 0.04), max(16.0, h * 0.04)),
+        )
+        content_w = w + pad_x * 2
+        content_h = h + pad_y * 2
+
+        # Match the target rect to the actual viewport aspect. With the same
+        # aspect ratio, ViewBox's locked-aspect correction cannot crop either
+        # source axis; it can only show the requested padded contain rect.
+        scene_rect = self.view.sceneBoundingRect()
+        viewport_w = max(1.0, float(scene_rect.width()))
+        viewport_h = max(1.0, float(scene_rect.height()))
+        viewport_aspect = viewport_w / viewport_h
+        content_aspect = content_w / content_h
+
+        target_w = content_w
+        target_h = content_h
+        if viewport_aspect > content_aspect:
+            target_w = target_h * viewport_aspect
+        else:
+            target_h = target_w / viewport_aspect
+
+        center_x = w / 2.0
+        center_y = h / 2.0
+        self.view.setRange(
+            rect=QRectF(
+                center_x - target_w / 2.0,
+                center_y - target_h / 2.0,
+                target_w,
+                target_h,
+            ),
+            padding=0,
+            disableAutoRange=True,
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.image_size != (0, 0):
+            QTimer.singleShot(0, self._fit_source)
 
     def box(self):
         if self.roi is None:
