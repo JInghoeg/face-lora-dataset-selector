@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt, Signal, QSize, QRectF
+from PySide6.QtCore import QCoreApplication, QEvent, QThread, QTimer, Qt, Signal, QSize, QRectF
 from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -361,7 +361,6 @@ class AutoCropReviewDialog(QDialog):
         self.items.itemClicked.connect(self.show_item)
         film_layout.addWidget(self.items)
 
-        self.filmstrip_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.main_splitter = QSplitter(Qt.Vertical)
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.addWidget(work)
@@ -371,10 +370,10 @@ class AutoCropReviewDialog(QDialog):
         # manual expansion through the splitter.
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
-        # Ask the splitter to keep the Filmstrip at its minimum one-row height;
-        # all remaining vertical space belongs to the primary work area.
-        self.main_splitter.setSizes([1, 0])
         root.addWidget(self.main_splitter, 1)
+        # Apply the compact one-row split after the top-level layout has its
+        # real size. Setting it before show() is overwritten by Qt size hints.
+        QTimer.singleShot(0, self._apply_initial_filmstrip_size)
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
@@ -398,6 +397,16 @@ class AutoCropReviewDialog(QDialog):
         self.close_button.clicked.connect(self.accept)
         actions.addWidget(self.close_button)
         root.addLayout(actions)
+
+    def _apply_initial_filmstrip_size(self):
+        if not hasattr(self, "main_splitter"):
+            return
+        sizes = self.main_splitter.sizes()
+        total = sum(sizes)
+        if total <= 0:
+            return
+        target = 190
+        self.main_splitter.setSizes([max(1, total - target), target])
 
     def _ui_fallback(self):
         root = QVBoxLayout(self)
