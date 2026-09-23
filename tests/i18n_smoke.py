@@ -80,6 +80,7 @@ def main() -> int:
 
         assert window.windowTitle() == "LoRA 数据集筛选与字幕清理"
         assert window.tabs.tabText(window.dataset_tab_index) == "LoRA 数据集筛选"
+        assert window.composite_btn.text() == "组合图拆分 复核…"
         assert window.language_combo.currentData() == "zh_CN"
 
         record = build_record(root)
@@ -104,6 +105,7 @@ def main() -> int:
         assert manager.language == "en_US"
         assert window.windowTitle() == "LoRA Dataset Selector & Text Cleanup"
         assert window.tabs.tabText(window.dataset_tab_index) == "LoRA Dataset Selector"
+        assert window.composite_btn.text() == "Composite Split Review…"
         assert window.auto_crop_btn.text() == "Auto Crop Review…"
         assert dialog.windowTitle() == "Auto Crop Review"
         assert dialog.accept_button.text() == "Accept Current Crop"
@@ -124,6 +126,7 @@ def main() -> int:
         assert window.windowTitle() == "LoRA 数据集筛选与字幕清理"
         assert dialog.windowTitle() == "自动裁剪复核"
         assert dialog.accept_button.text() == "接受当前裁剪框"
+        assert window.composite_btn.text() == "组合图拆分 复核…"
         assert window.auto_crop_btn.text() == "自动裁剪 复核…"
         assert "状态：" in dialog.info.text()
         assert "主体遮罩触及原图边缘" in dialog.info.text()
