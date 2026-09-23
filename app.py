@@ -786,26 +786,26 @@ class Window(QMainWindow):
         else:self.auto_crop_btn.setText(self._tr_main('自动裁剪 复核…'))
     def open_auto_crop_review(self):
         if not BACKEND.feature_available('auto_crop'):return
-        if not self.records:QMessageBox.information(self,'没有数据','请先完成图片分析。');return
+        if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.auto_crop_thread and self.auto_crop_thread.isRunning():return
         composite_pending=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if composite_pending:
-            QMessageBox.warning(self,'请先完成 Composite Split',f'还有 {len(composite_pending)} 张推荐图等待 Composite Split 复核。\n\n自动裁剪 只处理 Composite 之后的单主体推荐图。');return
+            QMessageBox.warning(self,self._tr_main('请先完成 Composite Split'),self._tr_main('还有 {count} 张推荐图等待 Composite Split 复核。\n\n自动裁剪只处理 Composite 之后的单主体推荐图。').format(count=len(composite_pending)));return
         todo=BACKEND.auto_crop_scan_todo(self.records)
         if not todo:
             candidates=BACKEND.auto_crop_review_records(self.records)
-            if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 自动裁剪 复核的候选。');return
+            if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片没有需要自动裁剪复核的候选。'));return
             AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button();return
-        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(f'自动裁剪 扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型')
-        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(f'自动裁剪 {n}/{t}：{name}'));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
+        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(self._tr_main('自动裁剪扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型').format(todo=todo))
+        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('自动裁剪 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
     def auto_crop_scan_done(self,result):
-        self.progress.setText(f'自动裁剪 扫描完成：新扫 {result.scanned} · 候选 {result.candidates} · 无需裁 {result.no_candidate} · 已缓存 {result.skipped_existing}')
+        self.progress.setText(self._tr_main('自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}').format(scanned=result.scanned,candidates=result.candidates,no_candidate=result.no_candidate,cached=result.skipped_existing))
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.update_auto_crop_button();self.save()
         candidates=BACKEND.auto_crop_review_records(self.records)
         if candidates:AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button()
-        else:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 自动裁剪 复核的候选。')
+        else:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片没有需要自动裁剪复核的候选。'))
     def auto_crop_scan_failed(self,error):
-        self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText('自动裁剪 扫描失败');QMessageBox.critical(self,'自动裁剪 扫描失败',error)
+        self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText(self._tr_main('自动裁剪扫描失败'));QMessageBox.critical(self,self._tr_main('自动裁剪扫描失败'),error)
     def auto_crop_thread_done(self):
         if self.auto_crop_worker:self.auto_crop_worker.deleteLater()
         if self.auto_crop_thread:self.auto_crop_thread.deleteLater()
@@ -898,10 +898,10 @@ class Window(QMainWindow):
         if BACKEND.feature_available('auto_crop'):
             unscanned=BACKEND.auto_crop_scan_todo(sel)
             if unscanned:
-                QMessageBox.warning(self,'还有 自动裁剪 未扫描',f'推荐图片中还有 {unscanned} 张未完成 自动裁剪 扫描。\n\n请先完成 自动裁剪，再导出训练图片。');return
+                QMessageBox.warning(self,self._tr_main('还有自动裁剪未扫描'),self._tr_main('推荐图片中还有 {count} 张未完成自动裁剪扫描。\n\n请先完成自动裁剪，再导出训练图片。').format(count=unscanned));return
             auto_pending=BACKEND.pending_auto_crop(sel)
             if auto_pending:
-                QMessageBox.warning(self,'还有 自动裁剪 待复核',f'推荐图片中还有 {len(auto_pending)} 张 自动裁剪 候选未确认。\n\n请接受裁剪或选择保留原图后再导出。');return
+                QMessageBox.warning(self,self._tr_main('还有自动裁剪待复核'),self._tr_main('推荐图片中还有 {count} 张自动裁剪候选未确认。\n\n请接受裁剪或选择保留原图后再导出。').format(count=len(auto_pending)));return
         x=QFileDialog.getExistingDirectory(self,'选择导出目录（只写新文件）')
         if not x:return
         dst=Path(x)
