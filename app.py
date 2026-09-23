@@ -16,7 +16,7 @@ try:
     from application import SelectorApplication
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
     msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
@@ -356,130 +356,6 @@ class CompositeSplitReviewDialog(QDialog):
                 self.current=-1;self.items.clear();self.outputs.clear();self.info.setText('当前没有待复核的 Composite Split 推荐图');self.preview.set_data(None,[],[],[])
             return
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
-
-class AutoCropROIWidget(QWidget):
-    regionChanged=Signal(object);regionChangeFinished=Signal(object)
-    def __init__(self,parent=None):
-        super().__init__(parent);self.image=None;self.image_size=(0,0);self.roi=None;self.auto_outline=None;self._loading=False
-        layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);self.canvas=pg.GraphicsLayoutWidget();layout.addWidget(self.canvas)
-        self.view=self.canvas.addViewBox(lockAspect=True,enableMenu=False);self.view.setAspectLocked(True);self.view.setMouseEnabled(x=False,y=False);self.view.invertY(True)
-        self.image_item=pg.ImageItem();self.image_item.setOpts(axisOrder='row-major');self.view.addItem(self.image_item)
-    @staticmethod
-    def normalized_box(box,image_size):
-        w,h=map(int,image_size);x0,y0,x1,y1=map(lambda v:int(round(float(v))),box);x0=max(0,min(max(0,w-1),x0));y0=max(0,min(max(0,h-1),y0));x1=max(x0+1,min(w,x1));y1=max(y0+1,min(h,y1));return [x0,y0,x1,y1]
-    def set_data(self,bgr,box,auto_box):
-        self._loading=True
-        if self.roi is not None:self.view.removeItem(self.roi);self.roi=None
-        if self.auto_outline is not None:self.view.removeItem(self.auto_outline);self.auto_outline=None
-        self.image=bgr
-        if bgr is None or not bgr.size:
-            self.image_item.clear();self.image_size=(0,0);self._loading=False;return
-        h,w=bgr.shape[:2];self.image_size=(w,h);rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB);self.image_item.setImage(rgb,autoLevels=False,levels=(0,255))
-        self.view.setLimits(xMin=0,xMax=w,yMin=0,yMax=h);self.view.setRange(xRange=(0,w),yRange=(0,h),padding=0)
-        auto=self.normalized_box(auto_box,(w,h));ax0,ay0,ax1,ay1=auto
-        self.auto_outline=pg.PlotCurveItem([ax0,ax1,ax1,ax0,ax0],[ay0,ay0,ay1,ay1,ay0],pen=pg.mkPen('#4aa3ff',width=2,style=Qt.DashLine));self.view.addItem(self.auto_outline)
-        current=self.normalized_box(box,(w,h));x0,y0,x1,y1=current
-        self.roi=pg.RectROI([x0,y0],[x1-x0,y1-y0],sideScalers=True,maxBounds=QRectF(0,0,w,h),movable=True,rotatable=False,resizable=True,removable=False,invertible=False,scaleSnap=True,translateSnap=True,snapSize=1,pen=pg.mkPen('#32e675',width=2))
-        # RectROI provides top-right/right/bottom handles. Add the remaining
-        # corners/sides so all four edges and corners are directly draggable.
-        for pos,center in (
-            ([0,0],[1,1]),([1,0],[0,1]),([0,1],[1,0]),
-            ([0,.5],[1,.5]),([.5,0],[.5,1]),
-        ):self.roi.addScaleHandle(pos,center)
-        self.view.addItem(self.roi);self.roi.sigRegionChanged.connect(self._changed);self.roi.sigRegionChangeFinished.connect(self._finished);self._loading=False
-    def box(self):
-        if self.roi is None:return None
-        state=self.roi.getState();pos=state['pos'];size=state['size'];return self.normalized_box([pos.x(),pos.y(),pos.x()+size.x(),pos.y()+size.y()],self.image_size)
-    def set_box(self,box):
-        if self.roi is None:return
-        x0,y0,x1,y1=self.normalized_box(box,self.image_size);self._loading=True;self.roi.setPos([x0,y0],finish=False);self.roi.setSize([x1-x0,y1-y0],finish=False);self._loading=False;self.regionChanged.emit([x0,y0,x1,y1])
-    def _changed(self,*_):
-        if not self._loading:
-            box=self.box()
-            if box:self.regionChanged.emit(box)
-    def _finished(self,*_):
-        if not self._loading:
-            box=self.box()
-            if box:self.regionChangeFinished.emit(box)
-
-class AutoCropReviewDialog(QDialog):
-    def __init__(self,records,changed,parent=None):
-        super().__init__(parent);self.records=BACKEND.auto_crop_review_records(records);self.changed=changed;self.current=-1;self.current_image=None
-        self.setWindowTitle('Auto Crop 复核');self.resize(1450,860);self.ui();self.reload()
-    @staticmethod
-    def pixmap_from_bgr(img,max_w=520,max_h=440):
-        if img is None or not img.size:return QPixmap()
-        h,w=img.shape[:2];rgb=cv2.cvtColor(img,cv2.COLOR_BGR2RGB);q=QImage(rgb.data,w,h,rgb.strides[0],QImage.Format_RGB888).copy();pix=QPixmap.fromImage(q)
-        return pix.scaled(max_w,max_h,Qt.KeepAspectRatio,Qt.SmoothTransformation)
-    def ui(self):
-        root=QVBoxLayout(self);split=QSplitter(Qt.Horizontal)
-        self.items=QListWidget();self.items.setMinimumWidth(330);self.items.itemClicked.connect(self.show_item);split.addWidget(self.items)
-        right=QWidget();rl=QVBoxLayout(right);self.info=QLabel('选择 Auto Crop 候选');self.info.setWordWrap(True);self.info.setStyleSheet('font-weight:600;');rl.addWidget(self.info)
-        previews=QSplitter(Qt.Horizontal);left=QWidget();ll=QVBoxLayout(left);ll.addWidget(QLabel('蓝虚线＝自动建议 ｜ 绿框＝当前裁剪框（可拖动 / 四边四角缩放）'));self.roi_preview=AutoCropROIWidget();self.roi_preview.regionChanged.connect(self.roi_changed);self.roi_preview.regionChangeFinished.connect(self.roi_finished);ll.addWidget(self.roi_preview,1);previews.addWidget(left)
-        right_crop=QWidget();cr=QVBoxLayout(right_crop);cr.addWidget(QLabel('当前裁剪结果预览'));self.crop_preview=QLabel();self.crop_preview.setAlignment(Qt.AlignCenter);self.crop_preview.setMinimumSize(430,430);cr.addWidget(self.crop_preview,1);previews.addWidget(right_crop);previews.setSizes([680,520]);rl.addWidget(previews,1)
-        actions=QHBoxLayout();accept=QPushButton('接受当前裁剪框');accept.clicked.connect(lambda:self.set_decision('accepted'));reset=QPushButton('重置为自动建议');reset.clicked.connect(self.reset_auto_box);keep=QPushButton('保留原图');keep.clicked.connect(lambda:self.set_decision('keep_original'));pending=QPushButton('恢复待定');pending.clicked.connect(lambda:self.set_decision('pending'))
-        for button in (accept,reset,keep,pending):actions.addWidget(button)
-        actions.addStretch(1);close=QPushButton('关闭');close.clicked.connect(self.accept);actions.addWidget(close);rl.addLayout(actions)
-        split.addWidget(right);split.setSizes([340,1110]);root.addWidget(split)
-    def label(self,r):
-        p=BACKEND.auto_crop_proposal(r)
-        if p is None:return r.path.name
-        mark={'accepted':'✓','keep_original':'○','pending':'•'}.get(p.decision,'•');state={'accepted':'已接受','keep_original':'保留原图','pending':'待定'}.get(p.decision,p.decision);edited=' · 手调' if p.manually_adjusted else ''
-        return f'{mark} {r.path.name}\n{state}{edited} · 去背景 {p.removed_area_ratio:.1%}'
-    def reload(self,select=None):
-        self.records=BACKEND.auto_crop_review_records(self.records);self.items.clear()
-        for i,r in enumerate(self.records):
-            it=QListWidgetItem(self.label(r));it.setData(Qt.UserRole,i);self.items.addItem(it)
-        if self.records:
-            target=0 if select is None else max(0,min(select,len(self.records)-1));self.items.setCurrentRow(target);self.show_item(self.items.item(target))
-        else:
-            self.current=-1;self.current_image=None;self.info.setText('当前没有 Auto Crop 候选');self.roi_preview.set_data(None,[0,0,1,1],[0,0,1,1]);self.crop_preview.clear()
-    def show_item(self,it):
-        if it is None:return
-        self.current=it.data(Qt.UserRole);r=self.records[self.current];p=BACKEND.auto_crop_proposal(r)
-        if p is None:return
-        try:
-            with Image.open(r.path) as source:
-                try:source.seek(0)
-                except EOFError:pass
-                source=ImageOps.exif_transpose(source).convert('RGB');rgb=np.asarray(source)
-            self.current_image=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
-        except Exception:return
-        self.roi_preview.set_data(self.current_image,p.box,p.auto_box);self.update_crop_preview(p.box);self.update_info(p,p.box)
-    def update_crop_preview(self,box):
-        if self.current_image is None:return
-        h,w=self.current_image.shape[:2];x0,y0,x1,y1=AutoCropROIWidget.normalized_box(box,(w,h));crop=self.current_image[y0:y1,x0:x1];self.crop_preview.setPixmap(self.pixmap_from_bgr(crop))
-    def update_info(self,p,box):
-        if self.current_image is None:return
-        h,w=self.current_image.shape[:2];x0,y0,x1,y1=AutoCropROIWidget.normalized_box(box,(w,h));kept=max(0,x1-x0)*max(0,y1-y0);removed=max(0.,min(1.,1.-kept/max(1,w*h)));state={'accepted':'已接受','keep_original':'保留原图','pending':'待定'}.get(p.decision,p.decision);kind='手动调整' if list(box)!=list(p.auto_box) else '自动建议'
-        warning='；'.join(p.warnings) if p.warnings else '无';self.info.setText(f'{self.records[self.current].path.name}\n原图 {w} × {h} → 当前 {x1-x0} × {y1-y0} · 去除 {removed:.1%}\n状态：{state} · 当前框：{kind} · alpha≥{p.alpha_min:.2f} · padding {p.padding_px}px\n提示：{warning}')
-    def roi_changed(self,box):
-        if self.current<0:return
-        p=BACKEND.auto_crop_proposal(self.records[self.current])
-        if p is None:return
-        self.update_crop_preview(box);self.update_info(p,box)
-    def roi_finished(self,box):
-        if self.current<0 or self.current_image is None:return
-        r=self.records[self.current];h,w=self.current_image.shape[:2]
-        try:
-            p=BACKEND.update_auto_crop_box(r,box,(w,h));self.changed();self.items.item(self.current).setText(self.label(r));self.update_crop_preview(p.box);self.update_info(p,p.box)
-        except Exception as e:
-            p=BACKEND.auto_crop_proposal(r)
-            if p is not None:self.roi_preview.set_box(p.box)
-            QMessageBox.warning(self,'裁剪框无效',str(e))
-    def reset_auto_box(self):
-        if self.current<0:return
-        r=self.records[self.current]
-        try:
-            p=BACKEND.reset_auto_crop_box(r);self.roi_preview.set_box(p.box);self.changed();self.items.item(self.current).setText(self.label(r));self.update_crop_preview(p.box);self.update_info(p,p.box)
-        except Exception as e:QMessageBox.warning(self,'无法重置裁剪框',str(e))
-    def set_decision(self,value):
-        if self.current<0:return
-        r=self.records[self.current]
-        if value=='accepted':BACKEND.accept_auto_crop(r)
-        elif value=='keep_original':BACKEND.keep_original_auto_crop(r)
-        else:BACKEND.restore_pending_auto_crop(r)
-        self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
     def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.setWindowTitle('LoRA 数据集筛选与字幕清理');self.resize(1400,880);self.ui()
@@ -880,14 +756,14 @@ class Window(QMainWindow):
         if not todo:
             candidates=BACKEND.auto_crop_review_records(self.records)
             if not candidates:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 Auto Crop 复核的候选。');return
-            AutoCropReviewDialog(self.records,self.auto_crop_review_changed,self).exec();self.update_auto_crop_button();return
+            AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button();return
         self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(f'Auto Crop 扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型')
         self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(f'Auto Crop {n}/{t}：{name}'));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
     def auto_crop_scan_done(self,result):
         self.progress.setText(f'Auto Crop 扫描完成：新扫 {result.scanned} · 候选 {result.candidates} · 无需裁 {result.no_candidate} · 已缓存 {result.skipped_existing}')
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.update_auto_crop_button();self.save()
         candidates=BACKEND.auto_crop_review_records(self.records)
-        if candidates:AutoCropReviewDialog(self.records,self.auto_crop_review_changed,self).exec();self.update_auto_crop_button()
+        if candidates:AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button()
         else:QMessageBox.information(self,'没有候选','当前推荐图片没有需要 Auto Crop 复核的候选。')
     def auto_crop_scan_failed(self,error):
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText('Auto Crop 扫描失败');QMessageBox.critical(self,'Auto Crop 扫描失败',error)
