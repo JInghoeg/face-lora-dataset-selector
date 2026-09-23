@@ -101,22 +101,29 @@ class LanguageManager(QObject):
         previous = self._language
         self.last_error = ""
 
-        if language == _DEFAULT_LANGUAGE:
-            self._remove_translator()
-        else:
+        candidate = None
+        if language != _DEFAULT_LANGUAGE:
             path = self.qm_path(language)
             candidate = QTranslator(self)
             if not path.exists() or not candidate.load(str(path)):
                 self.last_error = f"Translation catalog unavailable: {path}"
                 self.languageLoadFailed.emit(language, self.last_error)
                 return False
+
+        # Qt emits LanguageChange synchronously while translators are
+        # installed/removed. Publish the target locale first so widgets that
+        # handle that event observe the new language, not the previous one.
+        self._language = language
+
+        if language == _DEFAULT_LANGUAGE:
+            self._remove_translator()
+        else:
             self._remove_translator()
             self.translator.deleteLater()
             self.translator = candidate
             self.app.installTranslator(self.translator)
             self._translator_installed = True
 
-        self._language = language
         self.settings.setValue("ui/language", language)
         self.settings.sync()
 
