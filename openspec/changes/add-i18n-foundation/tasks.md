@@ -2,16 +2,16 @@
 
 ## 1. Infrastructure
 
-- [ ] 1.1 Add reusable LanguageManager using QTranslator.
-- [ ] 1.2 Persist global UI locale under the user application-data root.
-- [ ] 1.3 Add standard Qt TS/QM translation resource layout and compile helper.
-- [ ] 1.4 Package compiled translations in Portable.
+- [x] 1.1 Add reusable LanguageManager using QTranslator.
+- [x] 1.2 Persist global UI locale under the user application-data root.
+- [x] 1.3 Add standard Qt TS/QM translation resource layout and compile helper.
+- [x] 1.4 Package compiled translations in Portable.
 
 ## 2. First integration
 
-- [ ] 2.1 Add one global language selector to the main window shell.
-- [ ] 2.2 Make Auto Crop the first complete live-retranslated modern UI module.
-- [ ] 2.3 Keep legacy main-UI translation deliberately thin; do not mass-migrate obsolete presentation.
+- [x] 2.1 Add one global language selector to the main window shell.
+- [x] 2.2 Make Auto Crop the first complete live-retranslated modern UI module.
+- [x] 2.3 Keep legacy main-UI translation deliberately thin; do not mass-migrate obsolete presentation.
 
 ## 3. Verification
 
