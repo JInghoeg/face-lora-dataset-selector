@@ -117,24 +117,8 @@ jobs:
             $tag = "${{ github.ref_name }}"
           } else {
             $firstLine = (($env:RELEASE_COMMIT_MESSAGE -split "\r?\n")[0]).Trim()
-            if ($firstLine -notmatch '^release:\s+(v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)
-              throw "Release commit message must start with: release: vX.Y.Z"
-            }
-            $tag = $Matches[1]
-          }
-
-          $notes = "RELEASE_NOTES_$tag.md"
-          if (-not (Test-Path $notes)) {
-            $notes = "CHANGELOG.md"
-          }
-
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $zip $sum --clobber
-          } else {
-            gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
-          }
-) {
+            $pattern = '^release:\s+(v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$'
+            if ($firstLine -notmatch $pattern) {
               throw "Release commit message must start with: release: vX.Y.Z"
             }
             $tag = $Matches[1]
