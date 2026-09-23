@@ -1,0 +1,193 @@
+name: Composite Runtime Compatibility
+# Consolidated v0.3 QA checkpoint workflow.
+
+on:
+  push:
+    branches:
+      - feature/v0.3-composite-split
+      - feature/v0.3-workflow-recovery
+      - refactor/v0.3-architecture-boundaries
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "portable.spec"
+      - "build_portable.ps1"
+      - ".github/workflows/composite-runtime.yml"
+      - ".github/scripts/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Dependency versions
+        shell: pwsh
+        run: |
+          python -c "import sys,numpy,cv2; print(sys.version); print('numpy',numpy.__version__); print('opencv',cv2.__version__)"
+          python -c "from deepghs_yolo_runtime import detect_person,detect_heads; print('vendored DeepGHS runtime import OK')"
+
+      - name: Existing selector self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Optional Composite absence smoke
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $feature = "features\composite"
+          $featureOff = "features\composite.__disabled_for_smoke__"
+          $adapter = "composite_split.py"
+          $adapterOff = "composite_split.__disabled_for_smoke__.py"
+          try {
+            if (Test-Path $feature) { Move-Item $feature $featureOff }
+            if (Test-Path $adapter) { Move-Item $adapter $adapterOff }
+            python -c "import app; assert not app.BACKEND.feature_available('composite'); print('optional Composite absence startup OK')"
+            if ($LASTEXITCODE -ne 0) { throw "App import failed without optional Composite feature" }
+          }
+          finally {
+            if (Test-Path $adapterOff) { Move-Item $adapterOff $adapter }
+            if (Test-Path $featureOff) { Move-Item $featureOff $feature }
+          }
+
+  detector-parity:
+    needs: runtime
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[parity]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up production Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Download public DeepGHS parity image
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/deepghs/imgutils/main/test/testfile/genshin_post.jpg" -OutFile "genshin_post.jpg"
+
+      - name: Run vendored detector
+        shell: pwsh
+        run: |
+          python .github/scripts/composite_parity.py vendor --image genshin_post.jpg --output vendor.json
+
+      - name: Create official-reference environment
+        shell: pwsh
+        run: |
+          python -m venv .parity-ref
+          .\.parity-ref\Scripts\python.exe -m pip install --upgrade pip
+          .\.parity-ref\Scripts\python.exe -m pip install --no-cache-dir "dghs-imgutils==0.19.0"
+
+      - name: Run official imgutils detector
+        shell: pwsh
+        run: |
+          $env:HF_HOME = Join-Path $PWD "_parity_official_models"
+          $env:HF_HUB_CACHE = Join-Path $env:HF_HOME "hub"
+          $env:HUGGINGFACE_HUB_CACHE = $env:HF_HUB_CACHE
+          .\.parity-ref\Scripts\python.exe .github/scripts/composite_parity.py official --image genshin_post.jpg --output official.json
+
+      - name: Compare detector outputs
+        shell: pwsh
+        run: |
+          python .github/scripts/composite_parity.py compare --vendor vendor.json --official official.json
+
+  portable-smoke:
+    needs: runtime
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[portable]') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+
+      - name: Build Portable
+        shell: pwsh
+        run: |
+          .\build_portable.ps1
+
+      - name: Portable smoke test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          if (-not (Test-Path $exe)) { throw "Portable executable not found: $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) { Get-Content $err }
+            throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Portable size report
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $files = Get-ChildItem $root -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+          "Uncompressed portable: $totalMB MB" | Tee-Object -FilePath "portable-size-report.txt"
+          $files | Sort-Object Length -Descending | Select-Object -First 40 | ForEach-Object {
+            $relative = $_.FullName.Substring($root.Length + 1)
+            ("{0,7:N1} MB  {1}" -f ($_.Length / 1MB), $relative) |
+              Tee-Object -FilePath "portable-size-report.txt" -Append | Write-Host
+          }
+
+      - name: Upload size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: composite-portable-size-report
+          path: portable-size-report.txt
+
+      - name: Upload Portable QA candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: composite-portable-qa
+          path: dist/Face-LoRA-Dataset-Selector
+          retention-days: 7

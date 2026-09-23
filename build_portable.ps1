@@ -1,6 +1,16 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+python -c "import qfluentwidgets" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "Missing Fluent UI runtime. Run: python install_ui_dependencies.py"
+}
+
+python compile_translations.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Qt translation compilation failed."
+}
+
 $build = Join-Path $PSScriptRoot "build"
 $dist = Join-Path $PSScriptRoot "dist"
 
@@ -67,6 +77,7 @@ Face LoRA Dataset Selector - Windows x64 Portable
 注意：
 - 请不要只把 exe 单独复制出去，_internal 目录也是程序的一部分。
 - MI-GAN 不随压缩包分发；第一次使用 AI 修复时程序会自动下载并校验模型。
+- Composite Split 人物/头部检测模型不随压缩包分发；第一次使用 Composite Split 时会下载到程序目录下的 models\composite_split_cache。
 - 原始图片不会被覆盖。
 "@ | Set-Content (Join-Path $portable "使用说明.txt") -Encoding UTF8
 
