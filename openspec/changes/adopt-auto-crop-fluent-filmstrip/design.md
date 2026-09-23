@@ -114,3 +114,13 @@ User review of the production layout added one bounded interaction requirement b
 - no additional splitter is added inside the right inspector.
 
 This remains presentation-only and does not change Auto Crop backend or review semantics.
+
+
+## Final visual/localization correction
+
+User review added two final pre-merge presentation corrections:
+
+- user-facing `Auto Crop` wording is localized consistently to **“自动裁剪”** across the review window, main action button, progress text, warnings and export-blocking messages; internal module/class/feature identifiers remain unchanged;
+- the candidate area's vertical scrollbar receives a dialog-scoped Fluent-compatible Light/Dark style so Dark mode does not leave a light scrollbar.
+
+These changes are presentation-only and do not alter Auto Crop backend semantics.
