@@ -7,7 +7,7 @@
 - [x] 1.3 Use real thumbnails through the existing `ThumbnailWorker` / cache pipeline with stable sample IDs.
 - [x] 1.4 Add the top-right Auto Crop-scoped Light/Dark toggle and coherent scoped dark surfaces.
 - [x] 1.5 Preserve a legacy presentation fallback when Fluent is unavailable.
-- [x] 1.6 Make the Filmstrip vertically resizable via QSplitter and horizontally navigable by mouse wheel + native scrollbar.
+- [x] 1.6 Make the candidate area vertically resizable via QSplitter, wrap thumbnails into more rows as height grows, and use mouse wheel + native vertical scrollbar for overflow.
 
 ## 2. Runtime / packaging
 
@@ -23,7 +23,7 @@
 - [ ] 3.4 Render production Light and Dark screenshots for user review.
 - [ ] 3.5 Verify app startup still works with Fluent physically unavailable.
 - [ ] 3.6 Build Portable, run packaged self-test, and record final size delta.
-- [ ] 3.7 Verify Filmstrip overflow exposes a horizontal scrollbar and mouse-wheel scrolling changes its position.
+- [ ] 3.7 Verify candidate overflow exposes a vertical scrollbar, mouse-wheel scrolling changes its position, and increasing candidate-area height reveals more rows / reduces scroll range.
 
 ## 4. Closeout
 
