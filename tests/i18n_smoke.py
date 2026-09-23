@@ -255,6 +255,8 @@ def main() -> int:
             assert window.grab().save(str(args.out / "dataset_selector_en.png"))
             window.tabs.setCurrentIndex(window.text_cleanup_tab_index)
             qapp.processEvents()
+            assert_no_han(*visible_widget_texts(window.sub))
+            assert window.sub.preview.text() == "Select a thumbnail to view text boxes"
             assert window.grab().save(str(args.out / "text_cleanup_en.png"))
             window.tabs.setCurrentIndex(window.dataset_tab_index)
             qapp.processEvents()
