@@ -29,7 +29,7 @@
 
 ## 4. Closeout
 
-- [ ] 4.1 User reviews the real production Light/Dark result.
+- [x] 4.1 User reviews the real production Light/Dark result.
 - [x] 4.2 Reconcile implementation against proposal/design/tasks.
 - [ ] 4.3 Archive this change and merge only after accepted verification.
 
@@ -47,3 +47,5 @@
 - Portable directory size: base 354,107,175 bytes -> current 357,014,677 bytes; delta +2,907,502 bytes (~2.77 MiB, +0.82%).
 - Compressed QA artifact: base 157,449,121 bytes -> current 159,692,348 bytes; delta +2,243,227 bytes (~2.14 MiB, +1.42%).
 - Remaining human gate: 4.1 final production Light/Dark visual approval.
+
+- User visual review: PASS, with one final accepted correction — default candidate viewport should show one fully visible row; users can drag upward to reveal additional rows.
