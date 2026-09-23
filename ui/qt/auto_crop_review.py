@@ -203,6 +203,28 @@ class AutoCropROIWidget(QWidget):
             self.regionChangeFinished.emit(box)
 
 
+class FilmstripListWidget(QListWidget):
+    """Horizontal thumbnail strip with natural mouse-wheel scrolling."""
+
+    def wheelEvent(self, event):
+        bar = self.horizontalScrollBar()
+        delta = event.pixelDelta().y() or event.angleDelta().y()
+        if not delta:
+            delta = event.pixelDelta().x() or event.angleDelta().x()
+
+        if delta:
+            # Trackpads may provide pixel deltas while wheel mice use 120-unit
+            # angle steps. Keep both feeling responsive without vertical wrap.
+            step = int(delta)
+            if abs(step) >= 120:
+                step = int(step / 120 * max(48, self.iconSize().width() // 2))
+            bar.setValue(bar.value() - step)
+            event.accept()
+            return
+
+        super().wheelEvent(event)
+
+
 class AutoCropReviewDialog(QDialog):
     """Production Auto Crop review dialog.
 
@@ -323,7 +345,6 @@ class AutoCropReviewDialog(QDialog):
         inspector_layout.addWidget(self.crop_preview, 1)
         work.addWidget(self.inspector_card)
         work.setSizes([1010, 360])
-        root.addWidget(work, 1)
 
         self.filmstrip_card = api["SimpleCardWidget"]()
         film_layout = QVBoxLayout(self.filmstrip_card)
@@ -339,7 +360,7 @@ class AutoCropReviewDialog(QDialog):
         # QFluentWidgets ListWidget is row-oriented and its delegate compresses
         # IconMode thumbnails.  Use Qt's mature native icon view inside the
         # Fluent card so the Filmstrip shows real, useful thumbnails.
-        self.items = QListWidget()
+        self.items = FilmstripListWidget()
         self.items.setObjectName("AutoCropFilmstrip")
         self.items.setViewMode(QListView.ViewMode.IconMode)
         self.items.setFlow(QListView.Flow.LeftToRight)
@@ -351,12 +372,19 @@ class AutoCropReviewDialog(QDialog):
         self.items.setGridSize(QSize(136, 146))
         self.items.setSpacing(2)
         self.items.setUniformItemSizes(True)
-        self.items.setFixedHeight(150)
+        self.items.setMinimumHeight(116)
+        self.items.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.items.itemClicked.connect(self.show_item)
         film_layout.addWidget(self.items)
-        root.addWidget(self.filmstrip_card)
+
+        self.main_splitter = QSplitter(Qt.Vertical)
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.addWidget(work)
+        self.main_splitter.addWidget(self.filmstrip_card)
+        self.main_splitter.setSizes([660, 170])
+        root.addWidget(self.main_splitter, 1)
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
