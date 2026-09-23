@@ -71,7 +71,7 @@ def _load_fluent():
 class AutoCropFilmstripList(QListWidget):
     """Native icon view with a one-row default size hint and normal expansion."""
 
-    DEFAULT_HEIGHT = 150
+    DEFAULT_HEIGHT = 146
 
     def sizeHint(self):
         hint = super().sizeHint()
