@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtGui import QImage
 
 
@@ -33,6 +33,8 @@ class ThumbnailWorker(QObject):
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             for index, photo in self.items:
+                if QThread.currentThread().isInterruptionRequested():
+                    break
                 cache = self.disk_path(photo)
                 try:
                     with Image.open(cache if cache.exists() else photo.path) as image:
