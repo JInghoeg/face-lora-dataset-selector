@@ -12,7 +12,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QObject, QThread, Qt, Signal, QSize, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -38,6 +38,19 @@ from .thumbnail import ThumbnailWorker
 
 def _path_key(path):
     return str(Path(path).resolve()).casefold()
+
+
+def _combo_value(combo):
+    value = combo.currentData()
+    return combo.currentText() if value is None else value
+
+
+def _set_combo_value(combo, value):
+    index = combo.findData(value)
+    if index < 0:
+        index = combo.findText(value)
+    if index >= 0:
+        combo.setCurrentIndex(index)
 
 
 class TextScan(QObject):
@@ -120,92 +133,155 @@ class SubtitleTab(QWidget):
         self.ui()
         self.restore()
 
+    @staticmethod
+    def _tr(source):
+        return QCoreApplication.translate("TextCleanupTab", source)
+
+    def _retranslate_combo(self, combo, items, default_value):
+        current = _combo_value(combo) if combo.count() else default_value
+        combo.blockSignals(True)
+        combo.clear()
+        for source, value in items:
+            combo.addItem(self._tr(source), value)
+        _set_combo_value(combo, current if current not in (None, "") else default_value)
+        combo.blockSignals(False)
+
+    def retranslate(self):
+        self.pick_input_btn.setText(self._tr("选择输入目录"))
+        self.pick_output_btn.setText(self._tr("选择输出目录"))
+        if not self.folder:
+            self.input.setText(self._tr("未选择输入目录"))
+        if not self.output:
+            self.output_label.setText(self._tr("未选择输出目录"))
+        self.scan.setText(self._tr("扫描文字"))
+        self.update_add_button_text()
+        self.delete_btn.setText(self._tr("删除选中区域"))
+        self.method_label.setText(self._tr("方式"))
+        self._retranslate_combo(
+            self.method,
+            [
+                ("AI 修复（MI-GAN）", "AI 修复（MI-GAN）"),
+                ("快速修复（TELEA）", "快速修复（TELEA）"),
+                ("Navier-Stokes", "Navier-Stokes"),
+            ],
+            "AI 修复（MI-GAN）",
+        )
+        self.expand.setPrefix(self._tr("Mask 扩张 "))
+        self.radius.setPrefix(self._tr("修复半径 "))
+        self.preview_btn.setText(self._tr("预览修复"))
+        self.batch_btn.setText(self._tr("批量处理到新目录"))
+        self.view_label.setText(self._tr("查看"))
+        self._retranslate_combo(
+            self.view,
+            [
+                ("全部图片", "全部图片"),
+                ("仅显示需要修复", "仅显示需要修复"),
+                ("仅显示有文字", "仅显示有文字"),
+                ("仅显示人工修改", "仅显示人工修改"),
+            ],
+            "全部图片",
+        )
+        self.select_suggested_btn.setText(self._tr("全选建议修复"))
+        self.clear_page_btn.setText(self._tr("取消当前页全部"))
+        self.min_height.setPrefix(self._tr("最小高 "))
+        self.min_area.setPrefix(self._tr("最小面积 "))
+        self.min_conf.setPrefix(self._tr("最低置信度 "))
+        self.legend.setText(self._tr("灰色＝检测到文字；绿色＝建议/已选修复；橙色＝人工修改。勾选仅控制修复。"))
+        self.prev_image.setText(self._tr("上一张"))
+        self.next_image.setText(self._tr("下一张"))
+        self.prev_page.setText(self._tr("上一页"))
+        self.next_page.setText(self._tr("下一页"))
+        if self.records:
+            self.refresh(False)
+        else:
+            self.page_label.setText(self._tr("第 0/0 页"))
+            self.update_summary()
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.LanguageChange and hasattr(self, "pick_input_btn"):
+            self.retranslate()
+        super().changeEvent(event)
+
+    def update_add_button_text(self):
+        self.add.setText(self._tr("添加区域：开") if self.add.isChecked() else self._tr("添加区域：关"))
+
     def ui(self):
         layout = QVBoxLayout(self)
         paths = QGridLayout()
-        self.input = QLabel("未选择输入目录")
-        self.output_label = QLabel("未选择输出目录")
-        pick_input = QPushButton("选择输入目录")
-        pick_output = QPushButton("选择输出目录")
-        pick_input.clicked.connect(self.pick_input)
-        pick_output.clicked.connect(self.pick_output)
-        paths.addWidget(pick_input, 0, 0)
+        self.input = QLabel()
+        self.output_label = QLabel()
+        self.pick_input_btn = QPushButton()
+        self.pick_output_btn = QPushButton()
+        self.pick_input_btn.clicked.connect(self.pick_input)
+        self.pick_output_btn.clicked.connect(self.pick_output)
+        paths.addWidget(self.pick_input_btn, 0, 0)
         paths.addWidget(self.input, 0, 1)
-        paths.addWidget(pick_output, 1, 0)
+        paths.addWidget(self.pick_output_btn, 1, 0)
         paths.addWidget(self.output_label, 1, 1)
         layout.addLayout(paths)
 
         controls = QHBoxLayout()
-        self.scan = QPushButton("扫描文字")
+        self.scan = QPushButton()
         self.scan.clicked.connect(self.start_scan)
-        self.add = QPushButton("添加区域：关")
+        self.add = QPushButton()
         self.add.setCheckable(True)
         self.add.toggled.connect(
             lambda enabled: (
                 self.preview.__setattr__("add", enabled),
-                self.add.setText("添加区域：开" if enabled else "添加区域：关"),
+                self.update_add_button_text(),
             )
         )
-        delete = QPushButton("删除选中区域")
-        delete.clicked.connect(self.delete)
+        self.delete_btn = QPushButton()
+        self.delete_btn.clicked.connect(self.delete)
         self.method = QComboBox()
-        self.method.addItems(
-            ["AI 修复（MI-GAN）", "快速修复（TELEA）", "Navier-Stokes"]
-        )
         self.expand = QSpinBox()
         self.expand.setRange(0, 40)
         self.expand.setValue(5)
-        self.expand.setPrefix("Mask 扩张 ")
         self.radius = QSpinBox()
         self.radius.setRange(1, 30)
         self.radius.setValue(4)
-        self.radius.setPrefix("修复半径 ")
-        preview = QPushButton("预览修复")
-        preview.clicked.connect(self.preview_repair)
-        batch = QPushButton("批量处理到新目录")
-        batch.clicked.connect(self.start_batch)
+        self.preview_btn = QPushButton()
+        self.preview_btn.clicked.connect(self.preview_repair)
+        self.batch_btn = QPushButton()
+        self.batch_btn.clicked.connect(self.start_batch)
+        self.method_label = QLabel()
         for widget in (
             self.scan,
             self.add,
-            delete,
-            QLabel("方式"),
+            self.delete_btn,
+            self.method_label,
             self.method,
             self.expand,
             self.radius,
-            preview,
-            batch,
+            self.preview_btn,
+            self.batch_btn,
         ):
             controls.addWidget(widget)
         layout.addLayout(controls)
 
         filters = QHBoxLayout()
         self.view = QComboBox()
-        self.view.addItems(
-            ["全部图片", "仅显示需要修复", "仅显示有文字", "仅显示人工修改"]
-        )
-        self.view.currentTextChanged.connect(self.filter_changed)
-        select_suggested = QPushButton("全选建议修复")
-        select_suggested.clicked.connect(self.select_suggested)
-        clear = QPushButton("取消当前页全部")
-        clear.clicked.connect(self.clear_page)
+        self.view.currentIndexChanged.connect(self.filter_changed)
+        self.select_suggested_btn = QPushButton()
+        self.select_suggested_btn.clicked.connect(self.select_suggested)
+        self.clear_page_btn = QPushButton()
+        self.clear_page_btn.clicked.connect(self.clear_page)
         self.min_height = QSpinBox()
         self.min_height.setRange(2, 80)
         self.min_height.setValue(6)
-        self.min_height.setPrefix("最小高 ")
         self.min_area = QSpinBox()
         self.min_area.setRange(4, 5000)
         self.min_area.setValue(36)
-        self.min_area.setPrefix("最小面积 ")
         self.min_conf = QDoubleSpinBox()
         self.min_conf.setRange(0, 0.99)
         self.min_conf.setSingleStep(0.05)
         self.min_conf.setValue(0.0)
-        self.min_conf.setPrefix("最低置信度 ")
+        self.view_label = QLabel()
         for widget in (
-            QLabel("查看"),
+            self.view_label,
             self.view,
-            select_suggested,
-            clear,
+            self.select_suggested_btn,
+            self.clear_page_btn,
             self.min_height,
             self.min_area,
             self.min_conf,
@@ -214,7 +290,7 @@ class SubtitleTab(QWidget):
         for widget in (self.min_height, self.min_area, self.min_conf):
             widget.valueChanged.connect(self.filter_changed)
         filters.addStretch(1)
-        self.summary = QLabel("检测到文字：0 · 建议修复：0 · 人工修改：0")
+        self.summary = QLabel()
         filters.addWidget(self.summary)
         layout.addLayout(filters)
         self.bar = QProgressBar()
@@ -235,19 +311,15 @@ class SubtitleTab(QWidget):
         self.preview = ImagePreview()
         self.preview.drawn.connect(self.new_box)
         right_layout.addWidget(self.preview, 1)
-        right_layout.addWidget(
-            QLabel(
-                "灰色＝检测到文字；绿色＝建议/已选修复；"
-                "橙色＝人工修改。勾选仅控制修复。"
-            )
-        )
+        self.legend = QLabel()
+        right_layout.addWidget(self.legend)
         self.boxes = QListWidget()
         self.boxes.itemChanged.connect(self.checked)
         right_layout.addWidget(self.boxes)
         image_nav = QHBoxLayout()
-        self.prev_image = QPushButton("上一张")
+        self.prev_image = QPushButton()
         self.prev_image.clicked.connect(lambda: self.move_image(-1))
-        self.next_image = QPushButton("下一张")
+        self.next_image = QPushButton()
         self.next_image.clicked.connect(lambda: self.move_image(1))
         image_nav.addWidget(self.prev_image)
         image_nav.addWidget(self.next_image)
@@ -257,10 +329,10 @@ class SubtitleTab(QWidget):
         layout.addWidget(splitter, 1)
 
         page_nav = QHBoxLayout()
-        self.prev_page = QPushButton("上一页")
+        self.prev_page = QPushButton()
         self.prev_page.clicked.connect(lambda: self.change_page(-1))
-        self.page_label = QLabel("第 0/0 页")
-        self.next_page = QPushButton("下一页")
+        self.page_label = QLabel()
+        self.next_page = QPushButton()
         self.next_page.clicked.connect(lambda: self.change_page(1))
         page_nav.addStretch(1)
         page_nav.addWidget(self.prev_page)
@@ -268,11 +340,12 @@ class SubtitleTab(QWidget):
         page_nav.addWidget(self.next_page)
         page_nav.addStretch(1)
         layout.addLayout(page_nav)
+        self.retranslate()
 
     def pick_input(self):
         value = QFileDialog.getExistingDirectory(
             self,
-            "选择待去字幕图片目录",
+            self._tr("选择待去字幕图片目录"),
             str(self.folder or self.app_dir),
         )
         if value:
@@ -283,7 +356,7 @@ class SubtitleTab(QWidget):
     def pick_output(self):
         value = QFileDialog.getExistingDirectory(
             self,
-            "选择输出目录（只写新文件）",
+            self._tr("选择输出目录（只写新文件）"),
             str(self.output or self.app_dir),
         )
         if value:
@@ -309,7 +382,7 @@ class SubtitleTab(QWidget):
         self.worker.progress.connect(self.scan_progress)
         self.worker.finished.connect(self.scanned)
         self.worker.failed.connect(
-            lambda error: QMessageBox.critical(self, "扫描失败", error)
+            lambda error: QMessageBox.critical(self, self._tr("扫描失败"), error)
         )
         self.worker.finished.connect(self.thread.quit)
         self.worker.failed.connect(self.thread.quit)
@@ -319,7 +392,7 @@ class SubtitleTab(QWidget):
     def scan_progress(self, current, total, name):
         self.bar.setRange(0, total)
         self.bar.setValue(current)
-        self.bar.setFormat(f"扫描文字 {current}/{total}: {name}")
+        self.bar.setFormat(self._tr("扫描文字 {current}/{total}: {name}").format(current=current,total=total,name=name))
 
     def scanned(self, records):
         self.records = records
@@ -327,7 +400,7 @@ class SubtitleTab(QWidget):
         self.page = 0
         self.refresh()
         self.schedule_save()
-        self.bar.setFormat(f"扫描完成：{len(records)} 张")
+        self.bar.setFormat(self._tr("扫描完成：{count} 张").format(count=len(records)))
 
     def done(self):
         self.scan.setEnabled(True)
@@ -354,7 +427,7 @@ class SubtitleTab(QWidget):
         return self.backend.text_cleanup_ensure_size(record)
 
     def filtered(self):
-        mode = self.view.currentText()
+        mode = _combo_value(self.view)
         output = []
         for index, record in enumerate(self.records):
             good = self.eligible(record)
@@ -635,7 +708,9 @@ class SubtitleTab(QWidget):
         )
         manual = sum(any(record.manual) for record in self.records)
         self.summary.setText(
-            f"检测到文字：{detected} · 建议修复：{selected} · 人工修改：{manual}"
+            self._tr("检测到文字：{detected} · 建议修复：{selected} · 人工修改：{manual}").format(
+                detected=detected, selected=selected, manual=manual
+            )
         )
 
     def preview_repair(self):
@@ -643,31 +718,30 @@ class SubtitleTab(QWidget):
             return
         try:
             if (
-                self.method.currentText() == "AI 修复（MI-GAN）"
+                _combo_value(self.method) == "AI 修复（MI-GAN）"
                 and not self.backend.text_cleanup_migan_ready()
             ):
                 QMessageBox.information(
                     self,
-                    "首次使用 MI-GAN",
-                    "首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。"
-                    "下载完成后会自动校验文件。",
+                    self._tr("首次使用 MI-GAN"),
+                    self._tr("首次使用会自动从上游下载约 28 MB 的 MI-GAN 模型。下载完成后会自动校验文件。"),
                 )
             image = self.backend.text_cleanup_repair(
                 self.records[self.current],
-                method=self.method.currentText(),
+                method=_combo_value(self.method),
                 expand=self.expand.value(),
                 radius=self.radius.value(),
             )
             self.preview.set_data(image, [], [], [])
         except Exception as exc:
-            QMessageBox.critical(self, "预览修复失败", str(exc))
+            QMessageBox.critical(self, self._tr("预览修复失败"), str(exc))
 
     def start_batch(self):
         if not self.folder or not self.output or not self.records:
             QMessageBox.information(
                 self,
-                "缺少内容",
-                "请先选择输入、输出目录并扫描文字。",
+                self._tr("缺少内容"),
+                self._tr("请先选择输入、输出目录并扫描文字。"),
             )
             return
         if self.thread and self.thread.isRunning():
@@ -678,21 +752,21 @@ class SubtitleTab(QWidget):
         ):
             QMessageBox.warning(
                 self,
-                "输出目录无效",
-                "输出目录必须是源目录以外的新目录。",
+                self._tr("输出目录无效"),
+                self._tr("输出目录必须是源目录以外的新目录。"),
             )
             return
         self.scan.setEnabled(False)
         self.bar.setRange(0, len(self.records))
         self.bar.setValue(0)
-        self.bar.setFormat("批量处理准备中…")
+        self.bar.setFormat(self._tr("批量处理准备中…"))
         self.thread = QThread(self)
         self.worker = TextCleanupBatchWorker(
             self.backend,
             self.folder,
             self.output,
             self.records,
-            self.method.currentText(),
+            _combo_value(self.method),
             self.expand.value(),
             self.radius.value(),
         )
@@ -709,20 +783,19 @@ class SubtitleTab(QWidget):
     def batch_progress(self, current, total, name):
         self.bar.setRange(0, total)
         self.bar.setValue(current)
-        self.bar.setFormat(f"批量处理 {current}/{total}: {name}")
+        self.bar.setFormat(self._tr("批量处理 {current}/{total}: {name}").format(current=current,total=total,name=name))
 
     def batch_done(self, result):
-        self.bar.setFormat(f"批量处理完成：{result.written} 张")
+        self.bar.setFormat(self._tr("批量处理完成：{count} 张").format(count=result.written))
         QMessageBox.information(
             self,
-            "批量处理完成",
-            f"已写入 {result.written} 张图片到新目录：\n"
-            f"{self.output}\n\n源图片未被修改。",
+            self._tr("批量处理完成"),
+            self._tr("已写入 {count} 张图片到新目录：\n{output}\n\n源图片未被修改。").format(count=result.written,output=self.output),
         )
 
     def batch_failed(self, error):
-        self.bar.setFormat("批量处理失败")
-        QMessageBox.critical(self, "批量处理失败", error)
+        self.bar.setFormat(self._tr("批量处理失败"))
+        QMessageBox.critical(self, self._tr("批量处理失败"), error)
 
     def restore(self):
         try:
@@ -730,12 +803,12 @@ class SubtitleTab(QWidget):
             self.folder = state.folder
             self.output = state.output
             self.input.setText(
-                str(self.folder) if self.folder else "未选择输入目录"
+                str(self.folder) if self.folder else self._tr("未选择输入目录")
             )
             self.output_label.setText(
-                str(self.output) if self.output else "未选择输出目录"
+                str(self.output) if self.output else self._tr("未选择输出目录")
             )
-            self.method.setCurrentText(state.method)
+            _set_combo_value(self.method, state.method)
             self.expand.setValue(state.expand)
             self.radius.setValue(state.radius)
             self.min_height.setValue(state.min_height)
@@ -756,7 +829,7 @@ class SubtitleTab(QWidget):
                 folder=self.folder,
                 output=self.output,
                 records=self.records,
-                method=self.method.currentText(),
+                method=_combo_value(self.method),
                 expand=self.expand.value(),
                 radius=self.radius.value(),
                 min_height=self.min_height.value(),
