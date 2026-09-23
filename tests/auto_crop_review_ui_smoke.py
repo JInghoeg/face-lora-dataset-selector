@@ -107,8 +107,13 @@ def verify_filmstrip_navigation(qapp, dialog):
     assert dialog.items.isWrapping()
     assert dialog.items.horizontalScrollBar().maximum() == 0
 
-    # At the default compact height, wrapped candidate rows must overflow
-    # vertically instead of turning into a horizontal single-row strip.
+    # At the default compact height, exactly one candidate row should be
+    # visible while additional wrapped rows overflow vertically.
+    grid_h = dialog.items.gridSize().height()
+    viewport_h = dialog.items.viewport().height()
+    assert viewport_h >= grid_h - 4, (viewport_h, grid_h)
+    assert viewport_h < grid_h * 2, (viewport_h, grid_h)
+
     vbar = dialog.items.verticalScrollBar()
     compact_max = vbar.maximum()
     assert compact_max > 0, compact_max
