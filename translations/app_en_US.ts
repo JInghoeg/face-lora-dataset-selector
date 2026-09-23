@@ -495,4 +495,8 @@ Source images were not modified.</translation></message>
     <message><source>仅显示有文字</source><translation>Contains Text Only</translation></message>
     <message><source>仅显示人工修改</source><translation>Manual Changes Only</translation></message>
   </context>
+  <context>
+    <name>ImagePreview</name>
+    <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
+  </context>
 </TS>
