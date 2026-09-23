@@ -42,5 +42,19 @@
     <message><source>自动裁剪 复核…</source><translation>Auto Crop Review…</translation></message>
     <message><source>自动裁剪 复核… ({total} / 待定 {pending} / 未扫 {todo})</source><translation>Auto Crop Review… ({total} / Pending {pending} / Unscanned {todo})</translation></message>
     <message><source>自动裁剪 复核…（未扫 {todo}）</source><translation>Auto Crop Review… (Unscanned {todo})</translation></message>
+    <message><source>没有数据</source><translation>No Data</translation></message>
+    <message><source>请先完成图片分析。</source><translation>Please complete image analysis first.</translation></message>
+    <message><source>请先完成 Composite Split</source><translation>Complete Composite Split First</translation></message>
+    <message><source>还有 {count} 张推荐图等待 Composite Split 复核。\n\n自动裁剪只处理 Composite 之后的单主体推荐图。</source><translation>{count} recommended images are still waiting for Composite Split review.\n\nAuto Crop only processes single-subject recommended images after Composite Split.</translation></message>
+    <message><source>没有候选</source><translation>No Candidates</translation></message>
+    <message><source>当前推荐图片没有需要自动裁剪复核的候选。</source><translation>No current recommended images require Auto Crop review.</translation></message>
+    <message><source>自动裁剪扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型</source><translation>Preparing Auto Crop scan: {todo} images. ISNetIS will be downloaded on first use if not cached.</translation></message>
+    <message><source>自动裁剪 {current}/{total}：{name}</source><translation>Auto Crop {current}/{total}: {name}</translation></message>
+    <message><source>自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}</source><translation>Auto Crop scan complete: Scanned {scanned} · Candidates {candidates} · No crop needed {no_candidate} · Cached {cached}</translation></message>
+    <message><source>自动裁剪扫描失败</source><translation>Auto Crop Scan Failed</translation></message>
+    <message><source>还有自动裁剪未扫描</source><translation>Auto Crop Scan Incomplete</translation></message>
+    <message><source>推荐图片中还有 {count} 张未完成自动裁剪扫描。\n\n请先完成自动裁剪，再导出训练图片。</source><translation>{count} recommended images have not completed Auto Crop scanning.\n\nComplete Auto Crop before exporting training images.</translation></message>
+    <message><source>还有自动裁剪待复核</source><translation>Auto Crop Review Pending</translation></message>
+    <message><source>推荐图片中还有 {count} 张自动裁剪候选未确认。\n\n请接受裁剪或选择保留原图后再导出。</source><translation>{count} Auto Crop candidates are still unconfirmed.\n\nAccept the crop or choose Keep Original before exporting.</translation></message>
   </context>
 </TS>
