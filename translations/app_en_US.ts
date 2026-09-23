@@ -28,6 +28,7 @@
     <message><source>状态：{state} · 当前框：{kind}</source><translation>Status: {state} · Crop: {kind}</translation></message>
     <message><source>alpha≥{alpha} · padding {padding}px</source><translation>alpha≥{alpha} · padding {padding}px</translation></message>
     <message><source>提示：{warning}</source><translation>Notes: {warning}</translation></message>
+    <message><source>主体遮罩触及原图边缘</source><translation>Subject mask touches the source edge</translation></message>
     <message><source>裁剪框无效</source><translation>Invalid Crop</translation></message>
     <message><source>无法重置裁剪框</source><translation>Unable to Reset Crop</translation></message>
     <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
