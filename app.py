@@ -1,6 +1,6 @@
 """本地 LoRA 数据集筛选与批量字幕清理。"""
 from __future__ import annotations
-import csv, hashlib, json, math, os, pickle, shutil, sys, tempfile, time, traceback, uuid
+import csv, hashlib, json, math, os, pickle, re, shutil, sys, tempfile, time, traceback, uuid
 from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -390,6 +390,67 @@ class Window(QMainWindow):
         return QCoreApplication.translate('MainWindow',source)
     def _display_value(self,value):
         return self._tr_main(str(value)) if value not in (None,'') else self._tr_main('无')
+    def _english_ui(self):
+        try:return ui_language_manager().language=='en_US'
+        except Exception:return False
+    def _finding_display(self,finding):
+        if not self._english_ui():return finding_text(finding)
+        error_detail=(finding.detail or '').split('：',1)[-1]
+        fixed={
+            'no_face_full_body_review':'No face detected, but a full body was detected; this may be a useful back/back-facing sample and needs manual review.',
+            'no_face_not_full_body':'No face was found at either detector threshold, and the image is not full-body.',
+            'low_resolution':'The image short side is below 512 px.',
+            'low_face_pixels':'The primary face has too few actual pixels.',
+            'low_face_ratio':'The primary face occupies too little of the frame.',
+            'severe_face_blur':'The primary face is severely blurred.',
+            'low_face_quality':'eDifFIQA face quality is low.',
+            'high_brisque':'BRISQUE overall-image quality is low.',
+            'extreme_exposure':'The image appears severely underexposed or overexposed.',
+        }
+        if finding.code=='secondary_faces_detected':
+            return self._tr_main('去重后仍检测到 {count} 张独立人脸，需确认是否多人').format(count=int(finding.value or 0))
+        error_prefix={
+            'read_error':'无法读取图片：{error}',
+            'pose_analysis_error':'景别/姿态分析失败：{error}',
+            'face_detection_error':'人脸检测失败：{error}',
+            'face_sharpness_error':'主脸清晰度分析失败：{error}',
+            'face_quality_error':'eDifFIQA 分析失败：{error}',
+            'head_pose_error':'头部姿态分析失败：{error}',
+            'brisque_error':'BRISQUE 分析失败：{error}',
+        }
+        if finding.code in error_prefix:
+            return self._tr_main(error_prefix[finding.code]).format(error=error_detail)
+        if finding.code in fixed:
+            return self._tr_main(fixed[finding.code])
+        return finding.code
+    def _reason_display(self,record,reason):
+        if not self._english_ui():return reason
+        if reason.startswith('硬淘汰：'):
+            raw=reason.split('：',1)[1]
+            finding=next((x for x in record.hard_rejects if finding_text(x)==raw),None)
+            return self._tr_main('硬淘汰：{reason}').format(reason=self._finding_display(finding) if finding else raw)
+        if reason.startswith('需先复核：'):
+            raw=reason.split('：',1)[1]
+            finding=next((x for x in record.review_flags if finding_text(x)==raw),None)
+            return self._tr_main('需先复核：{reason}').format(reason=self._finding_display(finding) if finding else raw)
+        match=re.fullmatch(r'主脸清晰度 ([0-9.]+) < 40',reason)
+        if match:return self._tr_main('主脸清晰度 {value} < 40').format(value=match.group(1))
+        match=re.fullmatch(r'Duplicate Group (\d+) 已保留更优代表（组内 (\d+)/(\d+)）',reason)
+        if match:return self._tr_main('Duplicate Group {group} 已保留更优代表（组内 {rank}/{size}）').format(group=match.group(1),rank=match.group(2),size=match.group(3))
+        if reason=='同类候选中已有更优代表':return self._tr_main(reason)
+        if reason=='未通过自动推荐基础门槛':return self._tr_main(reason)
+        match=re.fullmatch(r'自动推荐：通过基础门槛，并用于补足 (.+) / (.+) 覆盖',reason)
+        if match:return self._tr_main('自动推荐：通过基础门槛，并用于补足 {scale} / {angle} 覆盖').format(scale=self._display_value(match.group(1)),angle=self._display_value(match.group(2)))
+        match=re.fullmatch(r'已通过基础门槛，但当前自动目标 (\d+) 张的景别×角度覆盖分配未选中（(.+) / (.+)）',reason)
+        if match:return self._tr_main('已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{scale} / {angle}）').format(target=match.group(1),scale=self._display_value(match.group(2)),angle=self._display_value(match.group(3)))
+        match=re.fullmatch(r'人工状态优先：(.+)（自动基线：(.+)）',reason)
+        if match:return self._tr_main('人工状态优先：{manual}（自动基线：{auto}）').format(manual=self._display_value(match.group(1)),auto=self._display_value(match.group(2)))
+        return reason
+    def _backend_status_display(self,message):
+        if not self._english_ui():return message
+        match=re.fullmatch(r'分析 (\d+) 张变化图片；其余恢复缓存…',str(message))
+        if match:return self._tr_main('分析 {count} 张变化图片；其余恢复缓存…').format(count=match.group(1))
+        return message
     def _retranslate_combo(self, combo, items, default_value):
         current=combo_value(combo) if combo.count() else default_value
         combo.blockSignals(True);combo.clear()
@@ -595,7 +656,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
-        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.progress.setText);self.worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('分析 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,self._tr_main('分析失败'),e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
+        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(lambda m:self.progress.setText(self._backend_status_display(m)));self.worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('分析 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,self._tr_main('分析失败'),e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
     def done(self,rs):
         self.records=rs
         if self.pending_composite_outputs:
@@ -744,7 +805,7 @@ class Window(QMainWindow):
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);old_page=self.page;scroll=self.grid.verticalScrollBar().value();self.page,pages=clamp_page(self.page,len(visible));self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE];rows=[]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);reason=r.recommendation_reasons[0] if r.recommendation_reasons else self._tr_main('无')
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);raw_reason=r.recommendation_reasons[0] if r.recommendation_reasons else '';reason=self._reason_display(r,raw_reason) if raw_reason else self._tr_main('无')
             tooltip=self._tr_main('{status} · {eligibility} · AI {ai} · 人脸 {faces} · {scale} · {angle} · eDifFIQA {quality} · 组 {rank}/{size}\n推荐/备选原因：{reason}').format(status=self._display_value(r.status),eligibility=r.eligibility,ai=self._display_value(r.ai_suggestion.decision if r.ai_suggestion else '无'),faces=r.faces,scale=self._display_value(r.person_scale),angle=self._display_value(r.angle_class),quality=f'{r.face_quality:.3f}',rank=gr,size=gs,reason=reason)
             rows.append(DatasetViewRow(i,r.sample_id,r.path.name,tooltip,QIcon(pix),QColor(COLORS[r.status])))
         self.dataset_model.set_rows(rows)
@@ -769,7 +830,7 @@ class Window(QMainWindow):
     def details(self,index):
         r=self.record_from_view(index)
         if r is None:return
-        none=self._tr_main('无');flags='；'.join(finding_text(x) for x in r.review_flags) or none;rejects='；'.join(finding_text(x) for x in r.hard_rejects) or none;gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=self._tr_main('第 {group} 组').format(group=r.duplicate_group) if r.duplicate_group else self._tr_main('无（独立图片）');primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else none;status_source=self._tr_main('人工') if r.manual_status else self._tr_main('自动');rank_text=qr if qr else self._tr_main('未达推荐门槛');reason_text='；'.join(r.recommendation_reasons) or none
+        none=self._tr_main('无');flags='；'.join(self._finding_display(x) for x in r.review_flags) or none;rejects='；'.join(self._finding_display(x) for x in r.hard_rejects) or none;gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=self._tr_main('第 {group} 组').format(group=r.duplicate_group) if r.duplicate_group else self._tr_main('无（独立图片）');primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else none;status_source=self._tr_main('人工') if r.manual_status else self._tr_main('自动');rank_text=qr if qr else self._tr_main('未达推荐门槛');reason_text='；'.join(self._reason_display(r,x) for x in r.recommendation_reasons) or none
         self.detail.setText(self._tr_main('文件：{file}\n样本 ID：{sample_id}\n\n状态：{status}（{source}）\n判定状态：{eligibility}\n分辨率：{width} × {height}\n人脸检测数：{faces}\n主脸置信度：{confidence}\n主脸占比：{ratio}%\n主脸实际尺寸：{face_px}px\neDifFIQA-T：{fiqa}（高更好）\nBRISQUE：{brisque}（低更好）\nLaplacian 清晰度：{sharpness}\n平均亮度：{brightness}\nyaw / pitch / roll：{yaw}° / {pitch}° / {roll}°\n水平角度分类：{angle}\n俯仰分类：{pitch_class}\n景别：{scale}\n重复组：{duplicate}\n组内数量：{group_size}\n组内排名：{group_rank} / {group_size}\n合格成员排名：{qualified_rank} / {qualified_size}\n\n推荐/备选原因：{reason}\n需复核：{flags}\n硬淘汰：{rejects}').format(file=r.path.name,sample_id=r.sample_id,status=self._display_value(r.status),source=status_source,eligibility=r.eligibility,width=r.width,height=r.height,faces=r.faces,confidence=pconf,ratio=f'{r.face_ratio*100:.1f}',face_px=r.face_px,fiqa=f'{r.face_quality:.4f}',brisque=f'{r.brisque:.2f}',sharpness=f'{r.blur:.1f}',brightness=f'{r.brightness:.1f}',yaw=f'{r.yaw:.1f}',pitch=f'{r.pitch:.1f}',roll=f'{r.roll:.1f}',angle=self._display_value(r.angle_class),pitch_class=self._display_value(r.pitch_class),scale=self._display_value(r.person_scale),duplicate=dup,group_size=gs,group_rank=gr,qualified_rank=rank_text,qualified_size=qs,reason=reason_text,flags=flags,rejects=rejects));self.update_ai_panel(r)
     def update_ai_panel(self,r=None):
         r=r or self.selected()
