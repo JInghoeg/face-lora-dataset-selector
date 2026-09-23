@@ -7,6 +7,7 @@ on:
     paths:
       - "ui/i18n/**"
       - "ui/qt/auto_crop_review.py"
+      - "ui/qt/text_cleanup.py"
       - "translations/**"
       - "compile_translations.py"
       - "app.py"
@@ -14,12 +15,14 @@ on:
       - "build_portable.ps1"
       - "portable.spec"
       - "tests/i18n_smoke.py"
+      - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
       - ".github/workflows/i18n-foundation.yml"
   pull_request:
     paths:
       - "ui/i18n/**"
       - "ui/qt/auto_crop_review.py"
+      - "ui/qt/text_cleanup.py"
       - "translations/**"
       - "compile_translations.py"
       - "app.py"
@@ -27,6 +30,7 @@ on:
       - "build_portable.ps1"
       - "portable.spec"
       - "tests/i18n_smoke.py"
+      - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
       - ".github/workflows/i18n-foundation.yml"
 
@@ -86,7 +90,19 @@ jobs:
       - name: Live language switch smoke
         shell: pwsh
         run: |
-          python tests/i18n_smoke.py
+          if ("${{ matrix.python }}" -eq "3.12") {
+            python tests/i18n_smoke.py --out i18n-render
+          } else {
+            python tests/i18n_smoke.py
+          }
+
+      - name: Upload English production screenshots
+        if: "${{ matrix.python == '3.12' && success() }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: i18n-production-english-screenshots
+          path: i18n-render/*.png
+          if-no-files-found: error
 
       - name: Full selector self-test
         shell: pwsh
