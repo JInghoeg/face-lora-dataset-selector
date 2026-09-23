@@ -7,7 +7,7 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
 - Latest verified product merge: `4b574df844ffd2d795707eb7c6ea5440b5a61bd1` — PR #48 main Dataset View Model/View modernization.
-- Active tracker: Issue #49 — Auto Crop review-surface reusable UI spike.
+- Active tracker: Issue #49 — Auto Crop Fluent Filmstrip production adoption.
 - Current accepted phase: v0.3 Stage 3 UX/UI modernization.
 - Project Memory Gate is active.
 
@@ -24,22 +24,32 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 
 ## Currently in flight
 
-Stage 3 UX/UI modernization continues under Issue #49.
+Stage 3 UX/UI modernization continues under Issue #49, but the research/visual-choice phase is complete.
 
-The accepted product sequence is:
+User-confirmed production direction:
+- Fluent component/visual language;
+- Filmstrip layout;
+- real thumbnail candidate strip with reduced dead space;
+- current-item highlight + lightweight decision state;
+- Auto Crop-scoped Light/Dark;
+- theme toggle at the top-right of the Auto Crop window;
+- existing RectROI/backend/persistence/export behavior unchanged.
+
+The accepted product sequence remains:
 1. Auto Crop manual ROI — complete.
 2. Limited architecture closeout — complete.
-3. **UX/UI modernization — active, now intentionally limited to the Auto Crop release-facing spike.**
-4. Unified Portable + consolidated human QA — next after this bounded slice.
+3. **UX/UI modernization — active only for this bounded Auto Crop production adoption.**
+4. Unified Portable + consolidated human QA — next.
 
 Issue #17 remains the batched HUMAN UNVERIFIED queue.
 
 ## Immediate next action
 
-1. Adopt the selected Fluent light components in the real Auto Crop review dialog only.
-2. Keep the existing RectROI/backend behavior and PySide6-Essentials runtime; install the UI package without Addons.
-3. Measure Portable delta and verify the real production dialog before merge.
-4. Then stop Stage 3 and move to unified Portable + consolidated QA for v0.3.
+1. Implement the confirmed Fluent Filmstrip Auto Crop UI in production.
+2. Add thumbnail-backed Filmstrip and scoped Light/Dark toggle.
+3. Keep PySide6-Essentials/no-Addons.
+4. Verify Python 3.9/3.12, ROI behavior, Light/Dark screenshots and Portable delta.
+5. Then move to the v0.3 unified Portable + consolidated QA gate.
 
 ## Relevant links only
 
