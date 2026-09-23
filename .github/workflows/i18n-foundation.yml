@@ -76,7 +76,12 @@ jobs:
       - name: Compile i18n integration
         shell: pwsh
         run: |
-          python -m compileall ui app.py compile_translations.py tests/i18n_smoke.py
+          python -m compileall ui app.py compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
+
+      - name: Validate catalog contract
+        shell: pwsh
+        run: |
+          python tests/i18n_catalog_contract.py
 
       - name: Live language switch smoke
         shell: pwsh
@@ -125,4 +130,8 @@ jobs:
           $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) {
             throw "Portable self-test failed with exit code $($p.ExitCode)"
+          }
+          $i18n = Start-Process -FilePath $exe -ArgumentList "--i18n-self-test" -Wait -PassThru
+          if ($i18n.ExitCode -ne 0) {
+            throw "Portable i18n self-test failed with exit code $($i18n.ExitCode)"
           }
