@@ -56,6 +56,7 @@ def main():
         "DuplicateReviewDialog",
         "MainWindow",
         "TextCleanupTab",
+        "ImagePreview",
     ):
         assert context in data, context
 
@@ -79,6 +80,10 @@ def main():
         ROOT / "ui" / "qt" / "text_cleanup.py",
         "_tr",
     )
+    image_preview_sources = literal_calls(
+        ROOT / "ui" / "qt" / "image_preview.py",
+        "_tr",
+    )
 
     checks = (
         ("Auto Crop", auto_sources, data["AutoCropReviewDialog"]),
@@ -86,6 +91,7 @@ def main():
         ("Duplicate Review", duplicate_sources, data["DuplicateReviewDialog"]),
         ("MainWindow", main_sources, data["MainWindow"]),
         ("Text Cleanup", text_cleanup_sources, data["TextCleanupTab"]),
+        ("Image Preview", image_preview_sources, data["ImagePreview"]),
     )
     for label, sources, messages in checks:
         missing = sorted(sources - set(messages))
@@ -109,6 +115,7 @@ def main():
                 "DuplicateReviewDialog",
                 "MainWindow",
                 "TextCleanupTab",
+                "ImagePreview",
             )
         ),
     )
