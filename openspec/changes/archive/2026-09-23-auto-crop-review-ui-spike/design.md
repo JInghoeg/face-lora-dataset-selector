@@ -91,3 +91,18 @@ Production decision:
 - use an explicit no-deps UI dependency installation path so package metadata cannot reintroduce Addons;
 - measure final Portable size delta before production merge;
 - do not expand this into a global theme/dark-mode redesign.
+
+
+## Final user visual checkpoint
+
+After the technical candidate spike, the user reviewed the real rendered Auto Crop surfaces and made the production-facing visual decisions:
+
+- **Visual/component language:** PySide6-Fluent-Widgets.
+- **Layout:** Filmstrip.
+- **Filmstrip correction:** the candidate strip must not remain a text-heavy empty list; it must use real image thumbnails, reduce dead space, clearly show the current item, and preserve lightweight review state visibility.
+- **Theme:** Auto Crop itself should support both Light and Dark, but this remains scoped to the Auto Crop dialog rather than becoming a whole-application dark-mode project.
+- **Theme control location:** top-right of the Auto Crop window, separate from crop/decision controls.
+- **Dark implementation constraint:** do not ship the earlier hybrid state where Fluent controls are dark but ordinary Qt surfaces remain light. The Auto Crop dialog must apply a coherent scoped dark surface to ordinary Qt/pyqtgraph-adjacent containers as well.
+- **Interaction remains frozen:** existing pyqtgraph RectROI, automatic proposal, manual resize/drag, reset, accept, keep-original, restore-pending, feature_state persistence and Final Export semantics remain unchanged.
+
+The visual spike therefore ends with a concrete production direction, not a finished production implementation.
