@@ -112,6 +112,18 @@
     <message><source>整理源文件 {current}/{total}：{name}</source><translation>Organize Source Files {current}/{total}: {name}</translation></message>
     <message><source>整理源文件完成：移动 {moved} · 保持 {unchanged} · 跳过 {skipped}；未重新分析图片</source><translation>Source file organization complete: Moved {moved} · Unchanged {unchanged} · Skipped {skipped}; images were not reanalyzed</translation></message>
     <message><source>整理源文件失败；已尝试自动回滚</source><translation>Source file organization failed; automatic rollback was attempted</translation></message>
+    <message><source>请先选择并完成一个数据集的分析。</source><translation>Select a dataset and complete its analysis first.</translation></message>
+    <message><source>后台任务进行中</source><translation>Background Task in Progress</translation></message>
+    <message><source>暂时不能整理源文件</source><translation>Unable to Organize Source Files</translation></message>
+    <message><source>源文件已经是目标结构：无需移动 · 保持 {unchanged} · 跳过 {skipped}</source><translation>Source files already match the target structure: No moves needed · Unchanged {unchanged} · Skipped {skipped}</translation></message>
+    <message><source>确认整理源文件</source><translation>Confirm Source File Organization</translation></message>
+    <message><source>将移动 {count} 张图片。</source><translation>{count} images will be moved.</translation></message>
+    <message><source>推荐 {recommended} · 备选 {backup} · 淘汰 {rejected}</source><translation>Recommended {recommended} · Backup {backup} · Rejected {rejected}</translation></message>
+    <message><source>保持不动 {unchanged} · 跳过 {skipped}</source><translation>Unchanged {unchanged} · Skipped {skipped}</translation></message>
+    <message><source>文件会按当前最终状态移动到 推荐 / 备选 / 淘汰，并保留原相对来源目录。</source><translation>Files will be moved into Recommended / Backup / Rejected according to their current final status while preserving relative source paths.</translation></message>
+    <message><source>组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。</source><translation>The Composite Split archive _CompositeSplit_Originals will not be touched; image pixels will not be modified; empty directories will not be deleted.</translation></message>
+    <message><source>执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。</source><translation>Execution uses a journal and transactional rollback; failed or interrupted operations are recovered on the next launch.</translation></message>
+    <message><source>…另有 {count} 项</source><translation>…and {count} more items</translation></message>
     <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
     <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
     <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
