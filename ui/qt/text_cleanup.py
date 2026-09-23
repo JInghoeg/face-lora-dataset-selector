@@ -587,7 +587,7 @@ class SubtitleTab(QWidget):
                         state=state,
                         index=index + 1,
                     )
-                    f"{points[:, 0].min()},{points[:, 1].min()} - "
+                    + f"{points[:, 0].min()},{points[:, 1].min()} - "
                     f"{points[:, 0].max()},{points[:, 1].max()}"
                 )
                 item.setData(Qt.UserRole, index)
