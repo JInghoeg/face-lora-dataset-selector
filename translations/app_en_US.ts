@@ -149,8 +149,6 @@
     <message><source>自动裁剪 复核…（未扫 {todo}）</source><translation>Auto Crop Review… (Unscanned {todo})</translation></message>
     <message><source>没有数据</source><translation>No Data</translation></message>
     <message><source>请先完成图片分析。</source><translation>Please complete image analysis first.</translation></message>
-    <message><source>请先完成 Composite Split</source><translation>Complete Composite Split First</translation></message>
-    <message><source>还有 {count} 张推荐图等待 Composite Split 复核。\n\n自动裁剪只处理 Composite 之后的单主体推荐图。</source><translation>{count} recommended images are still waiting for Composite Split review.\n\nAuto Crop only processes single-subject recommended images after Composite Split.</translation></message>
     <message><source>没有候选</source><translation>No Candidates</translation></message>
     <message><source>当前推荐图片没有需要自动裁剪复核的候选。</source><translation>No current recommended images require Auto Crop review.</translation></message>
     <message><source>自动裁剪扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型</source><translation>Preparing Auto Crop scan: {todo} images. ISNetIS will be downloaded on first use if not cached.</translation></message>
