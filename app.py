@@ -397,15 +397,15 @@ class Window(QMainWindow):
         if not self._english_ui():return finding_text(finding)
         error_detail=(finding.detail or '').split('：',1)[-1]
         fixed={
-            'no_face_full_body_review':'No face detected, but a full body was detected; this may be a useful back/back-facing sample and needs manual review.',
-            'no_face_not_full_body':'No face was found at either detector threshold, and the image is not full-body.',
-            'low_resolution':'The image short side is below 512 px.',
-            'low_face_pixels':'The primary face has too few actual pixels.',
-            'low_face_ratio':'The primary face occupies too little of the frame.',
-            'severe_face_blur':'The primary face is severely blurred.',
-            'low_face_quality':'eDifFIQA face quality is low.',
-            'high_brisque':'BRISQUE overall-image quality is low.',
-            'extreme_exposure':'The image appears severely underexposed or overexposed.',
+            'no_face_full_body_review':'未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认',
+            'no_face_not_full_body':'两个检测阈值均未找到人脸，且不是全身图',
+            'low_resolution':'图片短边分辨率低于 512px',
+            'low_face_pixels':'主脸实际像素偏小',
+            'low_face_ratio':'主脸占画面比例偏低',
+            'severe_face_blur':'主脸明显模糊',
+            'low_face_quality':'eDifFIQA 人脸质量偏低',
+            'high_brisque':'BRISQUE 整图质量偏低',
+            'extreme_exposure':'图像疑似严重欠曝或过曝',
         }
         if finding.code=='secondary_faces_detected':
             return self._tr_main('去重后仍检测到 {count} 张独立人脸，需确认是否多人').format(count=int(finding.value or 0))
