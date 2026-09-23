@@ -19,11 +19,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image
-from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtWidgets import QApplication, QAbstractButton, QComboBox, QGroupBox, QLabel
 
 import app
-from core.models import Photo
+from core.models import AnalysisFinding, Photo
 from features.auto_crop.service import AutoCropProposal, FEATURE_KEY, PROPOSAL_VERSION
 from ui.i18n import initialize_i18n
 
@@ -35,6 +35,30 @@ def build_record(root: Path) -> Photo:
     photo = Photo(path)
     photo.sample_id = "i18n-auto-crop"
     photo.auto_status = "推荐"
+    photo.width = 640
+    photo.height = 480
+    photo.faces = 1
+    photo.person_scale = "近景/头肩"
+    photo.angle_class = "正脸"
+    photo.pitch_class = "正常"
+    photo.face_quality = 0.20
+    photo.brisque = 30.0
+    photo.blur = 60.0
+    photo.face_px = 180
+    photo.face_ratio = 0.08
+    photo.eligibility = "REVIEW"
+    photo.review_flags = [
+        AnalysisFinding(
+            "low_face_quality",
+            "ediffiqa",
+            0.20,
+            0.25,
+            "eDifFIQA 人脸质量偏低",
+        )
+    ]
+    photo.recommendation_reasons = [
+        "自动推荐：通过基础门槛，并用于补足 近景/头肩 / 正脸 覆盖"
+    ]
     proposal = AutoCropProposal(
         auto_box=[80, 40, 560, 450],
         box=[95, 55, 545, 435],
@@ -61,6 +85,28 @@ HAN = re.compile(r"[\u4e00-\u9fff]")
 def assert_no_han(*values):
     leaked = [value for value in values if HAN.search(str(value))]
     assert not leaked, f"Chinese leaked into English UI: {leaked}"
+
+
+def visible_widget_texts(root):
+    values = []
+    for widget in [root, *root.findChildren(object)]:
+        if hasattr(widget, "isVisible") and not widget.isVisible():
+            continue
+        if isinstance(widget, QAbstractButton):
+            values.append(widget.text())
+        elif isinstance(widget, QLabel):
+            values.append(widget.text())
+        elif isinstance(widget, QGroupBox):
+            values.append(widget.title())
+        elif isinstance(widget, QComboBox):
+            # Only the current display is visible. The language selector
+            # intentionally contains the native name “简体中文” in its menu.
+            values.append(widget.currentText())
+        if hasattr(widget, "toolTip"):
+            tooltip = widget.toolTip()
+            if tooltip:
+                values.append(tooltip)
+    return [value for value in values if value]
 
 
 def select_language(window, code: str):
@@ -160,6 +206,32 @@ def main() -> int:
         assert text_tab.method.currentData() == "AI 修复（MI-GAN）"
         assert text_tab.view.currentText() == "All Images"
         assert text_tab.view.currentData() == "全部图片"
+
+        # Populate the real main view so dynamic stats, current-view text,
+        # thumbnail tooltip and the detail inspector are checked too.
+        window.folder = root
+        window.records = [record]
+        window.refresh()
+        qapp.processEvents()
+        index = window.dataset_model.index(0, 0)
+        assert index.isValid()
+        window.grid.setCurrentIndex(index)
+        window.details(index)
+        qapp.processEvents()
+        assert_no_han(
+            window.stats.text(),
+            window.current_view_label.text(),
+            window.detail.text(),
+            window.dataset_model.data(index, Qt.ToolTipRole),
+        )
+
+        # No visible Chinese presentation text may remain anywhere in the
+        # current product shell while English mode is active.
+        assert_no_han(
+            *visible_widget_texts(window),
+            window.tabs.tabText(window.dataset_tab_index),
+            window.tabs.tabText(window.text_cleanup_tab_index),
+        )
 
         assert_no_han(
             window.pick.text(),
