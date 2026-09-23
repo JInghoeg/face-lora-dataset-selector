@@ -1,43 +1,55 @@
 # Project Handoff
 
-Supplementary conversation cursor only. Canonical current truth is in `docs/PROJECT_STATE.md`.
+Supplementary conversation cursor. Canonical current truth is in `docs/PROJECT_STATE.md`.
 
 ## Repository state
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- Integrated v0.3 merge: `521ac77f22996e2f160964da7c9b96f15ad29eaa`
+- Public release: **v0.3.0**
+- Release tag: `8bf51d5b552587dd4d7a5d8ce87a48f89c3136de`
 - Stage 4 human QA: PASS
-- Issue #17: CLOSED
-- Current phase: **v0.3.0 release closeout**
+- Final release workflow: PASS
+- v0.3 trackers: closed
+- v0.3 staged/research Draft PRs: merged where appropriate or closed as historical records
+- No active v0.3 blocker.
 
-## Release engineering
+## Release artifact
 
-A release commit named `release: v0.3.0` is used as the final release gate.
+`Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip`
 
-The Windows build workflow:
-- builds the complete Portable;
-- runs source + packaged EXE self-tests;
-- generates ZIP + SHA-256;
-- on a `release: vX.Y.Z` main commit or `v*` tag, creates/updates the corresponding GitHub Release;
-- reads `RELEASE_NOTES_<tag>.md` when present, otherwise falls back to `CHANGELOG.md`.
+SHA-256:
+`fbd73f1a477a1b64f19f0b4f25c31c805dc4f3e710a7f9f8ab3bea3d6fa4c03a`
 
-## Human QA evidence
+Release:
+`https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0`
 
-Pinned candidate:
-- code: `46bc803b8a806d9c1cf61ab9a6534241ac0cff8e`
-- run: `35916370063`
-- artifact ID: `10774289944`
-- digest: `sha256:71835391390bcbe41199776565fbfecc9fc8d480af1f3dc4b60a9ca873c1c937`
+## Important completed decisions
 
-User completed the consolidated Stage 4 checklist without reported failures. No product-code change followed the checkpoint.
+- UI -> `SelectorApplication` -> feature-backend architecture remains the product boundary.
+- Non-fatal automated fixes should be batched for human QA checkpoints.
+- Duplicate Review, Composite Split, Auto Crop, Source Organizer and Text Cleanup are independent product features/boundaries.
+- Text detection + repair remain one Text Cleanup product module.
+- Auto Crop uses conservative ISNetIS proposals, metadata decisions and human-authoritative ROI review.
+- Source Organizer is the only optional workflow intended to reorganize active source file locations; it must remain transactional and explicit.
+- permanent Qt i18n is in place; Chinese is source/default locale and English is live-switchable.
+- PySide6-Essentials is retained; do not add PySide6-Addons without a new justified decision.
 
-## Immediate next action
+## Next action
 
-1. Let the `release: v0.3.0` main workflows finish.
-2. Require Architecture Boundaries + Windows Portable/package self-test PASS.
-3. Verify GitHub Release v0.3.0 and attached ZIP/SHA-256.
-4. Close completed production trackers and superseded old Draft PRs.
-5. Close overarching v0.3 tracker.
+There is no pending v0.3 action.
 
-Do not run another full human QA unless product behavior changes.
+For new development:
+1. start from current `main`;
+2. open a new issue with explicit scope;
+3. identify whether it is a hotfix, v0.3.x maintenance, or a new release line;
+4. reuse the existing architecture / OpenSpec / batched-QA conventions;
+5. do not reopen historical v0.3 branches merely because they still exist.
+
+## Relevant references
+
+- `docs/PROJECT_STATE.md`
+- `docs/ROADMAP_v0.3.md`
+- `CHANGELOG.md`
+- `RELEASE_NOTES_v0.3.0.md`
+- tag `v0.3.0`

@@ -2,41 +2,58 @@
 
 Status date: 2026-09-24
 
-## Status
+## Final status
 
-**Implementation complete. Consolidated human QA PASS. Release closeout active.**
+**v0.3.0 RELEASED — COMPLETE**
 
-The integrated v0.3 product stack is on `main` via `521ac77f22996e2f160964da7c9b96f15ad29eaa`.
+Release:
+`https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0`
 
-## Completed
+Tag:
+`8bf51d5b552587dd4d7a5d8ce87a48f89c3136de`
 
-- correctness redesign and recommendation/manual-override separation;
-- Dataset/View filters, sorting, paging and saved views;
-- stable sample IDs;
-- Duplicate Review;
-- AI Review Bundle + suggestion-only patch import;
-- Composite Split + archive lifecycle + per-output keep/reject;
-- generated-files-only incremental analysis;
-- General Auto Crop backend + manual ROI + Final Export integration;
-- transactional Source Organizer;
-- Text Cleanup frontend/backend boundary;
-- main Dataset View Model/View seam;
-- Fluent Filmstrip Auto Crop UI;
-- permanent live zh_CN/en_US Qt i18n;
-- architecture-boundary CI;
-- Stage 4 unified Portable + consolidated human QA.
+## Completed scope
 
-## Final release gates
+- [x] correctness redesign and recommendation/manual-override separation
+- [x] Dataset/View filters, sorting, paging and saved views
+- [x] stable sample IDs
+- [x] Duplicate Review
+- [x] AI Review Bundle + suggestion-only patch import
+- [x] Composite Split + archive lifecycle + per-output keep/reject
+- [x] generated-files-only incremental Composite analysis
+- [x] General Auto Crop backend + manual ROI + Final Export integration
+- [x] transactional Source Organizer
+- [x] Text Cleanup frontend/backend boundary
+- [x] main Dataset View Model/View seam
+- [x] Fluent Filmstrip Auto Crop UI
+- [x] permanent live zh_CN/en_US Qt i18n
+- [x] architecture-boundary CI
+- [x] Stage 4 unified Portable + consolidated human QA
 
-- [x] Stage 4 consolidated human QA.
-- [x] Source Organizer human test on a disposable/copy dataset.
-- [x] v0.3 stack merged to `main`.
-- [x] v0.3.0 release notes / changelog / README prepared.
-- [x] release workflow generalized beyond v0.2.0.
-- [ ] final `main` Architecture Boundaries workflow PASS.
-- [ ] final v0.3.0 Windows Portable build + packaged EXE self-test PASS.
-- [ ] GitHub Release `v0.3.0` created with Portable ZIP + SHA-256.
-- [ ] close completed production trackers and superseded Draft PRs.
-- [ ] close overarching v0.3 tracker after release is visible.
+## Release gates
 
-No further manual QA is required unless the final release-engineering commit changes product code or the final packaged smoke test fails.
+- [x] Stage 4 consolidated human QA
+- [x] Source Organizer human test on a disposable/copied dataset
+- [x] complete v0.3 stack merged to `main`
+- [x] v0.3.0 release notes / changelog / README
+- [x] release workflow generalized beyond v0.2.0
+- [x] Fluent UI runtime explicitly installed in the official Portable workflow without PySide6-Addons
+- [x] Architecture Boundaries PASS on integrated mainline
+- [x] final Windows Portable build PASS
+- [x] final packaged EXE self-test PASS
+- [x] ZIP + SHA-256 produced
+- [x] GitHub Release `v0.3.0` published
+- [x] completed production / research / QA trackers closed
+- [x] historical staged/research Draft PRs closed without replaying old state
+
+## Release artifact
+
+- file: `Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip`
+- size: `160,312,419 bytes`
+- SHA-256: `fbd73f1a477a1b64f19f0b4f25c31c805dc4f3e710a7f9f8ab3bea3d6fa4c03a`
+
+## After v0.3
+
+This roadmap is frozen as a release record.
+
+Future benchmark/model/UI work should be tracked under a new roadmap or release target instead of reopening v0.3 tasks.

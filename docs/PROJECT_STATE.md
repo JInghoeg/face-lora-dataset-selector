@@ -1,19 +1,45 @@
 # Project State
 
-Canonical current-state entry point for the v0.3 product line.
+Canonical current-state entry point.
 
 ## Repository state
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- v0.3 product stack merged to main at `521ac77f22996e2f160964da7c9b96f15ad29eaa`.
-- Stage 4 consolidated human QA: **PASS / COMPLETE**.
-- Issue #17: closed as completed.
-- Current phase: **v0.3.0 release closeout**.
+- Current public release: **v0.3.0**
+- Release tag / code: `8bf51d5b552587dd4d7a5d8ce87a48f89c3136de`
+- Release date: 2026-09-24
+- v0.3 implementation, Stage 4 human QA and release closeout: **COMPLETE**
+- All v0.3 product/research/QA trackers are closed.
 
-## Verified product state
+Release:
+`https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0`
 
-Frozen workflow:
+## v0.3.0 verification
+
+Final release workflow:
+- run: `35919809384`
+- result: **PASS**
+- source runtime self-test: PASS
+- Fluent UI Essentials-only installation: PASS
+- PyInstaller Portable build: PASS
+- packaged EXE self-test: PASS
+- ZIP + SHA-256 generation: PASS
+- GitHub Release upload: PASS
+
+Release Portable:
+- `Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip`
+- size: `160,312,419 bytes`
+- SHA-256: `fbd73f1a477a1b64f19f0b4f25c31c805dc4f3e710a7f9f8ab3bea3d6fa4c03a`
+
+Stage 4 consolidated human QA:
+- result: **PASS**
+- Issue #17: completed / closed
+- no product-code fix was required after the accepted human checkpoint.
+
+Architecture gate on the integrated v0.3 mainline: **PASS**.
+
+## Released workflow
 
 ```
 Initial analysis / recommendation
@@ -32,7 +58,7 @@ Qt presentation
 -> feature backends
 ```
 
-Feature packages:
+Released feature packages:
 - `features/ranking`
 - `features/duplicate`
 - `features/composite`
@@ -40,45 +66,42 @@ Feature packages:
 - `features/source_organizer`
 - `features/text_cleanup`
 
-Completed v0.3 scope includes Dataset/View workflow, stable sample IDs, Duplicate Review, AI Review Bundle, Composite Split, General Auto Crop + manual ROI, Source Organizer, Text Cleanup boundaries, Fluent Filmstrip Auto Crop UI, and permanent live Qt i18n.
+v0.3.0 also includes:
+- Dataset / View filtering, sorting, paging and saved views;
+- stable sample IDs;
+- Duplicate Review;
+- AI Review Bundle + suggestion-only patch import;
+- Composite Split + archive lifecycle + per-output keep/reject;
+- General Auto Crop + manual ROI + Final Export materialization;
+- transactional Source Organizer;
+- Text Cleanup application boundary;
+- Fluent Filmstrip Auto Crop review;
+- permanent live `zh_CN` / `en_US` Qt i18n;
+- architecture-boundary CI and risk-based batched human QA.
 
-## Human QA
+## Current status
 
-Pinned Stage 4 QA candidate:
-- code head: `46bc803b8a806d9c1cf61ab9a6534241ac0cff8e`
-- workflow run: `35916370063`
-- artifact ID: `10774289944`
-- digest: `sha256:71835391390bcbe41199776565fbfecc9fc8d480af1f3dc4b60a9ca873c1c937`
+There is no active v0.3 implementation or release blocker.
 
-User completed the consolidated checklist without reporting failures or blockers. Result: **PASS**.
+Do not continue adding features under the completed v0.3 release scope. New product work should start from current `main` with a new issue / branch / explicit release target.
 
-No product-code fix was required after the human checkpoint. The later main integration and release-closeout changes are stack/documentation/release-engineering operations, not a change to the accepted product behavior.
+Historical staged/research branches were intentionally retained for reference; their old Draft PRs were closed rather than replayed into main.
 
-## Release gate
+## Future work
 
-v0.3.0 release requires:
-1. release notes / changelog / README current;
-2. generic release automation no longer hard-coded to v0.2.0;
-3. final main Architecture Boundaries: PASS;
-4. final Windows Portable build + packaged EXE self-test: PASS;
-5. release artifact + SHA-256 attached to GitHub Release.
+Potential future work is not part of v0.3.0:
+- real cross-version benchmark snapshots;
+- dataset-level marginal-value / redundancy research;
+- model upgrades justified by confirmed failure modes;
+- further bounded UI modernization;
+- release-signing / distribution polish.
 
-## Do not repeat
-
-- Do not restart broad UX/UI modernization during release closeout.
-- Do not repeat the entire Stage 4 manual QA unless product code changes.
-- Do not test Source Organizer first on original irreplaceable data.
-- Do not revive failed Auto Crop Stage 1 saliency/pose safe-trim.
-- Do not split Text Cleanup detection/repair for this release.
-- Do not add PySide6-Addons.
-- Do not add microservices/local HTTP ceremony.
+These are candidates, not committed release requirements.
 
 ## Authoritative references
 
-- `docs/ROADMAP_v0.3.md`
 - `CHANGELOG.md`
 - `RELEASE_NOTES_v0.3.0.md`
-- Issue #17 — completed Stage 4 human QA.
-- Issue #21 — Auto Crop tracking.
-- Issue #23 — Source Organizer tracking.
-- Issue #26 — Text Cleanup tracking.
+- `docs/ROADMAP_v0.3.md`
+- Issue #17 — completed Stage 4 human QA
+- tag `v0.3.0`
