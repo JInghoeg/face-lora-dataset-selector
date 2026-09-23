@@ -575,7 +575,7 @@ class AutoCropReviewDialog(QDialog):
         state, edited = self.proposal_state(record)
         return (
             f"{mark} {record.path.name}\n"
-            self._tr("{state}{edited} · 去除 {ratio}").format(
+            + self._tr("{state}{edited} · 去除 {ratio}").format(
                 state=state,
                 edited=edited,
                 ratio=f"{proposal.removed_area_ratio:.1%}",
