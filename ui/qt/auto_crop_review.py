@@ -421,7 +421,7 @@ class AutoCropReviewDialog(QDialog):
         total = sum(sizes)
         if total <= 0:
             return
-        target = 180
+        target = 176
         self.main_splitter.setSizes([max(1, total - target), target])
 
     def _ui_fallback(self):
