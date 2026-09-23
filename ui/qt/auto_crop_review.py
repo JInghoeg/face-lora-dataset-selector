@@ -148,8 +148,12 @@ class AutoCropROIWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.canvas = pg.GraphicsLayoutWidget()
         layout.addWidget(self.canvas)
-        self.view = self.canvas.addViewBox(lockAspect=True, enableMenu=False)
-        self.view.setAspectLocked(True)
+        # Mouse zoom/pan is disabled below, so keep aspect management under
+        # our control. ViewBox's own aspect lock re-crops the source after
+        # splitter/window resizes; _fit_source() preserves 1:1 pixels without
+        # allowing that automatic range rewrite.
+        self.view = self.canvas.addViewBox(lockAspect=False, enableMenu=False)
+        self.view.setAspectLocked(False)
         self.view.setMouseEnabled(x=False, y=False)
         self.view.invertY(True)
         self.image_item = pg.ImageItem()
@@ -230,9 +234,11 @@ class AutoCropROIWidget(QWidget):
             snapSize=1,
             pen=pg.mkPen("#32e675", width=2),
         )
-        # Define the complete eight-direction resize affordance explicitly.
-        # Relying on a mixture of RectROI defaults + partial custom handles
-        # made edge resizing inconsistent across pyqtgraph versions.
+        # RectROI injects one default corner handle. Remove it, then define
+        # the complete eight-direction resize affordance explicitly so the
+        # interaction does not depend on pyqtgraph defaults.
+        for handle in list(self.roi.getHandles()):
+            self.roi.removeHandle(handle)
         for pos, center in (
             ([0, 0], [1, 1]),
             ([0.5, 0], [0.5, 1]),
@@ -267,9 +273,12 @@ class AutoCropROIWidget(QWidget):
         # Match the target rect to the actual viewport aspect. With the same
         # aspect ratio, ViewBox's locked-aspect correction cannot crop either
         # source axis; it can only show the requested padded contain rect.
-        scene_rect = self.view.sceneBoundingRect()
-        viewport_w = max(1.0, float(scene_rect.width()))
-        viewport_h = max(1.0, float(scene_rect.height()))
+        viewport_w = float(self.view.width())
+        viewport_h = float(self.view.height())
+        if viewport_w <= 1 or viewport_h <= 1:
+            viewport = self.canvas.viewport().size()
+            viewport_w = max(1.0, float(viewport.width()))
+            viewport_h = max(1.0, float(viewport.height()))
         viewport_aspect = viewport_w / viewport_h
         content_aspect = content_w / content_h
 
@@ -283,11 +292,13 @@ class AutoCropROIWidget(QWidget):
         center_x = w / 2.0
         center_y = h / 2.0
         self.view.setRange(
-            rect=QRectF(
+            xRange=(
                 center_x - target_w / 2.0,
+                center_x + target_w / 2.0,
+            ),
+            yRange=(
                 center_y - target_h / 2.0,
-                target_w,
-                target_h,
+                center_y + target_h / 2.0,
             ),
             padding=0,
             disableAutoRange=True,
