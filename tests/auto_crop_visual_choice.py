@@ -196,6 +196,7 @@ class FluentAutoCropReviewDialog(app.AutoCropReviewDialog):
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import (
             QHBoxLayout,
+            QListView,
             QScrollArea,
             QSplitter,
             QVBoxLayout,
@@ -233,7 +234,7 @@ class FluentAutoCropReviewDialog(app.AutoCropReviewDialog):
             fl.setSpacing(8)
             fl.addWidget(api["StrongBodyLabel"]("候选"))
             self.items = self._list_widget(api, minimum_width=0)
-            self.items.setFlow(self.items.LeftToRight)
+            self.items.setFlow(QListView.Flow.LeftToRight)
             self.items.setWrapping(False)
             self.items.setMaximumHeight(130)
             fl.addWidget(self.items, 1)
@@ -271,7 +272,7 @@ class FluentAutoCropReviewDialog(app.AutoCropReviewDialog):
             fl = QHBoxLayout(film)
             fl.setContentsMargins(10, 8, 10, 8)
             self.items = self._list_widget(api, minimum_width=0)
-            self.items.setFlow(self.items.LeftToRight)
+            self.items.setFlow(QListView.Flow.LeftToRight)
             self.items.setWrapping(False)
             self.items.setMaximumHeight(110)
             fl.addWidget(self.items, 1)
