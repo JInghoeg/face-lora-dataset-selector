@@ -35,6 +35,48 @@
     <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
   </context>
   <context>
+    <name>DuplicateReviewDialog</name>
+    <message><source>推荐</source><translation>Recommended</translation></message>
+    <message><source>备选</source><translation>Backup</translation></message>
+    <message><source>淘汰</source><translation>Rejected</translation></message>
+    <message><source>近景/头肩</source><translation>Close-up / Head &amp; Shoulders</translation></message>
+    <message><source>半身</source><translation>Half Body</translation></message>
+    <message><source>大半身</source><translation>Three-quarter Body</translation></message>
+    <message><source>全身</source><translation>Full Body</translation></message>
+    <message><source>正脸</source><translation>Front</translation></message>
+    <message><source>左3/4</source><translation>Left 3/4</translation></message>
+    <message><source>右3/4</source><translation>Right 3/4</translation></message>
+    <message><source>左侧脸</source><translation>Left Profile</translation></message>
+    <message><source>右侧脸</source><translation>Right Profile</translation></message>
+    <message><source>重复组人工复核</source><translation>Duplicate Group Review</translation></message>
+    <message><source>勾选只是本窗口里的临时选择；切换重复组不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。</source><translation>Checks are temporary within this window and persist when switching groups. Manual status is written only after choosing “Finish Group: Checked = Recommended / Unchecked = Rejected”. Double-click an image to open the original.</translation></message>
+    <message><source>保留组内最佳</source><translation>Keep Group Best</translation></message>
+    <message><source>完成本组：勾选推荐 / 未勾淘汰</source><translation>Finish Group: Checked = Recommended / Unchecked = Rejected</translation></message>
+    <message><source>完成全部组</source><translation>Finish All Groups</translation></message>
+    <message><source>全部保留</source><translation>Keep All</translation></message>
+    <message><source>恢复组内自动状态</source><translation>Restore Automatic Status</translation></message>
+    <message><source>关闭</source><translation>Close</translation></message>
+    <message><source>无法打开图片</source><translation>Unable to Open Image</translation></message>
+    <message><source>重复组 {group_id} · {count} 张</source><translation>Duplicate Group {group_id} · {count} items</translation></message>
+    <message><source>已人工移出 · {count} 张</source><translation>Manually Excluded · {count} items</translation></message>
+    <message><source>当前没有重复组</source><translation>No Duplicate Groups</translation></message>
+    <message><source>已人工移出自动重复分组</source><translation>Manually Excluded from Automatic Duplicate Grouping</translation></message>
+    <message><source>重复组 {group_id}</source><translation>Duplicate Group {group_id}</translation></message>
+    <message><source> · {count} 张</source><translation> · {count} items</translation></message>
+    <message><source> · ✓ 已完成</source><translation> · ✓ Complete</translation></message>
+    <message><source> · 未完成</source><translation> · Incomplete</translation></message>
+    <message><source>勾选项恢复自动分组</source><translation>Restore Checked to Automatic Grouping</translation></message>
+    <message><source>勾选项移出重复组</source><translation>Exclude Checked from Duplicate Groups</translation></message>
+    <message><source>清晰度 {value}</source><translation>Sharpness {value}</translation></message>
+    <message><source>可直接用</source><translation>Ready to Use</translation></message>
+    <message><source>需复核</source><translation>Review Required</translation></message>
+    <message><source>硬淘汰</source><translation>Hard Reject</translation></message>
+    <message><source>文件：{size} · {width}×{height}</source><translation>File: {size} · {width}×{height}</translation></message>
+    <message><source>状态：{status} · 判定：{eligibility}</source><translation>Status: {status} · Eligibility: {eligibility}</translation></message>
+    <message><source>未勾选图片</source><translation>No Images Checked</translation></message>
+    <message><source>请先勾选需要调整重复分组的图片。</source><translation>Check the images whose duplicate grouping you want to change first.</translation></message>
+  </context>
+  <context>
     <name>CompositeSplitReviewDialog</name>
     <message><source>组合图拆分复核</source><translation>Composite Split Review</translation></message>
     <message><source>建议输出预览（默认全选；取消勾选 = 生成后直接送入淘汰）</source><translation>Suggested output preview (all selected by default; uncheck to send the generated output directly to Rejected)</translation></message>
@@ -62,6 +104,14 @@
     <message><source>LoRA 数据集筛选与字幕清理</source><translation>LoRA Dataset Selector &amp; Text Cleanup</translation></message>
     <message><source>LoRA 数据集筛选</source><translation>LoRA Dataset Selector</translation></message>
     <message><source>批量去字幕 / 水印</source><translation>Batch Text / Watermark Cleanup</translation></message>
+    <message><source>重复组 复核…</source><translation>Duplicate Group Review…</translation></message>
+    <message><source>整理源文件…</source><translation>Organize Source Files…</translation></message>
+    <message><source>可选：按当前最终状态移动到 推荐 / 备选 / 淘汰；先预览计划，确认后事务执行。</source><translation>Optional: move files into Recommended / Backup / Rejected by current final status. Preview the plan first, then confirm the transactional move.</translation></message>
+    <message><source>整理源文件失败</source><translation>Source File Organization Failed</translation></message>
+    <message><source>整理源文件 0/{total}：准备事务</source><translation>Organize Source Files 0/{total}: Preparing transaction</translation></message>
+    <message><source>整理源文件 {current}/{total}：{name}</source><translation>Organize Source Files {current}/{total}: {name}</translation></message>
+    <message><source>整理源文件完成：移动 {moved} · 保持 {unchanged} · 跳过 {skipped}；未重新分析图片</source><translation>Source file organization complete: Moved {moved} · Unchanged {unchanged} · Skipped {skipped}; images were not reanalyzed</translation></message>
+    <message><source>整理源文件失败；已尝试自动回滚</source><translation>Source file organization failed; automatic rollback was attempted</translation></message>
     <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
     <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
     <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
