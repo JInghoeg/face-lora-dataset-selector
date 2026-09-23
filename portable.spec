@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 # Bundle only the explicitly tracked runtime models. MI-GAN and Composite Split
 # detector caches remain on-demand and must never be swept into Portable builds
@@ -15,6 +15,10 @@ datas = [
     ('models/ppocrv5_mobile_det/inference.onnx', 'models/ppocrv5_mobile_det'),
     ('models/ppocrv5_mobile_det/inference.yml', 'models/ppocrv5_mobile_det'),
 ]
+
+# QFluentWidgets loads packaged QSS/resources at runtime.  The selected Auto
+# Crop production UI uses these assets while still keeping PySide6-Essentials.
+datas += collect_data_files('qfluentwidgets')
 
 # MediaPipe needs native extension modules, but collecting the entire package
 # with collect_all() also drags in unrelated features and data. Keep native
