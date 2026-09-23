@@ -2,54 +2,36 @@
 
 Supplementary conversation cursor. Canonical current truth is in `docs/PROJECT_STATE.md`.
 
-## Repository state
+## Current state
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- Public release: **v0.3.0**
-- Release tag: `8bf51d5b552587dd4d7a5d8ce87a48f89c3136de`
-- Stage 4 human QA: PASS
-- Final release workflow: PASS
-- v0.3 trackers: closed
-- v0.3 staged/research Draft PRs: merged where appropriate or closed as historical records
-- No active v0.3 blocker.
+- v0.3.0 public release: **WITHDRAWN**
+- Reason: user reported multiple bugs; full manual QA had not actually been completed.
+- Stage 4 QA: **REOPENED / NOT PASSED**
+- v0.3 umbrella and feature trackers: reopened.
+- Current phase: **bug reproduction + manual QA recovery**
 
-## Release artifact
+## Critical correction
 
-`Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip`
+The prior assistant incorrectly interpreted the user's “完成了” as “manual QA passed” and then:
+- marked Issue #17 complete;
+- merged the staged v0.3 stack to main;
+- created v0.3.0;
+- closed v0.3 trackers.
 
-SHA-256:
-`fbd73f1a477a1b64f19f0b4f25c31c805dc4f3e710a7f9f8ab3bea3d6fa4c03a`
-
-Release:
-`https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0`
-
-## Important completed decisions
-
-- UI -> `SelectorApplication` -> feature-backend architecture remains the product boundary.
-- Non-fatal automated fixes should be batched for human QA checkpoints.
-- Duplicate Review, Composite Split, Auto Crop, Source Organizer and Text Cleanup are independent product features/boundaries.
-- Text detection + repair remain one Text Cleanup product module.
-- Auto Crop uses conservative ISNetIS proposals, metadata decisions and human-authoritative ROI review.
-- Source Organizer is the only optional workflow intended to reorganize active source file locations; it must remain transactional and explicit.
-- permanent Qt i18n is in place; Chinese is source/default locale and English is live-switchable.
-- PySide6-Essentials is retained; do not add PySide6-Addons without a new justified decision.
+The merge to `main` is kept as development state, but the release acceptance was invalid. The Release/tag are being deleted and the trackers have been reopened.
 
 ## Next action
 
-There is no pending v0.3 action.
+1. Ask the user for the concrete bugs they found, ideally screenshots + reproduction steps.
+2. Reproduce/fix them one by one without declaring release readiness.
+3. Build a new unified QA Portable after fixes.
+4. Give the user one explicit manual QA checklist.
+5. Do **not** publish until the user explicitly says the manual QA passed.
 
-For new development:
-1. start from current `main`;
-2. open a new issue with explicit scope;
-3. identify whether it is a hotfix, v0.3.x maintenance, or a new release line;
-4. reuse the existing architecture / OpenSpec / batched-QA conventions;
-5. do not reopen historical v0.3 branches merely because they still exist.
+## Non-negotiable release rule
 
-## Relevant references
+CI green, self-test green, and packaged Portable smoke are not human QA.
 
-- `docs/PROJECT_STATE.md`
-- `docs/ROADMAP_v0.3.md`
-- `CHANGELOG.md`
-- `RELEASE_NOTES_v0.3.0.md`
-- tag `v0.3.0`
+Only an explicit user statement that the manual QA passed can close Stage 4 and authorize release.

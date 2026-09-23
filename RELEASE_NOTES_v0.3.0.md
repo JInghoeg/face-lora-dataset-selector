@@ -1,4 +1,9 @@
-# Face LoRA Dataset Selector v0.3.0
+# v0.3.0 — WITHDRAWN / DO NOT DISTRIBUTE
+
+> **状态：已撤回。**
+>
+> 这一版本在完整人工 QA 尚未完成时被错误发布。用户实际测试后报告存在多个 bug。
+> GitHub Release 与 `v0.3.0` tag 已撤回。下面内容仅保留为历史开发记录，不代表该版本通过验收。
 
 发布日期：2026-09-24
 

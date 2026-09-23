@@ -1,6 +1,12 @@
 # Changelog
 
-## v0.3.0 — 2026-09-24
+## v0.3.0 — WITHDRAWN — 2026-09-24
+
+**This release was withdrawn before acceptance. Do not use the previously published v0.3.0 artifact.**
+
+The public release was created before the full manual QA checkpoint had actually been completed. After trying the build, the user reported multiple bugs. The Release/tag were removed and the v0.3 trackers were reopened.
+
+The feature list below remains the intended v0.3 scope, but it is **not a statement that the release passed manual QA**.
 
 v0.3 turns the selector from a mostly single-pass quality filter into a complete, human-authoritative LoRA dataset workflow.
 

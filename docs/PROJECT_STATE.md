@@ -6,40 +6,34 @@ Canonical current-state entry point.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- Current public release: **v0.3.0**
-- Release tag / code: `8bf51d5b552587dd4d7a5d8ce87a48f89c3136de`
-- Release date: 2026-09-24
-- v0.3 implementation, Stage 4 human QA and release closeout: **COMPLETE**
-- All v0.3 product/research/QA trackers are closed.
+- **Public v0.3.0 release: WITHDRAWN**
+- v0.3.0 human QA: **NOT COMPLETE / NOT PASSED**
+- User reported multiple bugs after the release candidate was published.
+- Issue #17 and the v0.3 product trackers have been reopened.
+- Current phase: **v0.3 bug triage + real human QA recovery**.
 
-Release:
-`https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0`
+The previously published `v0.3.0` Release and tag are intentionally removed. Do not treat the old release artifact, old SHA-256, or the previous “QA PASS” documentation as valid release evidence.
 
-## v0.3.0 verification
+## What remains valid
 
-Final release workflow:
-- run: `35919809384`
-- result: **PASS**
-- source runtime self-test: PASS
-- Fluent UI Essentials-only installation: PASS
-- PyInstaller Portable build: PASS
-- packaged EXE self-test: PASS
-- ZIP + SHA-256 generation: PASS
-- GitHub Release upload: PASS
+Automated evidence remains useful but is not release acceptance:
+- architecture-boundary CI passed on the integrated mainline;
+- Python 3.9 / 3.12 automated regression suites passed for covered paths;
+- the official Portable can build and pass packaged EXE self-test;
+- Fluent UI is packaged with PySide6-Essentials only.
 
-Release Portable:
-- `Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip`
-- size: `160,312,419 bytes`
-- SHA-256: `fbd73f1a477a1b64f19f0b4f25c31c805dc4f3e710a7f9f8ab3bea3d6fa4c03a`
+These automated results did **not** replace the missing real manual workflow QA.
 
-Stage 4 consolidated human QA:
-- result: **PASS**
-- Issue #17: completed / closed
-- no product-code fix was required after the accepted human checkpoint.
+## Current objective
 
-Architecture gate on the integrated v0.3 mainline: **PASS**.
+1. collect and reproduce the user-reported bugs;
+2. record each issue in the reopened Stage 4 / feature trackers;
+3. fix blockers and obvious workflow defects;
+4. rebuild a new QA Portable candidate;
+5. run the full manual workflow QA before any new public v0.3 release;
+6. publish only after the user explicitly reports QA PASS.
 
-## Released workflow
+## Frozen workflow under test
 
 ```
 Initial analysis / recommendation
@@ -50,58 +44,18 @@ Initial analysis / recommendation
 -> Final Export
 ```
 
-Architecture seam:
+## Release rule
 
-```
-Qt presentation
--> SelectorApplication
--> feature backends
-```
+**Do not create or restore v0.3.0 until real human QA is explicitly completed and accepted.**
 
-Released feature packages:
-- `features/ranking`
-- `features/duplicate`
-- `features/composite`
-- `features/auto_crop`
-- `features/source_organizer`
-- `features/text_cleanup`
+No future assistant response may infer QA PASS from “完成了”, “好了”, CI green, Portable self-test, or any other ambiguous wording. The user must explicitly report that the manual QA passed.
 
-v0.3.0 also includes:
-- Dataset / View filtering, sorting, paging and saved views;
-- stable sample IDs;
-- Duplicate Review;
-- AI Review Bundle + suggestion-only patch import;
-- Composite Split + archive lifecycle + per-output keep/reject;
-- General Auto Crop + manual ROI + Final Export materialization;
-- transactional Source Organizer;
-- Text Cleanup application boundary;
-- Fluent Filmstrip Auto Crop review;
-- permanent live `zh_CN` / `en_US` Qt i18n;
-- architecture-boundary CI and risk-based batched human QA.
+## Authoritative trackers
 
-## Current status
-
-There is no active v0.3 implementation or release blocker.
-
-Do not continue adding features under the completed v0.3 release scope. New product work should start from current `main` with a new issue / branch / explicit release target.
-
-Historical staged/research branches were intentionally retained for reference; their old Draft PRs were closed rather than replayed into main.
-
-## Future work
-
-Potential future work is not part of v0.3.0:
-- real cross-version benchmark snapshots;
-- dataset-level marginal-value / redundancy research;
-- model upgrades justified by confirmed failure modes;
-- further bounded UI modernization;
-- release-signing / distribution polish.
-
-These are candidates, not committed release requirements.
-
-## Authoritative references
-
-- `CHANGELOG.md`
-- `RELEASE_NOTES_v0.3.0.md`
-- `docs/ROADMAP_v0.3.md`
-- Issue #17 — completed Stage 4 human QA
-- tag `v0.3.0`
+- Issue #17 — Stage 4 consolidated human QA (REOPENED)
+- Issue #2 — v0.3 umbrella (REOPENED)
+- Issue #9 — v0.3 QA (REOPENED)
+- Issue #13 — Composite Split (REOPENED)
+- Issue #21 — General Auto Crop (REOPENED)
+- Issue #23 — Source Organizer (REOPENED)
+- Issue #26 — Text Cleanup (REOPENED)

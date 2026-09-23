@@ -1,0 +1,54 @@
+name: Withdraw v0.3.0 Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  withdraw:
+    if: "github.event.head_commit.message == 'withdraw-release: v0.3.0'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete v0.3.0 release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_id="$(gh api "repos/$REPO/releases/tags/v0.3.0" --jq .id 2>/dev/null || true)"
+          if [ -n "$release_id" ]; then
+            gh api -X DELETE "repos/$REPO/releases/$release_id"
+            echo "Deleted GitHub Release v0.3.0"
+          else
+            echo "Release v0.3.0 already absent"
+          fi
+
+          if gh api "repos/$REPO/git/ref/tags/v0.3.0" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$REPO/git/refs/tags/v0.3.0"
+            echo "Deleted tag v0.3.0"
+          else
+            echo "Tag v0.3.0 already absent"
+          fi
+
+      - name: Verify withdrawal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/releases/tags/v0.3.0" >/dev/null 2>&1; then
+            echo "ERROR: release still exists" >&2
+            exit 1
+          fi
+          if gh api "repos/$REPO/git/ref/tags/v0.3.0" >/dev/null 2>&1; then
+            echo "ERROR: tag still exists" >&2
+            exit 1
+          fi
+          echo "v0.3.0 release and tag are withdrawn."
