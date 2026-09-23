@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QListView
 
@@ -67,15 +67,25 @@ def make_record(path: Path, decision: str, edited: bool, offset: int):
 
 def build_records(root: Path):
     rows = []
-    specs = [
-        ("pending.png", "pending", False, 0),
-        ("accepted.png", "accepted", True, 20),
-        ("keep.png", "keep_original", False, 40),
+    states = [
+        ("pending", False),
+        ("accepted", True),
+        ("keep_original", False),
     ]
-    for i, (name, decision, edited, offset) in enumerate(specs):
-        path = root / name
+    # Enough candidates to force horizontal overflow so the production
+    # Filmstrip scrollbar/wheel behavior is exercised, not merely configured.
+    for i in range(12):
+        decision, edited = states[i % len(states)]
+        path = root / f"candidate_{i:02d}.png"
         make_image(path, i)
-        rows.append(make_record(path, decision, edited, offset))
+        rows.append(
+            make_record(
+                path,
+                decision,
+                edited,
+                (i % 3) * 20,
+            )
+        )
     return rows
 
 
@@ -89,6 +99,44 @@ def wait_thumbnails(qapp, dialog, timeout=8.0):
         len(dialog.thumb_icons),
         len(dialog.records),
     )
+
+
+class FakeWheelEvent:
+    def __init__(self, delta):
+        self._delta = delta
+        self.accepted = False
+
+    def pixelDelta(self):
+        return QPoint(0, 0)
+
+    def angleDelta(self):
+        return QPoint(0, self._delta)
+
+    def accept(self):
+        self.accepted = True
+
+
+def verify_filmstrip_navigation(qapp, dialog):
+    qapp.processEvents()
+
+    # The vertical splitter must let the user trade canvas height for
+    # Filmstrip height and back again.
+    before = dialog.main_splitter.sizes()
+    dialog.main_splitter.setSizes([420, 360])
+    qapp.processEvents()
+    after = dialog.main_splitter.sizes()
+    assert after[1] > before[1], (before, after)
+    assert after[0] < before[0], (before, after)
+
+    # Overflow stays one-row horizontal: scrollbar appears as needed and the
+    # normal mouse wheel pans it horizontally.
+    bar = dialog.items.horizontalScrollBar()
+    assert bar.maximum() > 0, bar.maximum()
+    bar.setValue(0)
+    event = FakeWheelEvent(-120)
+    dialog.items.wheelEvent(event)
+    assert event.accepted
+    assert bar.value() > 0, (bar.value(), bar.maximum())
 
 
 def verify_roi(qapp, dialog):
@@ -148,7 +196,7 @@ def main():
         assert dialog._fluent is not None, "production Fluent UI was not loaded"
         assert dialog.items.viewMode() == QListView.ViewMode.IconMode
         assert dialog.items.flow() == QListView.Flow.LeftToRight
-        assert dialog.items.count() == 3
+        assert dialog.items.count() == 12
         assert dialog.theme_button is not None
 
         wait_thumbnails(qapp, dialog)
@@ -159,6 +207,8 @@ def main():
         assert first_rect.height() >= 120, first_rect
         for row in range(dialog.items.count()):
             assert not dialog.items.item(row).icon().isNull()
+
+        verify_filmstrip_navigation(qapp, dialog)
 
         # Stable sample-id selection, not transient row identity.
         second = dialog.items.item(1)
