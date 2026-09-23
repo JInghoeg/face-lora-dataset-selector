@@ -6,59 +6,50 @@ Supplementary conversation cursor only. Canonical current truth is in `docs/PROJ
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Product branch: `feature/v0.3-workflow-recovery`
-- Latest verified product merge: `4b574df844ffd2d795707eb7c6ea5440b5a61bd1` — PR #48 main Dataset View Model/View modernization.
-- Active tracker: Issue #49 — Auto Crop Fluent Filmstrip production adoption.
-- Current accepted phase: v0.3 Stage 3 UX/UI modernization.
-- Project Memory Gate is active.
+- Latest verified product/code baseline: `46bc803b8a806d9c1cf61ab9a6534241ac0cff8e` — PR #51.
+- Current phase: **v0.3 Stage 4 — unified Portable + consolidated human QA**.
+- Active tracker: Issue #17.
+- Project Memory Gate remains active.
 
-## Just completed in this continuation
+## Just completed
 
-- Completed and merged PR #48 at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`.
-- Main Dataset View now has a bounded Qt Model/View seam with stable-ID action mapping.
-- Archived `modernize-dataset-view-model` under `openspec/changes/archive/2026-09-23-modernize-dataset-view-model/`.
-- Closed Issue #47.
-- Hardened project-level UX/UI rules: usability and visual quality are equal hard requirements; mature reusable UI assets precede custom design.
-- Opened Issue #49 and branch `ux/auto-crop-review-spike`.
-- First visual spike uses the real Auto Crop dialog + existing pyqtgraph RectROI and renders reusable theme candidates in CI.
-- Engineering-Playbook remains untouched.
+- PR #53 permanent live Qt i18n foundation merged and archived.
+- PR #51 Fluent Filmstrip Auto Crop production adoption merged at `46bc803b`.
+- Issue #49 closed.
+- Auto Crop final UI accepted by user.
+- Default candidate viewport is exactly one full row; additional rows appear only after splitter expansion.
+- Python 3.9 / 3.12 production smoke and packaged Portable self-test pass.
+- Stage 3 is complete.
 
-## Currently in flight
+## Pinned Stage 4 QA candidate
 
-Stage 3 UX/UI modernization continues under Issue #49, but the research/visual-choice phase is complete.
+- code head: `46bc803b8a806d9c1cf61ab9a6534241ac0cff8e`
+- workflow run: `35916370063`
+- artifact: `auto-crop-fluent-portable-qa`
+- artifact ID: `10774289944`
+- digest: `sha256:71835391390bcbe41199776565fbfecc9fc8d480af1f3dc4b60a9ca873c1c937`
+- artifact ZIP: `159,693,034 bytes`
+- unpacked Portable: `357,015,371 bytes`
+- expires: `2026-09-30T20:34:24Z`
 
-User-confirmed production direction:
-- Fluent component/visual language;
-- Filmstrip layout;
-- real thumbnail candidate strip with reduced dead space;
-- current-item highlight + lightweight decision state;
-- Auto Crop-scoped Light/Dark;
-- theme toggle at the top-right of the Auto Crop window;
-- existing RectROI/backend/persistence/export behavior unchanged.
-
-The accepted product sequence remains:
-1. Auto Crop manual ROI — complete.
-2. Limited architecture closeout — complete.
-3. **UX/UI modernization — active only for this bounded Auto Crop production adoption.**
-4. Unified Portable + consolidated human QA — next.
-
-Issue #17 remains the batched HUMAN UNVERIFIED queue.
+Issue #17 contains the authoritative consolidated QA checklist.
 
 ## Immediate next action
 
-1. Implement the confirmed Fluent Filmstrip Auto Crop UI in production.
-2. Add thumbnail-backed Filmstrip and scoped Light/Dark toggle.
-3. Keep PySide6-Essentials/no-Addons.
-4. Verify Python 3.9/3.12, ROI behavior, Light/Dark screenshots and Portable delta.
-5. Then move to the v0.3 unified Portable + consolidated QA gate.
+1. Use the pinned unified Portable; do not rebuild merely for documentation-only changes.
+2. Run Issue #17 in workflow order.
+3. Source Organizer first human test must use a disposable/copied dataset, never original Valby data.
+4. Record non-fatal findings and continue; stop immediately for startup/data-loss/source-mutation/state-loss/release blockers.
+5. After checkpoint: blocker-only fixes -> affected CI + final Portable smoke -> real Valby end-to-end QA -> v0.3 release closeout.
 
-## Relevant links only
+## Relevant links
 
 - `docs/PROJECT_STATE.md`
 - `docs/ROADMAP_v0.3.md`
-- Issue #49 — active Auto Crop reusable UI spike
-- Issue #47 / PR #48 — completed Dataset View Model/View modernization
-- Issue #45 / PR #46 — completed OpenSpec pilot
-- Issue #17 — batched HUMAN UNVERIFIED for later consolidated QA
-- PR #38 — merged Duplicate modularization
-- Issue #21 — Auto Crop production/release tracking
+- Issue #17 — Stage 4 unified Portable + consolidated QA
+- PR #15 — product-stack integration
+- PR #51 / Issue #49 — completed Auto Crop Fluent Filmstrip + i18n
+- Issue #21 — Auto Crop release tracking
+- Issue #23 — Source Organizer release tracking
+- Issue #26 — Text Cleanup release tracking
 - Engineering-Playbook `PROJECT_CONTINUITY.md`

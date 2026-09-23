@@ -1,6 +1,6 @@
 # v0.3 Roadmap
 
-Status date: 2026-09-23
+Status date: 2026-09-24
 
 Canonical current-state summary:
 `docs/PROJECT_STATE.md`
@@ -12,60 +12,48 @@ Canonical current-state summary:
 - Ranking/recommendation backend boundary.
 - Duplicate Review feature module + frontend/backend boundary.
 - AI Review Bundle / patch workflow.
-- Composite Split detector research and production integration.
-- Composite source archive semantics.
-- Composite per-output keep/reject behavior.
+- Composite Split production integration + archive lifecycle + per-output keep/reject.
 - generated-files-only incremental analysis after Composite Review.
 - automatic recommendation baseline separated from final manual override.
-- batched non-fatal human-QA policy.
 - Source Organizer backend/workflow with transaction + recovery safeguards.
 - Text Cleanup frontend/backend separation while preserving detection + repair as one product module.
-- General Auto Crop production backend and review workflow.
-- General Auto Crop manual draggable/resizable ROI edit/reset workflow.
+- General Auto Crop backend, manual ROI, persistence and Final Export integration.
+- main Dataset View Qt Model/View seam with stable IDs.
+- Auto Crop Fluent Filmstrip production UI + scoped Light/Dark.
+- permanent live Qt i18n foundation with zh_CN source locale + en_US catalog.
+- risk-based batched human-QA policy.
 - repository-resident PROJECT_STATE + Project Memory Gate continuity protocol.
-
-Some interaction changes are AUTO PASS but HUMAN UNVERIFIED; Issue #17 is authoritative.
 
 ## Current
 
-### Stage 3 — UX/UI modernization
+### Stage 4 — unified Portable + consolidated human QA
 
-The accepted execution order is:
+Stages 1–3 are complete. Issue #17 is authoritative for Stage 4.
 
-1. Auto Crop manual ROI — complete.
-2. Limited architecture closeout — complete.
-3. **UX/UI modernization — active.**
-4. Unified Portable + consolidated human QA — final checkpoint.
+Pinned QA code head:
+`46bc803b8a806d9c1cf61ab9a6534241ac0cff8e`
 
-PR #46 (`pilot/openspec-text-cleanup-ui`) was the first bounded Stage 3 slice and repository OpenSpec pilot; it is now merged at `a227be9b98c7fe0365fd680040bd3d6e3d5b0b00`.
+Pinned unified Portable:
+- workflow run: `35916370063`
+- artifact: `auto-crop-fluent-portable-qa`
+- artifact ID: `10774289944`
+- digest: `sha256:71835391390bcbe41199776565fbfecc9fc8d480af1f3dc4b60a9ca873c1c937`
+- unpacked size: `357,015,371 bytes`
+- packaged EXE self-test: PASS.
 
-Completed PR #46 evidence:
-- Text Cleanup presentation moved out of `app.py` into `ui/qt/text_cleanup.py`;
-- shared `ImagePreview` and `ThumbnailWorker` extracted into reusable `ui/qt` components after code inspection showed real cross-surface reuse;
-- UI dependencies are explicit through `SelectorApplication` and presentation/cache paths;
-- no Text Cleanup backend/model/repair algorithm redesign;
-- OpenSpec 1.13.1 strict validation: PASS;
-- Python 3.9/3.12 Text Cleanup and extracted-UI smoke: PASS;
-- Architecture / UI Polish / Duplicate / Auto Crop / Source Organizer regressions: PASS;
-- Portable build + packaged EXE self-test: PASS;
-- clean-context recovery test: PASS;
-- proposal/design/tasks implementation verification: PASS.
+Human QA is now intentionally concentrated into one checkpoint:
+1. Portable/global shell + language switching.
+2. recommendation/F5 baseline invariants.
+3. Duplicate Review.
+4. Composite Split.
+5. General Auto Crop.
+6. Source Organizer on a disposable copy only.
+7. Text Cleanup.
+8. AI Review Bundle + Final Export.
 
-The older QA-first state was intentionally retained long enough to test recovery drift detection. That test passed; the completed change is archived at `openspec/changes/archive/2026-09-22-extract-text-cleanup-presentation/` and final post-archive workflows are green.
+## Architecture direction
 
-PR #48 completed the next bounded Stage 3 slice and merged at `4b574df844ffd2d795707eb7c6ea5440b5a61bd1`: the main Dataset View now uses a `QAbstractListModel` / `QListView` seam with stable-ID action mapping while preserving existing ViewSpec and pagination behavior. Its OpenSpec change is archived under `openspec/changes/archive/2026-09-23-modernize-dataset-view-model/`.
-
-Current bounded Stage 3 tracker: Issue #49 — Auto Crop review-surface reusable UI spike. This is intentionally the final release-facing UX/UI experiment before the unified Portable / consolidated QA gate unless a concrete blocker appears. Reusable UI candidates must satisfy visual quality and usability equally; custom UI invention is fallback only.
-
-### Human QA queue
-
-Issue #17 remains authoritative for accumulated HUMAN UNVERIFIED interaction checks.
-
-Those checks are still required before release, but they are intentionally batched for Stage 4 rather than interrupting each bounded Stage 3 UX/UI change.
-
-### Architecture / presentation direction
-
-The backend/feature seam remains:
+Frozen seam:
 
 ```
 Qt presentation
@@ -73,17 +61,18 @@ Qt presentation
 -> feature backends
 ```
 
-Stage 3 should reduce presentation concentration in `app.py` through bounded, reversible slices. It must not become a broad whole-application rewrite merely for architectural aesthetics.
+Do not expand Stage 4 into another broad architecture or whole-app UI pass. Only confirmed release blockers/obvious issues justify product code changes before release.
 
 ## v0.3 remaining gates
 
-Before v0.3 is considered release-complete:
+Before v0.3 is release-complete:
 
-1. complete and merge the bounded Stage 3 UX/UI modernization work;
-2. build the final unified Portable candidate;
-3. run the accumulated human-QA checkpoint in Issue #17;
-4. human-test Source Organizer on a disposable copied dataset;
+1. run the consolidated Issue #17 human-QA checkpoint on the pinned unified Portable;
+2. human-test Source Organizer on a disposable copied dataset;
+3. apply blocker/obvious-release fixes only;
+4. rerun affected automated tests + one final Portable smoke;
 5. run final local Valby end-to-end workflow QA;
-6. close remaining production issues such as Auto Crop Issue #21 when their gates pass.
+6. close remaining production trackers whose release gates pass;
+7. finalize release notes / changelog / versioning and ship v0.3.
 
-Low-risk automated fixes may continue under the existing risk-based QA policy; they do not reorder the accepted Stage 3 -> Stage 4 sequence.
+Non-fatal automated fixes do not force separate manual QA; record them and verify at the next explicit checkpoint.
