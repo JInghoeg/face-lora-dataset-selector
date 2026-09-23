@@ -12,11 +12,23 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from PySide6.QtCore import QCoreApplication, QEvent, QThread, QTimer, Qt, Signal, QSize, QRectF
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    QThread,
+    QTimer,
+    Qt,
+    Signal,
+    QSize,
+    QRectF,
+)
 from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QListView,
@@ -84,6 +96,42 @@ class AutoCropFilmstripList(QListWidget):
         return hint
 
 
+class AspectPixmapLabel(QLabel):
+    """Keep a source pixmap fitted to the current label without cropping."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._source_pixmap = QPixmap()
+        self.setAlignment(Qt.AlignCenter)
+
+    def set_source_pixmap(self, pixmap):
+        self._source_pixmap = QPixmap(pixmap) if pixmap is not None else QPixmap()
+        self._rescale()
+
+    def clear(self):
+        self._source_pixmap = QPixmap()
+        super().clear()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._rescale()
+
+    def _rescale(self):
+        if self._source_pixmap.isNull():
+            super().clear()
+            return
+        size = self.contentsRect().size()
+        if size.width() <= 0 or size.height() <= 0:
+            return
+        super().setPixmap(
+            self._source_pixmap.scaled(
+                size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+
 class AutoCropROIWidget(QWidget):
     regionChanged = Signal(object)
     regionChangeFinished = Signal(object)
@@ -142,8 +190,22 @@ class AutoCropROIWidget(QWidget):
         self.image_size = (w, h)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         self.image_item.setImage(rgb, autoLevels=False, levels=(0, 255))
-        self.view.setLimits(xMin=0, xMax=w, yMin=0, yMax=h)
-        self.view.setRange(xRange=(0, w), yRange=(0, h), padding=0)
+        # Keep a visual safety margin around the source.  The editable ROI is
+        # still constrained to the image via maxBounds, but edge-aligned
+        # borders/handles must remain fully visible to the reviewer.
+        pad_x = max(16.0, w * 0.04)
+        pad_y = max(16.0, h * 0.04)
+        self.view.setLimits(
+            xMin=-w * 0.25,
+            xMax=w * 1.25,
+            yMin=-h * 0.25,
+            yMax=h * 1.25,
+        )
+        self.view.setRange(
+            xRange=(-pad_x, w + pad_x),
+            yRange=(-pad_y, h + pad_y),
+            padding=0,
+        )
 
         auto = self.normalized_box(auto_box, (w, h))
         ax0, ay0, ax1, ay1 = auto
@@ -159,7 +221,7 @@ class AutoCropROIWidget(QWidget):
         self.roi = pg.RectROI(
             [x0, y0],
             [x1 - x0, y1 - y0],
-            sideScalers=True,
+            sideScalers=False,
             maxBounds=QRectF(0, 0, w, h),
             movable=True,
             rotatable=False,
@@ -171,12 +233,18 @@ class AutoCropROIWidget(QWidget):
             snapSize=1,
             pen=pg.mkPen("#32e675", width=2),
         )
+        # Define the complete eight-direction resize affordance explicitly.
+        # Relying on a mixture of RectROI defaults + partial custom handles
+        # made edge resizing inconsistent across pyqtgraph versions.
         for pos, center in (
             ([0, 0], [1, 1]),
-            ([1, 0], [0, 1]),
-            ([0, 1], [1, 0]),
-            ([0, 0.5], [1, 0.5]),
             ([0.5, 0], [0.5, 1]),
+            ([1, 0], [0, 1]),
+            ([0, 0.5], [1, 0.5]),
+            ([1, 0.5], [0, 0.5]),
+            ([0, 1], [1, 0]),
+            ([0.5, 1], [0.5, 0]),
+            ([1, 1], [0, 0]),
         ):
             self.roi.addScaleHandle(pos, center)
         self.view.addItem(self.roi)
@@ -310,7 +378,12 @@ class AutoCropReviewDialog(QDialog):
         header.addWidget(self.theme_button)
         root.addLayout(header)
 
-        work = QSplitter(Qt.Horizontal)
+        self.work_splitter = QSplitter(Qt.Horizontal)
+        self.work_splitter.setObjectName("AutoCropWorkSplitter")
+        self.work_splitter.setChildrenCollapsible(False)
+        self.work_splitter.setHandleWidth(8)
+        self.work_splitter.setOpaqueResize(True)
+        work = self.work_splitter
         self.roi_card = api["SimpleCardWidget"]()
         roi_layout = QVBoxLayout(self.roi_card)
         roi_layout.setContentsMargins(10, 10, 10, 10)
@@ -332,13 +405,22 @@ class AutoCropReviewDialog(QDialog):
         self.info = api["BodyLabel"]("")
         self.info.setWordWrap(True)
         inspector_layout.addWidget(self.info)
-        self.crop_preview = QLabel()
+        self.crop_preview = AspectPixmapLabel()
         self.crop_preview.setObjectName("AutoCropCropPreview")
-        self.crop_preview.setAlignment(Qt.AlignCenter)
-        self.crop_preview.setMinimumSize(300, 300)
+        self.crop_preview.setMinimumSize(220, 220)
+        self.crop_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.crop_opacity = QGraphicsOpacityEffect(self.crop_preview)
+        self.crop_preview.setGraphicsEffect(self.crop_opacity)
+        self.crop_fade = QPropertyAnimation(self.crop_opacity, b"opacity", self)
+        self.crop_fade.setDuration(140)
+        self.crop_fade.setEasingCurve(QEasingCurve.OutCubic)
         inspector_layout.addWidget(self.crop_preview, 1)
         work.addWidget(self.inspector_card)
-        work.setSizes([1010, 360])
+        self.roi_card.setMinimumWidth(420)
+        self.inspector_card.setMinimumWidth(260)
+        work.setStretchFactor(0, 3)
+        work.setStretchFactor(1, 2)
+        work.setSizes([900, 500])
 
         self.filmstrip_card = api["SimpleCardWidget"]()
         film_layout = QVBoxLayout(self.filmstrip_card)
@@ -378,7 +460,10 @@ class AutoCropReviewDialog(QDialog):
         film_layout.addWidget(self.items)
 
         self.main_splitter = QSplitter(Qt.Vertical)
+        self.main_splitter.setObjectName("AutoCropMainSplitter")
         self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setHandleWidth(8)
+        self.main_splitter.setOpaqueResize(True)
         self.main_splitter.addWidget(work)
         self.main_splitter.addWidget(self.filmstrip_card)
         # Give spare dialog height to the work area, not the Filmstrip. This
@@ -772,7 +857,13 @@ class AutoCropReviewDialog(QDialog):
         h, w = self.current_image.shape[:2]
         x0, y0, x1, y1 = AutoCropROIWidget.normalized_box(box, (w, h))
         crop = self.current_image[y0:y1, x0:x1]
-        self.crop_preview.setPixmap(self.pixmap_from_bgr(crop, 360, 360))
+        self.crop_preview.set_source_pixmap(self.pixmap_from_bgr(crop, 900, 900))
+        if hasattr(self, "crop_fade"):
+            self.crop_fade.stop()
+            self.crop_opacity.setOpacity(0.72)
+            self.crop_fade.setStartValue(0.72)
+            self.crop_fade.setEndValue(1.0)
+            self.crop_fade.start()
 
     def warning_text(self, code):
         source = {
@@ -951,6 +1042,12 @@ class AutoCropReviewDialog(QDialog):
                 "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
                 "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
                 "background:transparent; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical { "
+                "background:rgba(255,255,255,22); border-radius:3px; margin:1px; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal:hover, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical:hover { "
+                "background:rgba(96,205,255,150); }"
             )
         else:
             self.setStyleSheet(
@@ -978,6 +1075,12 @@ class AutoCropReviewDialog(QDialog):
                 "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
                 "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
                 "background:transparent; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical { "
+                "background:rgba(0,0,0,22); border-radius:3px; margin:1px; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal:hover, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical:hover { "
+                "background:rgba(0,120,212,135); }"
             )
 
         if self._fluent:
