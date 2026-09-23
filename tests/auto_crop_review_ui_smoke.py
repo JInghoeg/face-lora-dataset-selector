@@ -15,8 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QFont, QFontDatabase, QWheelEvent
 from PySide6.QtWidgets import QApplication, QListView
 
 import app
@@ -72,8 +72,8 @@ def build_records(root: Path):
         ("accepted", True),
         ("keep_original", False),
     ]
-    # Enough candidates to force horizontal overflow so the production
-    # Filmstrip scrollbar/wheel behavior is exercised, not merely configured.
+    # Enough candidates to force multiple wrapped rows so the production
+    # candidate grid's vertical scrolling/resizing is exercised.
     for i in range(12):
         decision, edited = states[i % len(states)]
         path = root / f"candidate_{i:02d}.png"
@@ -101,42 +101,48 @@ def wait_thumbnails(qapp, dialog, timeout=8.0):
     )
 
 
-class FakeWheelEvent:
-    def __init__(self, delta):
-        self._delta = delta
-        self.accepted = False
-
-    def pixelDelta(self):
-        return QPoint(0, 0)
-
-    def angleDelta(self):
-        return QPoint(0, self._delta)
-
-    def accept(self):
-        self.accepted = True
-
-
 def verify_filmstrip_navigation(qapp, dialog):
     qapp.processEvents()
 
-    # The vertical splitter must let the user trade canvas height for
-    # Filmstrip height and back again.
+    assert dialog.items.isWrapping()
+    assert dialog.items.horizontalScrollBar().maximum() == 0
+
+    # At the default compact height, wrapped candidate rows must overflow
+    # vertically instead of turning into a horizontal single-row strip.
+    vbar = dialog.items.verticalScrollBar()
+    compact_max = vbar.maximum()
+    assert compact_max > 0, compact_max
+
+    # A normal wheel event should scroll the candidate grid vertically.
+    vbar.setValue(0)
+    center = QPointF(
+        dialog.items.viewport().width() / 2,
+        dialog.items.viewport().height() / 2,
+    )
+    wheel = QWheelEvent(
+        center,
+        center,
+        QPoint(0, 0),
+        QPoint(0, -120),
+        Qt.NoButton,
+        Qt.NoModifier,
+        Qt.ScrollPhase.ScrollUpdate,
+        False,
+    )
+    QApplication.sendEvent(dialog.items.viewport(), wheel)
+    qapp.processEvents()
+    assert vbar.value() > 0, (vbar.value(), vbar.maximum())
+
+    # Dragging the splitter upward must reveal more wrapped rows and therefore
+    # reduce the remaining vertical scroll range.
     before = dialog.main_splitter.sizes()
     dialog.main_splitter.setSizes([420, 360])
     qapp.processEvents()
     after = dialog.main_splitter.sizes()
+    expanded_max = vbar.maximum()
     assert after[1] > before[1], (before, after)
     assert after[0] < before[0], (before, after)
-
-    # Overflow stays one-row horizontal: scrollbar appears as needed and the
-    # normal mouse wheel pans it horizontally.
-    bar = dialog.items.horizontalScrollBar()
-    assert bar.maximum() > 0, bar.maximum()
-    bar.setValue(0)
-    event = FakeWheelEvent(-120)
-    dialog.items.wheelEvent(event)
-    assert event.accepted
-    assert bar.value() > 0, (bar.value(), bar.maximum())
+    assert expanded_max < compact_max, (compact_max, expanded_max)
 
 
 def verify_roi(qapp, dialog):
