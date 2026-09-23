@@ -376,6 +376,33 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>反向</source><translation>Reverse</translation></message>
     <message><source>关闭</source><translation>Off</translation></message>
     <message><source>无</source><translation>None</translation></message>
+    <message><source>去重后仍检测到 {count} 张独立人脸，需确认是否多人</source><translation>{count} independent faces remain after deduplication; confirm whether this is a multi-person image.</translation></message>
+    <message><source>无法读取图片：{error}</source><translation>Unable to read image: {error}</translation></message>
+    <message><source>景别/姿态分析失败：{error}</source><translation>Shot-size/pose analysis failed: {error}</translation></message>
+    <message><source>人脸检测失败：{error}</source><translation>Face detection failed: {error}</translation></message>
+    <message><source>主脸清晰度分析失败：{error}</source><translation>Primary-face sharpness analysis failed: {error}</translation></message>
+    <message><source>eDifFIQA 分析失败：{error}</source><translation>eDifFIQA analysis failed: {error}</translation></message>
+    <message><source>头部姿态分析失败：{error}</source><translation>Head-pose analysis failed: {error}</translation></message>
+    <message><source>BRISQUE 分析失败：{error}</source><translation>BRISQUE analysis failed: {error}</translation></message>
+    <message><source>未检测到人脸，但检测到全身；可能是有价值的背身/背面素材，需人工确认</source><translation>No face detected, but a full body was detected; this may be a useful back/back-facing sample and needs manual review.</translation></message>
+    <message><source>两个检测阈值均未找到人脸，且不是全身图</source><translation>No face was found at either detector threshold, and the image is not full-body.</translation></message>
+    <message><source>图片短边分辨率低于 512px</source><translation>The image short side is below 512 px.</translation></message>
+    <message><source>主脸实际像素偏小</source><translation>The primary face has too few actual pixels.</translation></message>
+    <message><source>主脸占画面比例偏低</source><translation>The primary face occupies too little of the frame.</translation></message>
+    <message><source>主脸明显模糊</source><translation>The primary face is severely blurred.</translation></message>
+    <message><source>eDifFIQA 人脸质量偏低</source><translation>eDifFIQA face quality is low.</translation></message>
+    <message><source>BRISQUE 整图质量偏低</source><translation>BRISQUE overall-image quality is low.</translation></message>
+    <message><source>图像疑似严重欠曝或过曝</source><translation>The image appears severely underexposed or overexposed.</translation></message>
+    <message><source>硬淘汰：{reason}</source><translation>Hard reject: {reason}</translation></message>
+    <message><source>需先复核：{reason}</source><translation>Review first: {reason}</translation></message>
+    <message><source>主脸清晰度 {value} &lt; 40</source><translation>Primary-face sharpness {value} &lt; 40</translation></message>
+    <message><source>Duplicate Group {group} 已保留更优代表（组内 {rank}/{size}）</source><translation>Duplicate Group {group} kept a better representative (group rank {rank}/{size})</translation></message>
+    <message><source>同类候选中已有更优代表</source><translation>A better representative already exists among similar candidates.</translation></message>
+    <message><source>未通过自动推荐基础门槛</source><translation>Did not pass the automatic recommendation baseline.</translation></message>
+    <message><source>自动推荐：通过基础门槛，并用于补足 {scale} / {angle} 覆盖</source><translation>Auto recommended: passed the baseline and helps fill {scale} / {angle} coverage.</translation></message>
+    <message><source>已通过基础门槛，但当前自动目标 {target} 张的景别×角度覆盖分配未选中（{scale} / {angle}）</source><translation>Passed the baseline, but was not selected within the current {target}-image shot-size × angle allocation ({scale} / {angle}).</translation></message>
+    <message><source>人工状态优先：{manual}（自动基线：{auto}）</source><translation>Manual status takes priority: {manual} (automatic baseline: {auto})</translation></message>
+    <message><source>分析 {count} 张变化图片；其余恢复缓存…</source><translation>Analyzing {count} changed images; restoring the rest from cache…</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
