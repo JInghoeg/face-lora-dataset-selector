@@ -745,30 +745,34 @@ class Window(QMainWindow):
     def open_source_organizer(self):
         if not BACKEND.feature_available('source_organizer'):return
         if not self.folder or not self.records:
-            QMessageBox.information(self,'没有数据','请先选择并完成一个数据集的分析。');return
+            QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先选择并完成一个数据集的分析。'));return
         if self.source_organizer_busy():
-            QMessageBox.information(self,'后台任务进行中',self._tr_main('请等待当前分析 / 组合图拆分 / 自动裁剪任务完成后再整理源文件。'));return
+            QMessageBox.information(self,self._tr_main('后台任务进行中'),self._tr_main('请等待当前分析 / 组合图拆分 / 自动裁剪任务完成后再整理源文件。'));return
         try:
             plan=BACKEND.build_source_organizer_plan(self.folder,self.records)
         except Exception as e:
-            QMessageBox.warning(self,'暂时不能整理源文件',str(e));return
+            QMessageBox.warning(self,self._tr_main('暂时不能整理源文件'),str(e));return
         if not plan.moves:
             try:
                 result=BACKEND.execute_source_organizer(plan)
                 self.save()
-                self.progress.setText(f'源文件已经是目标结构：无需移动 · 保持 {result.unchanged} · 跳过 {result.skipped}')
+                self.progress.setText(self._tr_main('源文件已经是目标结构：无需移动 · 保持 {unchanged} · 跳过 {skipped}').format(unchanged=result.unchanged,skipped=result.skipped))
             except Exception as e:
                 QMessageBox.critical(self,self._tr_main('整理源文件失败'),str(e))
             return
         counts=plan.counts_by_status()
-        box=QMessageBox(self);box.setWindowTitle('确认整理源文件');box.setIcon(QMessageBox.Warning)
-        box.setText(f'将移动 {len(plan.moves)} 张图片。')
+        box=QMessageBox(self);box.setWindowTitle(self._tr_main('确认整理源文件'));box.setIcon(QMessageBox.Warning)
+        box.setText(self._tr_main('将移动 {count} 张图片。').format(count=len(plan.moves)))
         box.setInformativeText(
-            f"推荐 {counts.get('推荐',0)} · 备选 {counts.get('备选',0)} · 淘汰 {counts.get('淘汰',0)}\n"
-            f"保持不动 {plan.unchanged} · 跳过 {plan.skipped}\n\n"
-            "文件会按当前最终状态移动到 推荐 / 备选 / 淘汰，并保留原相对来源目录。\n"
-            "组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。\n"
-            "执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。"
+            self._tr_main('推荐 {recommended} · 备选 {backup} · 淘汰 {rejected}').format(recommended=counts.get('推荐',0),backup=counts.get('备选',0),rejected=counts.get('淘汰',0))
+            + '\n'
+            + self._tr_main('保持不动 {unchanged} · 跳过 {skipped}').format(unchanged=plan.unchanged,skipped=plan.skipped)
+            + '\n\n'
+            + self._tr_main('文件会按当前最终状态移动到 推荐 / 备选 / 淘汰，并保留原相对来源目录。')
+            + '\n'
+            + self._tr_main('组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。')
+            + '\n'
+            + self._tr_main('执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。')
         )
         details=[]
         for move in plan.moves[:40]:
@@ -778,7 +782,7 @@ class Window(QMainWindow):
             except Exception:
                 src=str(move.source);dst=str(move.destination)
             details.append(f'{src}  →  {dst}')
-        if len(plan.moves)>40:details.append(f'…另有 {len(plan.moves)-40} 项')
+        if len(plan.moves)>40:details.append(self._tr_main('…另有 {count} 项').format(count=len(plan.moves)-40))
         box.setDetailedText('\n'.join(details));box.setStandardButtons(QMessageBox.Yes|QMessageBox.Cancel);box.setDefaultButton(QMessageBox.Cancel)
         if box.exec()!=QMessageBox.Yes:return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False)
