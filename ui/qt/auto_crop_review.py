@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -353,12 +354,14 @@ class AutoCropReviewDialog(QDialog):
         # Default to one fully visible candidate row. The surrounding vertical
         # splitter still lets users drag this area upward to reveal more rows.
         self.items.setMinimumHeight(150)
+        self.items.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.items.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.items.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.items.itemClicked.connect(self.show_item)
         film_layout.addWidget(self.items)
 
+        self.filmstrip_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.main_splitter = QSplitter(Qt.Vertical)
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.addWidget(work)
@@ -368,7 +371,9 @@ class AutoCropReviewDialog(QDialog):
         # manual expansion through the splitter.
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
-        self.main_splitter.setSizes([640, 190])
+        # Ask the splitter to keep the Filmstrip at its minimum one-row height;
+        # all remaining vertical space belongs to the primary work area.
+        self.main_splitter.setSizes([1, 0])
         root.addWidget(self.main_splitter, 1)
 
         actions = QHBoxLayout()
