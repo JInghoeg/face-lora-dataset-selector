@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from PySide6.QtCore import QThread, Qt, Signal, QSize, QRectF
+from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt, Signal, QSize, QRectF
 from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -240,7 +240,6 @@ class AutoCropReviewDialog(QDialog):
             )
 
         self.setObjectName("AutoCropReviewDialog")
-        self.setWindowTitle("自动裁剪复核")
         self.resize(1450, 860)
 
         if self._fluent:
@@ -248,6 +247,7 @@ class AutoCropReviewDialog(QDialog):
         else:
             self._ui_fallback()
 
+        self.retranslate()
         self.apply_theme(self._preferred_theme)
         self.reload()
 
@@ -279,7 +279,8 @@ class AutoCropReviewDialog(QDialog):
 
         header = QHBoxLayout()
         header.setSpacing(8)
-        header.addWidget(api["StrongBodyLabel"]("自动裁剪复核"))
+        self.header_title = api["StrongBodyLabel"]("")
+        header.addWidget(self.header_title)
         header.addStretch(1)
         self.count_label = api["CaptionLabel"]("0 / 0")
         header.addWidget(self.count_label)
@@ -297,11 +298,8 @@ class AutoCropReviewDialog(QDialog):
         roi_layout = QVBoxLayout(self.roi_card)
         roi_layout.setContentsMargins(10, 10, 10, 10)
         roi_layout.setSpacing(7)
-        roi_layout.addWidget(
-            api["CaptionLabel"](
-                "蓝虚线＝自动建议 ｜ 绿框＝当前裁剪框（可拖动 / 四边四角缩放）"
-            )
-        )
+        self.roi_hint = api["CaptionLabel"]("")
+        roi_layout.addWidget(self.roi_hint)
         self.roi_preview = AutoCropROIWidget()
         self.roi_preview.regionChanged.connect(self.roi_changed)
         self.roi_preview.regionChangeFinished.connect(self.roi_finished)
@@ -312,8 +310,9 @@ class AutoCropReviewDialog(QDialog):
         inspector_layout = QVBoxLayout(self.inspector_card)
         inspector_layout.setContentsMargins(10, 10, 10, 10)
         inspector_layout.setSpacing(8)
-        inspector_layout.addWidget(api["StrongBodyLabel"]("当前裁剪结果"))
-        self.info = api["BodyLabel"]("选择自动裁剪候选")
+        self.crop_title = api["StrongBodyLabel"]("")
+        inspector_layout.addWidget(self.crop_title)
+        self.info = api["BodyLabel"]("")
         self.info.setWordWrap(True)
         inspector_layout.addWidget(self.info)
         self.crop_preview = QLabel()
@@ -329,9 +328,10 @@ class AutoCropReviewDialog(QDialog):
         film_layout.setContentsMargins(8, 6, 8, 8)
         film_layout.setSpacing(4)
         film_head = QHBoxLayout()
-        film_head.addWidget(api["StrongBodyLabel"]("候选"))
+        self.candidates_title = api["StrongBodyLabel"]("")
+        film_head.addWidget(self.candidates_title)
         film_head.addStretch(1)
-        self.film_count = api["CaptionLabel"]("0 张")
+        self.film_count = api["CaptionLabel"]("")
         film_head.addWidget(self.film_count)
         film_layout.addLayout(film_head)
 
@@ -366,20 +366,25 @@ class AutoCropReviewDialog(QDialog):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        accept = api["PrimaryPushButton"]("接受当前裁剪框")
-        accept.clicked.connect(lambda: self.set_decision("accepted"))
-        reset = api["PushButton"]("重置为自动建议")
-        reset.clicked.connect(self.reset_auto_box)
-        keep = api["PushButton"]("保留原图")
-        keep.clicked.connect(lambda: self.set_decision("keep_original"))
-        pending = api["TransparentPushButton"]("恢复待定")
-        pending.clicked.connect(lambda: self.set_decision("pending"))
-        for button in (accept, reset, keep, pending):
+        self.accept_button = api["PrimaryPushButton"]("")
+        self.accept_button.clicked.connect(lambda: self.set_decision("accepted"))
+        self.reset_button = api["PushButton"]("")
+        self.reset_button.clicked.connect(self.reset_auto_box)
+        self.keep_button = api["PushButton"]("")
+        self.keep_button.clicked.connect(lambda: self.set_decision("keep_original"))
+        self.pending_button = api["TransparentPushButton"]("")
+        self.pending_button.clicked.connect(lambda: self.set_decision("pending"))
+        for button in (
+            self.accept_button,
+            self.reset_button,
+            self.keep_button,
+            self.pending_button,
+        ):
             actions.addWidget(button)
         actions.addStretch(1)
-        close = api["TransparentPushButton"]("关闭")
-        close.clicked.connect(self.accept)
-        actions.addWidget(close)
+        self.close_button = api["TransparentPushButton"]("")
+        self.close_button.clicked.connect(self.accept)
+        actions.addWidget(self.close_button)
         root.addLayout(actions)
 
     def _ui_fallback(self):
@@ -392,10 +397,12 @@ class AutoCropReviewDialog(QDialog):
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
+        self.header_title = None
+        self.candidates_title = None
         self.count_label = QLabel("0 / 0")
-        self.film_count = QLabel("0 张")
+        self.film_count = QLabel("")
         self.theme_button = None
-        self.info = QLabel("选择自动裁剪候选")
+        self.info = QLabel("")
         self.info.setWordWrap(True)
         self.info.setStyleSheet("font-weight:600;")
         right_layout.addWidget(self.info)
@@ -403,9 +410,8 @@ class AutoCropReviewDialog(QDialog):
         previews = QSplitter(Qt.Horizontal)
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.addWidget(
-            QLabel("蓝虚线＝自动建议 ｜ 绿框＝当前裁剪框（可拖动 / 四边四角缩放）")
-        )
+        self.roi_hint = QLabel("")
+        left_layout.addWidget(self.roi_hint)
         self.roi_preview = AutoCropROIWidget()
         self.roi_preview.regionChanged.connect(self.roi_changed)
         self.roi_preview.regionChangeFinished.connect(self.roi_finished)
@@ -414,7 +420,8 @@ class AutoCropReviewDialog(QDialog):
 
         right_crop = QWidget()
         crop_layout = QVBoxLayout(right_crop)
-        crop_layout.addWidget(QLabel("当前裁剪结果预览"))
+        self.crop_title = QLabel("")
+        crop_layout.addWidget(self.crop_title)
         self.crop_preview = QLabel()
         self.crop_preview.setObjectName("AutoCropCropPreview")
         self.crop_preview.setAlignment(Qt.AlignCenter)
@@ -425,25 +432,112 @@ class AutoCropReviewDialog(QDialog):
         right_layout.addWidget(previews, 1)
 
         actions = QHBoxLayout()
-        accept = QPushButton("接受当前裁剪框")
-        accept.clicked.connect(lambda: self.set_decision("accepted"))
-        reset = QPushButton("重置为自动建议")
-        reset.clicked.connect(self.reset_auto_box)
-        keep = QPushButton("保留原图")
-        keep.clicked.connect(lambda: self.set_decision("keep_original"))
-        pending = QPushButton("恢复待定")
-        pending.clicked.connect(lambda: self.set_decision("pending"))
-        for button in (accept, reset, keep, pending):
+        self.accept_button = QPushButton("")
+        self.accept_button.clicked.connect(lambda: self.set_decision("accepted"))
+        self.reset_button = QPushButton("")
+        self.reset_button.clicked.connect(self.reset_auto_box)
+        self.keep_button = QPushButton("")
+        self.keep_button.clicked.connect(lambda: self.set_decision("keep_original"))
+        self.pending_button = QPushButton("")
+        self.pending_button.clicked.connect(lambda: self.set_decision("pending"))
+        for button in (
+            self.accept_button,
+            self.reset_button,
+            self.keep_button,
+            self.pending_button,
+        ):
             actions.addWidget(button)
         actions.addStretch(1)
-        close = QPushButton("关闭")
-        close.clicked.connect(self.accept)
-        actions.addWidget(close)
+        self.close_button = QPushButton("")
+        self.close_button.clicked.connect(self.accept)
+        actions.addWidget(self.close_button)
         right_layout.addLayout(actions)
 
         split.addWidget(right)
         split.setSizes([340, 1110])
         root.addWidget(split)
+
+    @staticmethod
+    def _tr(source):
+        return QCoreApplication.translate("AutoCropReviewDialog", source)
+
+    def retranslate(self):
+        self.setWindowTitle(self._tr("自动裁剪复核"))
+        if self.header_title is not None:
+            self.header_title.setText(self._tr("自动裁剪复核"))
+        if self.roi_hint is not None:
+            self.roi_hint.setText(
+                self._tr(
+                    "蓝虚线＝自动建议 ｜ 绿框＝当前裁剪框（可拖动 / 四边四角缩放）"
+                )
+            )
+        if self.crop_title is not None:
+            self.crop_title.setText(
+                self._tr(
+                    "当前裁剪结果"
+                    if self._fluent
+                    else "当前裁剪结果预览"
+                )
+            )
+        if self.candidates_title is not None:
+            self.candidates_title.setText(self._tr("候选"))
+        self.accept_button.setText(self._tr("接受当前裁剪框"))
+        self.reset_button.setText(self._tr("重置为自动建议"))
+        self.keep_button.setText(self._tr("保留原图"))
+        self.pending_button.setText(self._tr("恢复待定"))
+        self.close_button.setText(self._tr("关闭"))
+
+        self._refresh_translated_dynamic_text()
+        self._update_theme_tooltip()
+
+    def _refresh_translated_dynamic_text(self):
+        total = len(self.records)
+        if self.film_count is not None:
+            self.film_count.setText(
+                self._tr("{count} 张").format(count=total)
+            )
+
+        for row in range(self.items.count()):
+            item = self.items.item(row)
+            sample_id = item.data(Qt.UserRole)
+            _index, record = self._record_by_id(sample_id)
+            if record is None:
+                continue
+            if self._fluent:
+                item.setText(self.filmstrip_text(record))
+            else:
+                item.setText(self.label(record))
+            item.setToolTip(self.label(record))
+
+        if not self.records:
+            self.info.setText(self._tr("当前没有自动裁剪候选"))
+            return
+
+        if self.current >= 0 and self.current < len(self.records):
+            record = self.records[self.current]
+            proposal = self.backend.auto_crop_proposal(record)
+            if proposal is not None and self.current_image is not None:
+                box = self.roi_preview.box() or proposal.box
+                self.update_info(proposal, box)
+            elif proposal is None:
+                self.info.setText(self._tr("选择自动裁剪候选"))
+        elif self.current < 0:
+            self.info.setText(self._tr("选择自动裁剪候选"))
+
+    def _update_theme_tooltip(self):
+        if self.theme_button is None:
+            return
+        dark = self._preferred_theme == "dark"
+        self.theme_button.setToolTip(
+            self._tr("切换到浅色模式")
+            if dark
+            else self._tr("切换到深色模式")
+        )
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.LanguageChange:
+            self.retranslate()
+        super().changeEvent(event)
 
     def placeholder_icon(self):
         pix = QPixmap(112, 112)
@@ -453,13 +547,13 @@ class AutoCropReviewDialog(QDialog):
     def proposal_state(self, record):
         proposal = self.backend.auto_crop_proposal(record)
         if proposal is None:
-            return "无建议", ""
+            return self._tr("无建议"), ""
         state = {
-            "accepted": "已接受",
-            "keep_original": "保留原图",
-            "pending": "待定",
+            "accepted": self._tr("已接受"),
+            "keep_original": self._tr("保留原图"),
+            "pending": self._tr("待定"),
         }.get(proposal.decision, proposal.decision)
-        edited = " · 手调" if proposal.manually_adjusted else ""
+        edited = self._tr(" · 手调") if proposal.manually_adjusted else ""
         return state, edited
 
     def filmstrip_text(self, record):
@@ -481,7 +575,11 @@ class AutoCropReviewDialog(QDialog):
         state, edited = self.proposal_state(record)
         return (
             f"{mark} {record.path.name}\n"
-            f"{state}{edited} · 去背景 {proposal.removed_area_ratio:.1%}"
+            + self._tr("{state}{edited} · 去除 {ratio}").format(
+                state=state,
+                edited=edited,
+                ratio=f"{proposal.removed_area_ratio:.1%}",
+            )
         )
 
     def _record_by_id(self, sample_id):
@@ -510,14 +608,16 @@ class AutoCropReviewDialog(QDialog):
 
         total = len(self.records)
         if self.film_count is not None:
-            self.film_count.setText(f"{total} 张")
+            self.film_count.setText(
+                self._tr("{count} 张").format(count=total)
+            )
 
         if not self.records:
             self.current = -1
             self.current_sample_id = None
             self.current_image = None
             self.count_label.setText("0 / 0")
-            self.info.setText("当前没有自动裁剪候选")
+            self.info.setText(self._tr("当前没有自动裁剪候选"))
             self.roi_preview.set_data(None, [0, 0, 1, 1], [0, 0, 1, 1])
             self.crop_preview.clear()
             return
@@ -637,6 +737,12 @@ class AutoCropReviewDialog(QDialog):
         crop = self.current_image[y0:y1, x0:x1]
         self.crop_preview.setPixmap(self.pixmap_from_bgr(crop, 360, 360))
 
+    def warning_text(self, code):
+        source = {
+            "subject_mask_touches_source_edge": "主体遮罩触及原图边缘",
+        }.get(code, code)
+        return self._tr(source)
+
     def update_info(self, proposal, box):
         if self.current_image is None or self.current < 0:
             return
@@ -645,18 +751,43 @@ class AutoCropReviewDialog(QDialog):
         kept = max(0, x1 - x0) * max(0, y1 - y0)
         removed = max(0.0, min(1.0, 1.0 - kept / max(1, w * h)))
         state = {
-            "accepted": "已接受",
-            "keep_original": "保留原图",
-            "pending": "待定",
+            "accepted": self._tr("已接受"),
+            "keep_original": self._tr("保留原图"),
+            "pending": self._tr("待定"),
         }.get(proposal.decision, proposal.decision)
-        kind = "手动调整" if list(box) != list(proposal.auto_box) else "自动建议"
-        warning = "；".join(proposal.warnings) if proposal.warnings else "无"
+        kind = (
+            self._tr("手动调整")
+            if list(box) != list(proposal.auto_box)
+            else self._tr("自动建议")
+        )
+        warning = (
+            "；".join(self.warning_text(code) for code in proposal.warnings)
+            if proposal.warnings
+            else self._tr("无")
+        )
         self.info.setText(
             f"{self.records[self.current].path.name}\n"
-            f"原图 {w} × {h} → 当前 {x1 - x0} × {y1 - y0} · 去除 {removed:.1%}\n"
-            f"状态：{state} · 当前框：{kind}\n"
-            f"alpha≥{proposal.alpha_min:.2f} · padding {proposal.padding_px}px\n"
-            f"提示：{warning}"
+            + self._tr(
+                "原图 {width} × {height} → 当前 {crop_width} × {crop_height} · 去除 {removed}"
+            ).format(
+                width=w,
+                height=h,
+                crop_width=x1 - x0,
+                crop_height=y1 - y0,
+                removed=f"{removed:.1%}",
+            )
+            + "\n"
+            + self._tr("状态：{state} · 当前框：{kind}").format(
+                state=state,
+                kind=kind,
+            )
+            + "\n"
+            + self._tr("alpha≥{alpha} · padding {padding}px").format(
+                alpha=f"{proposal.alpha_min:.2f}",
+                padding=proposal.padding_px,
+            )
+            + "\n"
+            + self._tr("提示：{warning}").format(warning=warning)
         )
 
     def roi_changed(self, box):
@@ -683,7 +814,7 @@ class AutoCropReviewDialog(QDialog):
             proposal = self.backend.auto_crop_proposal(record)
             if proposal is not None:
                 self.roi_preview.set_box(proposal.box)
-            QMessageBox.warning(self, "裁剪框无效", str(exc))
+            QMessageBox.warning(self, self._tr("裁剪框无效"), str(exc))
 
     def reset_auto_box(self):
         if self.current < 0:
@@ -697,7 +828,7 @@ class AutoCropReviewDialog(QDialog):
             self.update_crop_preview(proposal.box)
             self.update_info(proposal, proposal.box)
         except Exception as exc:
-            QMessageBox.warning(self, "无法重置裁剪框", str(exc))
+            QMessageBox.warning(self, self._tr("无法重置裁剪框"), str(exc))
 
     def set_decision(self, value):
         if self.current < 0:
@@ -738,9 +869,7 @@ class AutoCropReviewDialog(QDialog):
                     if dark
                     else self._fluent["FluentIcon"].QUIET_HOURS
                 )
-                self.theme_button.setToolTip(
-                    "切换到浅色模式" if dark else "切换到深色模式"
-                )
+                self._update_theme_tooltip()
 
         self.roi_preview.set_theme(dark)
 

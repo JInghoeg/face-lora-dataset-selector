@@ -6,6 +6,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Missing Fluent UI runtime. Run: python install_ui_dependencies.py"
 }
 
+python compile_translations.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Qt translation compilation failed."
+}
+
 $build = Join-Path $PSScriptRoot "build"
 $dist = Join-Path $PSScriptRoot "dist"
 

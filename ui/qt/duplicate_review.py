@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QCoreApplication, QEvent, Qt, QSize
 from PySide6.QtGui import QIcon, QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -44,21 +44,16 @@ class DuplicateReviewDialog(QDialog):
         self.dirty = False
         self.regroup_needed = False
 
-        self.setWindowTitle("Duplicate Group 人工复核")
         self.resize(1500, 900)
 
         root = QVBoxLayout(self)
-        hint = QLabel(
-            "勾选只是本窗口里的临时选择；切换 Group 不会丢失。"
-            "点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。"
-            "双击图片可打开原图。"
-        )
-        hint.setWordWrap(True)
-        hint.setStyleSheet(
+        self.hint = QLabel("")
+        self.hint.setWordWrap(True)
+        self.hint.setStyleSheet(
             "padding:6px;color:#333;background:#f3f4f6;"
             "border:1px solid #d1d5db;"
         )
-        root.addWidget(hint)
+        root.addWidget(self.hint)
 
         split = QSplitter(Qt.Horizontal)
         self.group_list = QListWidget()
@@ -68,7 +63,7 @@ class DuplicateReviewDialog(QDialog):
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        self.group_label = QLabel("选择左侧重复组")
+        self.group_label = QLabel("")
         self.group_label.setStyleSheet("font-weight:600;")
         right_layout.addWidget(self.group_label)
 
@@ -87,36 +82,77 @@ class DuplicateReviewDialog(QDialog):
         root.addWidget(split, 1)
 
         actions = QHBoxLayout()
-        best = QPushButton("保留组内最佳")
-        best.clicked.connect(self.keep_best)
-        selected = QPushButton("完成本组：勾选推荐 / 未勾淘汰")
-        selected.clicked.connect(self.keep_checked)
-        all_groups = QPushButton("完成全部组")
-        all_groups.clicked.connect(self.commit_all_groups)
-        all_keep = QPushButton("全部保留")
-        all_keep.clicked.connect(self.keep_all)
-        restore = QPushButton("恢复组内自动状态")
-        restore.clicked.connect(self.restore_auto)
-        self.toggle_grouping = QPushButton("勾选项移出重复组")
+        self.best_button = QPushButton("")
+        self.best_button.clicked.connect(self.keep_best)
+        self.selected_button = QPushButton("")
+        self.selected_button.clicked.connect(self.keep_checked)
+        self.all_groups_button = QPushButton("")
+        self.all_groups_button.clicked.connect(self.commit_all_groups)
+        self.all_keep_button = QPushButton("")
+        self.all_keep_button.clicked.connect(self.keep_all)
+        self.restore_button = QPushButton("")
+        self.restore_button.clicked.connect(self.restore_auto)
+        self.toggle_grouping = QPushButton("")
         self.toggle_grouping.clicked.connect(self.toggle_ignore)
 
         for button in (
-            best,
-            selected,
-            all_groups,
-            all_keep,
-            restore,
+            self.best_button,
+            self.selected_button,
+            self.all_groups_button,
+            self.all_keep_button,
+            self.restore_button,
             self.toggle_grouping,
         ):
             actions.addWidget(button)
         actions.addStretch(1)
 
-        close = QPushButton("关闭")
-        close.clicked.connect(self.accept)
-        actions.addWidget(close)
+        self.close_button = QPushButton("")
+        self.close_button.clicked.connect(self.accept)
+        actions.addWidget(self.close_button)
         root.addLayout(actions)
 
+        self.retranslate()
         self.reload_groups()
+
+    @staticmethod
+    def _tr(source):
+        return QCoreApplication.translate("DuplicateReviewDialog", source)
+
+    def status_text(self, value):
+        return {
+            "推荐": self._tr("推荐"),
+            "备选": self._tr("备选"),
+            "淘汰": self._tr("淘汰"),
+        }.get(value, value)
+
+    def category_text(self, value):
+        return {
+            "近景/头肩": self._tr("近景/头肩"),
+            "半身": self._tr("半身"),
+            "大半身": self._tr("大半身"),
+            "全身": self._tr("全身"),
+            "正脸": self._tr("正脸"),
+            "左3/4": self._tr("左3/4"),
+            "右3/4": self._tr("右3/4"),
+            "左侧脸": self._tr("左侧脸"),
+            "右侧脸": self._tr("右侧脸"),
+        }.get(value, value)
+
+    def retranslate(self):
+        self.setWindowTitle(self._tr("重复组人工复核"))
+        self.hint.setText(self._tr("勾选只是本窗口里的临时选择；切换重复组不会丢失。点击“完成本组：勾选推荐 / 未勾淘汰”后才写入人工状态。双击图片可打开原图。"))
+        self.best_button.setText(self._tr("保留组内最佳"))
+        self.selected_button.setText(self._tr("完成本组：勾选推荐 / 未勾淘汰"))
+        self.all_groups_button.setText(self._tr("完成全部组"))
+        self.all_keep_button.setText(self._tr("全部保留"))
+        self.restore_button.setText(self._tr("恢复组内自动状态"))
+        self.close_button.setText(self._tr("关闭"))
+        self.reload_groups(self.current_group)
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.LanguageChange and hasattr(self, "best_button"):
+            self.retranslate()
+        super().changeEvent(event)
 
     @staticmethod
     def thumb(path):
@@ -151,7 +187,7 @@ class DuplicateReviewDialog(QDialog):
             try:
                 os.startfile(str(self.records[record_index].path))
             except OSError as exc:
-                QMessageBox.warning(self, "无法打开图片", str(exc))
+                QMessageBox.warning(self, self._tr("无法打开图片"), str(exc))
 
     def grouped(self, group_id):
         return self.backend.duplicate_group_members(self.records, group_id)
@@ -164,19 +200,19 @@ class DuplicateReviewDialog(QDialog):
             members = self.grouped(group_id)
             done = self.backend.duplicate_group_reviewed(self.records, group_id)
             item = QListWidgetItem(
-                f'{"✓ " if done else ""}Group {group_id} · {len(members)} 张'
+                (("✓ " if done else "") + self._tr("重复组 {group_id} · {count} 张").format(group_id=group_id, count=len(members)))
             )
             item.setData(Qt.UserRole, group_id)
             self.group_list.addItem(item)
 
         ignored = self.grouped(self.backend.duplicate_ignored_group_id)
         if ignored:
-            item = QListWidgetItem(f"已人工移出 · {len(ignored)} 张")
+            item = QListWidgetItem(self._tr("已人工移出 · {count} 张").format(count=len(ignored)))
             item.setData(Qt.UserRole, self.backend.duplicate_ignored_group_id)
             self.group_list.addItem(item)
 
         if not self.group_list.count():
-            self.group_label.setText("当前没有 Duplicate Group")
+            self.group_label.setText(self._tr("当前没有重复组"))
             self.members.clear()
             self.current_group = None
             return
@@ -205,14 +241,20 @@ class DuplicateReviewDialog(QDialog):
         self.members.clear()
 
         ignored = group_id == self.backend.duplicate_ignored_group_id
-        title = "已人工移出自动重复分组" if ignored else f"Duplicate Group {group_id}"
+        title = (
+            self._tr("已人工移出自动重复分组")
+            if ignored
+            else self._tr("重复组 {group_id}").format(group_id=group_id)
+        )
         self.group_label.setText(
             title
-            + f" · {len(members)} 张"
-            + (" · ✓ 已完成" if done else " · 未完成")
+            + self._tr(" · {count} 张").format(count=len(members))
+            + (self._tr(" · ✓ 已完成") if done else self._tr(" · 未完成"))
         )
         self.toggle_grouping.setText(
-            "勾选项恢复自动分组" if ignored else "勾选项移出重复组"
+            self._tr("勾选项恢复自动分组")
+            if ignored
+            else self._tr("勾选项移出重复组")
         )
 
         for rank_no, record in enumerate(members, 1):
@@ -226,14 +268,19 @@ class DuplicateReviewDialog(QDialog):
             text = (
                 f"{prefix}{record.path.name}\n"
                 f"{_human_bytes(record.file_size)} · {record.width}×{record.height}\n"
-                f"FIQA {record.face_quality:.3f} · BRISQUE {record.brisque:.1f} · "
-                f"Sharp {record.blur:.0f}\n"
-                f"{record.person_scale} · {record.angle_class}"
+                + f"FIQA {record.face_quality:.3f} · BRISQUE {record.brisque:.1f} · "
+                + self._tr("清晰度 {value}").format(value=f"{record.blur:.0f}")
+                + "\n"
+                + f"{self.category_text(record.person_scale)} · {self.category_text(record.angle_class)}"
             )
             eligibility_text = (
-                "可直接用"
+                self._tr("可直接用")
                 if record.eligibility == "PASS"
-                else ("需复核" if record.eligibility == "REVIEW" else "硬淘汰")
+                else (
+                    self._tr("需复核")
+                    if record.eligibility == "REVIEW"
+                    else self._tr("硬淘汰")
+                )
             )
             list_item = QListWidgetItem(QIcon(self.thumb(record.path)), text)
             list_item.setData(Qt.UserRole, record_index)
@@ -241,9 +288,16 @@ class DuplicateReviewDialog(QDialog):
             list_item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
             list_item.setToolTip(
                 f"{record.sample_id}\n"
-                f"文件：{_human_bytes(record.file_size)} · "
-                f"{record.width}×{record.height}\n"
-                f"状态：{record.status} · 判定：{eligibility_text}"
+                + self._tr("文件：{size} · {width}×{height}").format(
+                    size=_human_bytes(record.file_size),
+                    width=record.width,
+                    height=record.height,
+                )
+                + "\n"
+                + self._tr("状态：{status} · 判定：{eligibility}").format(
+                    status=self.status_text(record.status),
+                    eligibility=eligibility_text,
+                )
             )
             self.members.addItem(list_item)
 
@@ -322,8 +376,8 @@ class DuplicateReviewDialog(QDialog):
         if not checked:
             QMessageBox.information(
                 self,
-                "未勾选图片",
-                "请先勾选需要调整重复分组的图片。",
+                self._tr("未勾选图片"),
+                self._tr("请先勾选需要调整重复分组的图片。"),
             )
             return
 
