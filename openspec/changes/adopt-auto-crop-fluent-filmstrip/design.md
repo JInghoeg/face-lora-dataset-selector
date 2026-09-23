@@ -82,3 +82,20 @@ The existing PySide6-Essentials requirement remains authoritative.
 - app startup without Fluent installed;
 - Portable build and packaged self-test;
 - record Portable size delta against the previous validated candidate.
+
+
+## Production-render adjustment
+
+The first real production render exposed two presentation-specific issues without changing accepted intent:
+
+1. QFluentWidgets `ListWidget` is optimized for row-list presentation. Its delegate compressed the requested `IconMode` cells, producing thin thumbnail strips and leaving the Filmstrip visually under-filled.
+   - Resolution: use Qt's mature native `QListWidget` in `IconMode` **inside the Fluent Filmstrip card**.
+   - Fluent remains the accepted visual/component language for the dialog, cards, labels and actions.
+   - Only minimal dialog-scoped hover/selection styling is applied to the native icon view.
+   - This is not a new custom widget and does not change layout/product behavior.
+
+2. QFluent card backgrounds animate for roughly 120 ms on theme changes.
+   - Production behavior is valid, but screenshot verification must wait until the animation settles before judging Dark coherence.
+   - CI also loads a temporary CJK font only for screenshots because GitHub Windows runners do not include the user's normal Chinese UI fonts.
+
+These adjustments preserve the user-approved Fluent + Filmstrip + thumbnail + scoped Light/Dark direction.
