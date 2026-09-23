@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image, ImageDraw
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QListView
 
 import app
@@ -120,6 +121,15 @@ def main():
 
     qapp = QApplication.instance() or QApplication([])
 
+    font_path = os.environ.get("AUTO_CROP_VISUAL_FONT")
+    if font_path and Path(font_path).exists():
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id >= 0:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                qapp.setFont(QFont(families[0], 10))
+                print("UI font:", families[0])
+
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         records = build_records(root)
@@ -142,6 +152,11 @@ def main():
         assert dialog.theme_button is not None
 
         wait_thumbnails(qapp, dialog)
+        # Native IconMode must render a real thumbnail cell rather than the
+        # compressed row delegate used by QFluentWidgets ListWidget.
+        qapp.processEvents()
+        first_rect = dialog.items.visualItemRect(dialog.items.item(0))
+        assert first_rect.height() >= 120, first_rect
         for row in range(dialog.items.count()):
             assert not dialog.items.item(row).icon().isNull()
 
@@ -157,12 +172,17 @@ def main():
         # Capture real production light mode.
         dialog.apply_theme("light")
         qapp.processEvents()
+        time.sleep(0.18)
+        qapp.processEvents()
         assert dialog._preferred_theme == "light"
         if args.out:
             assert dialog.grab().save(str(args.out / "auto_crop_fluent_light.png"))
 
-        # Top-right control toggles to coherent scoped dark mode.
+        # Top-right control toggles to coherent scoped dark mode. QFluent card
+        # backgrounds animate for ~120 ms, so capture only after the transition.
         dialog.toggle_theme()
+        qapp.processEvents()
+        time.sleep(0.22)
         qapp.processEvents()
         assert dialog._preferred_theme == "dark"
         assert "#202020" in dialog.styleSheet()
