@@ -77,8 +77,10 @@ Face LoRA Dataset Selector - Windows x64 Portable
 注意：
 - 请不要只把 exe 单独复制出去，_internal 目录也是程序的一部分。
 - MI-GAN 不随压缩包分发；第一次使用 AI 修复时程序会自动下载并校验模型。
-- Composite Split 人物/头部检测模型不随压缩包分发；第一次使用 Composite Split 时会下载到程序目录下的 models\composite_split_cache。
-- 原始图片不会被覆盖。
+- Composite Split 人物/头部检测模型不随压缩包分发；第一次使用 Composite Split 时会自动下载并缓存。
+- Auto Crop 的 ISNetIS 模型不随基础压缩包分发；第一次使用自动裁剪时会自动下载并做完整性校验。
+- 训练导出、文字修复和自动裁剪不会覆盖源图片像素。
+- 接受组合图拆分会把原组合图移入 _CompositeSplit_Originals；“整理源文件”会在你确认后真实移动文件位置。
 "@ | Set-Content (Join-Path $portable "使用说明.txt") -Encoding UTF8
 
 Write-Host "Portable build ready: $portable"
