@@ -1,14 +1,10 @@
 # Changelog
 
-## v0.3.0 — WITHDRAWN — 2026-09-24
-
-**This release was withdrawn before acceptance. Do not use the previously published v0.3.0 artifact.**
-
-The public release was created before the full manual QA checkpoint had actually been completed. After trying the build, the user reported multiple bugs. The Release/tag were removed and the v0.3 trackers were reopened.
-
-The feature list below remains the intended v0.3 scope, but it is **not a statement that the release passed manual QA**.
+## v0.3.0 — 2026-09-25
 
 v0.3 turns the selector from a mostly single-pass quality filter into a complete, human-authoritative LoRA dataset workflow.
+
+The final release is based on the post-withdrawal recovery line and passed the consolidated real-use human QA checkpoint on 2026-09-25.
 
 ### Dataset workflow
 
@@ -53,9 +49,10 @@ v0.3 turns the selector from a mostly single-pass quality filter into a complete
 
 - Python 3.9 / 3.12 production and feature regression coverage.
 - Windows Portable packaged EXE self-test.
-- Consolidated Stage 4 human QA: **NOT PASSED / REOPENED**.
-- Source Organizer real human validation: pending.
-- Auto Crop Light/Dark real human review: pending as part of the consolidated QA checkpoint.
+- 10 / 10 GitHub Actions workflows passed on the accepted recovery candidate.
+- Consolidated Stage 4 real-use human QA: **PASS**.
+- Source Organizer verified as part of the accepted consolidated QA.
+- Auto Crop Light/Dark review verified as part of the accepted consolidated QA.
 
 ## v0.2.0 — 2026-09-19
 
