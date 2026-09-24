@@ -124,3 +124,4 @@ No future assistant response may infer QA PASS from “完成了”, “好了�
 - Issue #23 — Source Organizer (REOPENED)
 - Issue #26 — Text Cleanup (REOPENED)
 - Issue #55 — optional NVIDIA CUDA acceleration research
+- Issue #56 — Text Cleanup review sorting controls (deferred backlog)
