@@ -83,6 +83,13 @@ jobs:
             throw "Portable self-test failed with exit code $($p.ExitCode)"
           }
 
+      - name: Build incremental QA overlay
+        shell: pwsh
+        run: |
+          .\tools\build-qa-overlay.ps1 `
+            -PortableRoot ".\dist\Face-LoRA-Dataset-Selector" `
+            -OverlayRoot ".\qa-overlay"
+
       - name: Create ZIP and checksum
         shell: pwsh
         run: |
@@ -101,6 +108,13 @@ jobs:
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256
             portable-size-report.txt
+          if-no-files-found: error
+
+      - name: Upload incremental QA overlay
+        uses: actions/upload-artifact@v4
+        with:
+          name: Face-LoRA-Dataset-Selector-Windows-x64-QA-Overlay
+          path: qa-overlay/
           if-no-files-found: error
 
       - name: Attach portable build to GitHub Release
