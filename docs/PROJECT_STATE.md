@@ -16,12 +16,15 @@ Canonical current-state entry point.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- v0.3 recovery PR: **#54 merged to main**.
+- Stable release: **v0.3.0 — published 2026-09-25**.
+- Release commit/tag target: `432321dacda585371b4728b0b2aee37909341f18`.
+- Windows Portable SHA-256: `43d7f8404c4311ba397118d174a8531f4a35d5717b1214708acd649b149f7742`.
+- v0.3 recovery PR #54: **MERGED**.
 - v0.3 final pre-release CI: **10 / 10 PASS**.
 - v0.3 human QA: **PASS — explicitly accepted by the user on 2026-09-25**.
-- Current phase: **publishing final v0.3.0 release from main**.
+- Current phase: **v0.3 released; repository cleanup + v0.4 planning**.
 
-The prematurely published v0.3.0 artifact from 2026-09-24 remains invalid historical evidence. The current release is generated from the accepted post-recovery main line.
+The prematurely published/withdrawn v0.3.0 artifact from 2026-09-24 is obsolete historical evidence. The valid stable v0.3.0 is the release targeting commit `432321d`.
 
 ## Latest recovery batch
 
@@ -91,11 +94,11 @@ Key deferred items include:
 
 ## Current objective
 
-1. publish and verify the final v0.3.0 Release from main;
-2. close/archive the completed v0.3 trackers;
-3. recheck and finish repo-hygiene PR #58;
-4. keep deferred UX/quality work in v0.4 umbrella #60;
-5. do not pull v0.4 work back into the v0.3 release.
+1. close/archive completed v0.3 trackers;
+2. recheck and finish repo-hygiene PR #58 without changing product behavior;
+3. use Issue #60 as the v0.4 umbrella;
+4. keep #55 / #56 / #57 / #59 as focused v0.4 backlog items;
+5. begin v0.4 implementation only after repository cleanup is settled.
 
 ## Frozen workflow under test
 
@@ -120,15 +123,21 @@ Future release checkpoints must continue to require explicit human acceptance ra
 
 ## Authoritative trackers
 
-- PR #54 — merged v0.3 recovery implementation
-- Issue #17 — Stage 4 consolidated human QA (**PASS / completed 2026-09-25**)
-- Issue #2 — v0.3 umbrella (REOPENED)
-- Issue #9 — v0.3 QA (REOPENED)
-- Issue #13 — Composite Split (REOPENED)
-- Issue #21 — General Auto Crop (REOPENED)
-- Issue #23 — Source Organizer (REOPENED)
-- Issue #26 — Text Cleanup (REOPENED)
+Completed v0.3:
+- PR #54 — merged recovery implementation
+- Issue #17 — Stage 4 consolidated human QA (PASS)
+- Issue #2 — v0.3 umbrella
+- Issue #9 — v0.3 QA
+- Issue #13 — Composite Split
+- Issue #21 — General Auto Crop
+- Issue #23 — Source Organizer
+- Issue #26 — Text Cleanup
+- Issue #52 — permanent Qt i18n foundation
+
+Current / next:
+- PR #58 — repository documentation hygiene
 - Issue #55 — optional NVIDIA CUDA acceleration research
-- Issue #56 — Text Cleanup review sorting controls (deferred backlog)
-- Issue #59 — v0.4 UX backlog from accepted v0.3 human QA
+- Issue #56 — Text Cleanup review sorting controls
+- Issue #57 — README screenshots
+- Issue #59 — UX backlog from accepted v0.3 QA
 - Issue #60 — v0.4 umbrella
