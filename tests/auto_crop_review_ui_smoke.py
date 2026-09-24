@@ -260,6 +260,26 @@ def main():
         assert dialog.theme_button is not None
 
         wait_thumbnails(qapp, dialog)
+
+        # Native-lifetime regression: candidate navigation must reuse the same
+        # RectROI and the same 8 pyqtgraph Handle wrappers. Recreating handles
+        # per image caused Windows-native GC/Shiboken access violations after
+        # sustained review.
+        roi_identity = id(dialog.roi_preview.roi)
+        handle_identities = tuple(
+            id(handle) for handle in dialog.roi_preview.roi.getHandles()
+        )
+        assert len(handle_identities) == 8
+        for cycle in range(80):
+            row = cycle % dialog.items.count()
+            item = dialog.items.item(row)
+            dialog.show_item(item)
+            qapp.processEvents()
+            assert id(dialog.roi_preview.roi) == roi_identity
+            assert tuple(
+                id(handle) for handle in dialog.roi_preview.roi.getHandles()
+            ) == handle_identities
+
         # Native IconMode must render a real thumbnail cell rather than the
         # compressed row delegate used by QFluentWidgets ListWidget.
         qapp.processEvents()
