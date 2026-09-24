@@ -176,6 +176,50 @@ function Get-TextFile {
     return (Get-Content -LiteralPath $Path -Raw).Trim()
 }
 
+function Test-RuntimeManifest {
+    param(
+        [string]$CandidateRoot,
+        [string]$ManifestPath
+    )
+
+    if (
+        -not (Test-Path -LiteralPath $CandidateRoot -PathType Container) -or
+        -not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)
+    ) {
+        return $false
+    }
+
+    foreach ($line in Get-Content -LiteralPath $ManifestPath) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        if ($line -notmatch '^([0-9a-fA-F]{64})  ([0-9]+)  (.+)$') {
+            return $false
+        }
+
+        $expectedHash = $Matches[1].ToLowerInvariant()
+        $expectedLength = [int64]$Matches[2]
+        $relative = $Matches[3]
+        $path = Join-Path $CandidateRoot $relative
+
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            return $false
+        }
+
+        $file = Get-Item -LiteralPath $path
+        if ($file.Length -ne $expectedLength) {
+            return $false
+        }
+
+        $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expectedHash) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Download-Artifact {
     param(
         [long]$SelectedRunId,
@@ -256,6 +300,71 @@ function Install-FullPortable {
     Move-Item -LiteralPath $sourceRoot -Destination $PortableRoot
 }
 
+function Get-LegacyQaDirectories {
+    param([string]$CanonicalRoot)
+
+    $parent = Split-Path $CanonicalRoot -Parent
+    if ([string]::IsNullOrWhiteSpace($parent)) {
+        return @()
+    }
+
+    $canonical = [System.IO.Path]::GetFullPath($CanonicalRoot).TrimEnd("\")
+    return @(
+        Get-ChildItem -LiteralPath $parent -Directory -ErrorAction SilentlyContinue |
+            Where-Object {
+                $full = $_.FullName.TrimEnd("\")
+                $full -ne $canonical -and (
+                    $_.Name -like "FaceLoRA-QA-*" -or
+                    $_.Name -like "FaceLoRA_QA-*"
+                )
+            }
+    )
+}
+
+function Try-Adopt-Portable {
+    param(
+        [string]$SearchRoot,
+        [string]$ManifestPath,
+        [string]$DestinationRoot,
+        [string]$ModelCacheRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $SearchRoot -PathType Container)) {
+        return $false
+    }
+
+    $executables = @(
+        Get-ChildItem -LiteralPath $SearchRoot -Recurse -File -Filter "Face LoRA Dataset Selector.exe" -ErrorAction SilentlyContinue
+    )
+
+    foreach ($exe in $executables) {
+        $candidate = $exe.Directory.FullName
+        Write-Host "Checking reusable local Portable: $candidate"
+        if (-not (Test-RuntimeManifest -CandidateRoot $candidate -ManifestPath $ManifestPath)) {
+            continue
+        }
+
+        [void](Preserve-ManagedLegacyModels -SearchRoot $SearchRoot -DestinationRoot $ModelCacheRoot)
+
+        if (Test-Path -LiteralPath $DestinationRoot) {
+            Remove-Item -LiteralPath $DestinationRoot -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path $DestinationRoot -Parent) | Out-Null
+
+        if ((Split-Path $candidate -Leaf) -eq "Face-LoRA-Dataset-Selector") {
+            Move-Item -LiteralPath $candidate -Destination $DestinationRoot
+        }
+        else {
+            Copy-Item -LiteralPath $candidate -Destination $DestinationRoot -Recurse
+        }
+
+        Write-Host "Reused existing local Portable runtime without a full download."
+        return $true
+    }
+
+    return $false
+}
+
 $QaRoot = Resolve-QaRoot $Root
 $RuntimeRoot = Join-Path $QaRoot "runtime"
 $PortableRoot = Join-Path $RuntimeRoot "Face-LoRA-Dataset-Selector"
@@ -319,26 +428,10 @@ switch ($Action) {
     "CleanLegacy" {
         Ensure-QaRoot $QaRoot
         Assert-ManagedRoot $QaRoot
-
-        $parent = Split-Path $QaRoot -Parent
-        if ([string]::IsNullOrWhiteSpace($parent)) {
-            throw "Unable to resolve QA root parent."
-        }
-
-        $canonical = [System.IO.Path]::GetFullPath($QaRoot).TrimEnd("\")
-        $legacy = @(
-            Get-ChildItem -LiteralPath $parent -Directory -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $full = $_.FullName.TrimEnd("\")
-                    $full -ne $canonical -and (
-                        $_.Name -like "FaceLoRA-QA-*" -or
-                        $_.Name -like "FaceLoRA_QA-*"
-                    )
-                }
-        )
+        $legacy = Get-LegacyQaDirectories -CanonicalRoot $QaRoot
 
         if ($legacy.Count -eq 0) {
-            Write-Host "No legacy FaceLoRA QA directories found under $parent"
+            Write-Host "No legacy FaceLoRA QA directories found."
             exit 0
         }
 
@@ -350,7 +443,7 @@ switch ($Action) {
 
         if (-not $Force) {
             Write-Host ""
-            Write-Host "Preview only. Re-run with -Force to preserve model caches and delete exactly the directories listed above."
+            Write-Host "Preview only. Run Prepare first if you want it to reuse a compatible old Portable, then re-run CleanLegacy with -Force."
             exit 0
         }
 
@@ -370,21 +463,11 @@ switch ($Action) {
         Assert-ManagedRoot $QaRoot
         Require-Gh
 
-        # Preserve any model cache created by the first-generation QA helper
-        # before replacing its disposable current directory layout.
-        $legacyManagedApp = Join-Path $Current "app"
-        if (Test-Path -LiteralPath $legacyManagedApp) {
-            [void](Preserve-ManagedLegacyModels -SearchRoot $legacyManagedApp -DestinationRoot $ModelCacheRoot)
-        }
-
         $run = Get-RunInfo -RequestedRunId $RunId -RequestedBranch $Branch
         if ($run.status -ne "completed" -or $run.conclusion -ne "success") {
             throw "Run $($run.databaseId) is not a completed successful run."
         }
 
-        if (Test-Path -LiteralPath $Current) {
-            Remove-Item -LiteralPath $Current -Recurse -Force
-        }
         if (Test-Path -LiteralPath $Downloads) {
             Remove-Item -LiteralPath $Downloads -Recurse -Force
         }
@@ -392,7 +475,6 @@ switch ($Action) {
             Remove-Item -LiteralPath $Staging -Recurse -Force
         }
 
-        New-Item -ItemType Directory -Force -Path $ScratchDir | Out-Null
         New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
 
         Write-Host "Preparing QA candidate..."
@@ -406,22 +488,47 @@ switch ($Action) {
 
         if ($hasOverlay) {
             $overlayFingerprintFile = Get-ChildItem -LiteralPath $overlayDownload -Recurse -File -Filter "qa-runtime-fingerprint.txt" | Select-Object -First 1
-            if ($null -ne $overlayFingerprintFile) {
+            $overlayManifestFile = Get-ChildItem -LiteralPath $overlayDownload -Recurse -File -Filter "qa-runtime-manifest.txt" | Select-Object -First 1
+
+            if ($null -ne $overlayFingerprintFile -and $null -ne $overlayManifestFile) {
                 $overlayRoot = $overlayFingerprintFile.Directory.FullName
                 $newFingerprint = Get-TextFile $overlayFingerprintFile.FullName
                 $oldFingerprint = Get-TextFile $RuntimeFingerprintPath
+                $reusable = $false
 
                 if (
                     -not [string]::IsNullOrWhiteSpace($newFingerprint) -and
                     $newFingerprint -eq $oldFingerprint -and
                     (Test-Path -LiteralPath $ExePath -PathType Leaf)
                 ) {
-                    Write-Host "Runtime fingerprint unchanged; applying small QA overlay."
+                    $reusable = $true
+                }
+                elseif (Test-RuntimeManifest -CandidateRoot $PortableRoot -ManifestPath $overlayManifestFile.FullName) {
+                    Write-Host "Existing canonical runtime matches the new manifest; adopting its fingerprint."
+                    $reusable = $true
+                }
+                else {
+                    $oldManagedApp = Join-Path $Current "app"
+                    if (Try-Adopt-Portable -SearchRoot $oldManagedApp -ManifestPath $overlayManifestFile.FullName -DestinationRoot $PortableRoot -ModelCacheRoot $ModelCacheRoot) {
+                        $reusable = $true
+                    }
+                    else {
+                        foreach ($legacyDir in Get-LegacyQaDirectories -CanonicalRoot $QaRoot) {
+                            if (Try-Adopt-Portable -SearchRoot $legacyDir.FullName -ManifestPath $overlayManifestFile.FullName -DestinationRoot $PortableRoot -ModelCacheRoot $ModelCacheRoot) {
+                                $reusable = $true
+                                break
+                            }
+                        }
+                    }
+                }
+
+                if ($reusable) {
+                    Write-Host "Stable runtime matches; applying small QA overlay."
                     Apply-Overlay -OverlayRoot $overlayRoot -PortableRoot $PortableRoot
                     $mode = "overlay"
                 }
                 else {
-                    Write-Host "Runtime fingerprint changed or no reusable runtime exists; full Portable refresh required."
+                    Write-Host "No compatible local runtime found; full Portable refresh required."
                 }
             }
         }
@@ -435,6 +542,12 @@ switch ($Action) {
         if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
             throw "Prepared QA runtime does not contain the Portable EXE: $ExePath"
         }
+
+        if (Test-Path -LiteralPath $Current) {
+            [void](Preserve-ManagedLegacyModels -SearchRoot $Current -DestinationRoot $ModelCacheRoot)
+            Remove-Item -LiteralPath $Current -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $ScratchDir | Out-Null
 
         $runtimeFingerprint = Get-TextFile $RuntimeFingerprintPath
         $modelFiles = @(
@@ -470,7 +583,7 @@ switch ($Action) {
             Write-Host "Only the incremental QA overlay was downloaded; stable runtime/model files were reused."
         }
         else {
-            Write-Host "Full Portable was refreshed because the stable runtime was unavailable or changed."
+            Write-Host "Full Portable was refreshed because no compatible local runtime was available."
         }
     }
 }
