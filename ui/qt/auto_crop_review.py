@@ -43,7 +43,6 @@ from PySide6.QtWidgets import (
 )
 import pyqtgraph as pg
 
-from infrastructure.runtime_log import runtime_event
 from .thumbnail import ThumbnailWorker
 
 
@@ -355,9 +354,18 @@ class AutoCropReviewDialog(QDialog):
 
     _preferred_theme = "light"
 
-    def __init__(self, backend, records, changed, thumbnail_cache, parent=None):
+    def __init__(
+        self,
+        backend,
+        records,
+        changed,
+        thumbnail_cache,
+        parent=None,
+        event_logger=None,
+    ):
         super().__init__(parent)
         self.backend = backend
+        self._event_logger = event_logger or (lambda _name, **_fields: None)
         self.records = backend.auto_crop_review_records(records)
         self.changed = changed
         self.thumbnail_cache = Path(thumbnail_cache)
@@ -1038,13 +1046,13 @@ class AutoCropReviewDialog(QDialog):
             # Destroying QListWidgetItem / pyqtgraph / Shiboken wrappers
             # synchronously inside that callback caused a native GC crash.
             self.reload(next_id)
-            runtime_event(
+            self._event_logger(
                 "auto_crop_decision_complete",
                 sample_id=sample_id,
                 decision=value,
             )
         except Exception as exc:
-            runtime_event(
+            self._event_logger(
                 "auto_crop_decision_reload_failed",
                 sample_id=sample_id,
                 decision=value,
@@ -1067,7 +1075,7 @@ class AutoCropReviewDialog(QDialog):
         sample_id = record.sample_id
         self._decision_in_flight = True
         self._set_decision_controls_enabled(False)
-        runtime_event(
+        self._event_logger(
             "auto_crop_decision_begin",
             sample_id=sample_id,
             decision=value,
@@ -1087,7 +1095,7 @@ class AutoCropReviewDialog(QDialog):
                 next_index = min(current_index + 1, len(self.records) - 1)
                 next_id = self.records[next_index].sample_id
         except Exception as exc:
-            runtime_event(
+            self._event_logger(
                 "auto_crop_decision_failed",
                 sample_id=sample_id,
                 decision=value,
