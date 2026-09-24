@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
 )
 import pyqtgraph as pg
 
+from infrastructure.runtime_log import runtime_event
 from .thumbnail import ThumbnailWorker
 
 
@@ -369,6 +370,7 @@ class AutoCropReviewDialog(QDialog):
         self.thumb_icons = {}
         self._thumb_token_ids = {}
         self._cleaned = False
+        self._decision_in_flight = False
 
         self._fluent = _load_fluent()
         self._initial_global_dark = (
@@ -772,18 +774,21 @@ class AutoCropReviewDialog(QDialog):
             select_id = self.current_sample_id
         self.records = self.backend.auto_crop_review_records(self.records)
         self.thumb_generation += 1
-        self.items.clear()
-
-        placeholder = self.placeholder_icon()
-        for record in self.records:
-            icon = self.thumb_icons.get(record.sample_id, placeholder)
-            if self._fluent:
-                item = QListWidgetItem(icon, self.filmstrip_text(record))
-            else:
-                item = QListWidgetItem(self.label(record))
-            item.setData(Qt.UserRole, record.sample_id)
-            item.setToolTip(self.label(record))
-            self.items.addItem(item)
+        self.items.blockSignals(True)
+        try:
+            self.items.clear()
+            placeholder = self.placeholder_icon()
+            for record in self.records:
+                icon = self.thumb_icons.get(record.sample_id, placeholder)
+                if self._fluent:
+                    item = QListWidgetItem(icon, self.filmstrip_text(record))
+                else:
+                    item = QListWidgetItem(self.label(record))
+                item.setData(Qt.UserRole, record.sample_id)
+                item.setToolTip(self.label(record))
+                self.items.addItem(item)
+        finally:
+            self.items.blockSignals(False)
 
         total = len(self.records)
         if self.film_count is not None:
@@ -808,7 +813,9 @@ class AutoCropReviewDialog(QDialog):
                     target_row = row
                     break
 
+        self.items.blockSignals(True)
         self.items.setCurrentRow(target_row)
+        self.items.blockSignals(False)
         self.show_item(self.items.item(target_row))
         self.start_thumbnails()
 
@@ -1015,25 +1022,91 @@ class AutoCropReviewDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, self._tr("无法重置裁剪框"), str(exc))
 
+    def _set_decision_controls_enabled(self, enabled):
+        for widget in (
+            self.accept_button,
+            self.reset_button,
+            self.keep_button,
+            self.pending_button,
+            self.items,
+        ):
+            widget.setEnabled(enabled)
+
+    def _finish_decision_reload(self, next_id, sample_id, value):
+        try:
+            # Rebuild only after the Qt clicked callback has fully unwound.
+            # Destroying QListWidgetItem / pyqtgraph / Shiboken wrappers
+            # synchronously inside that callback caused a native GC crash.
+            self.reload(next_id)
+            runtime_event(
+                "auto_crop_decision_complete",
+                sample_id=sample_id,
+                decision=value,
+            )
+        except Exception as exc:
+            runtime_event(
+                "auto_crop_decision_reload_failed",
+                sample_id=sample_id,
+                decision=value,
+                error=exc,
+            )
+            QMessageBox.critical(
+                self,
+                self._tr("保存裁剪决定失败"),
+                str(exc),
+            )
+        finally:
+            self._decision_in_flight = False
+            self._set_decision_controls_enabled(True)
+
     def set_decision(self, value):
-        if self.current < 0:
+        if self.current < 0 or self._decision_in_flight:
             return
         record = self.records[self.current]
         current_index = self.current
+        sample_id = record.sample_id
+        self._decision_in_flight = True
+        self._set_decision_controls_enabled(False)
+        runtime_event(
+            "auto_crop_decision_begin",
+            sample_id=sample_id,
+            decision=value,
+        )
 
-        if value == "accepted":
-            self.backend.accept_auto_crop(record)
-        elif value == "keep_original":
-            self.backend.keep_original_auto_crop(record)
-        else:
-            self.backend.restore_pending_auto_crop(record)
+        try:
+            if value == "accepted":
+                self.backend.accept_auto_crop(record)
+            elif value == "keep_original":
+                self.backend.keep_original_auto_crop(record)
+            else:
+                self.backend.restore_pending_auto_crop(record)
 
-        self.changed()
-        next_id = None
-        if self.records:
-            next_index = min(current_index + 1, len(self.records) - 1)
-            next_id = self.records[next_index].sample_id
-        self.reload(next_id)
+            self.changed()
+            next_id = None
+            if self.records:
+                next_index = min(current_index + 1, len(self.records) - 1)
+                next_id = self.records[next_index].sample_id
+        except Exception as exc:
+            runtime_event(
+                "auto_crop_decision_failed",
+                sample_id=sample_id,
+                decision=value,
+                error=exc,
+            )
+            self._decision_in_flight = False
+            self._set_decision_controls_enabled(True)
+            QMessageBox.critical(
+                self,
+                self._tr("保存裁剪决定失败"),
+                str(exc),
+            )
+            return
+
+        QTimer.singleShot(
+            0,
+            lambda next_id=next_id, sample_id=sample_id, value=value:
+                self._finish_decision_reload(next_id, sample_id, value),
+        )
 
     def toggle_theme(self):
         if not self._fluent:
