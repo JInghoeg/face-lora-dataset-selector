@@ -1255,6 +1255,12 @@ class Window(QMainWindow):
                 threads.append((name,thread))
         for index,thread in enumerate(list(self.thumb_threads)):
             threads.append((f'thumbnail_{index}',thread))
+        if self.sub is not None:
+            text_thread=getattr(self.sub,'thread',None)
+            if text_thread is not None:
+                threads.append(('text_cleanup',text_thread))
+            for index,thread in enumerate(list(getattr(self.sub,'thumb_threads',[]))):
+                threads.append((f'text_cleanup_thumbnail_{index}',thread))
         return threads
 
     def shutdown_background(self,force=True):
