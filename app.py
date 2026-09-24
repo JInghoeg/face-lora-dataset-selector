@@ -1072,6 +1072,7 @@ class Window(QMainWindow):
             self.auto_crop_thread and self.auto_crop_thread.isRunning(),
             self.incremental_thread and self.incremental_thread.isRunning(),
             self.organizer_thread and self.organizer_thread.isRunning(),
+            self.export_thread and self.export_thread.isRunning(),
         ))
     def open_source_organizer(self):
         if not BACKEND.feature_available('source_organizer'):return
@@ -1292,6 +1293,14 @@ class Window(QMainWindow):
                 self._tr_main('整理源文件正在移动文件。请等待当前事务完成后再关闭程序。'),
             )
             e.ignore();return
+        if self.export_thread is not None and self.export_thread.isRunning():
+            runtime_event('window_close_blocked',reason='export_running')
+            QMessageBox.warning(
+                self,
+                self._tr_main('后台任务进行中'),
+                self._tr_main('正在导出训练图片。请等待导出完成后再关闭程序。'),
+            )
+            e.ignore();return
         runtime_event('window_close_begin')
         self.save()
         if self.sub is not None:self.sub.save()
@@ -1315,10 +1324,47 @@ class Window(QMainWindow):
         if not x:return
         dst=Path(x)
         if self.folder and (dst.resolve()==self.folder.resolve() or self.folder.resolve() in dst.resolve().parents):QMessageBox.warning(self,self._tr_main('请选择新目录'),self._tr_main('导出目录不能是源目录或其子目录。'));return
-        try:
-            result=BACKEND.export_recommended(self.records,dst)
-            QMessageBox.information(self,self._tr_main('导出完成'),self._tr_main('已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。').format(count=result.written))
-        except Exception as e:QMessageBox.critical(self,self._tr_main('导出失败'),str(e))
+        if self.export_thread and self.export_thread.isRunning():return
+        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False)
+        total=len(sel)
+        self.set_operation_progress(0,total,self._tr_main('导出准备中：0/{total}').format(total=total))
+        runtime_event('export_begin',count=total,destination=dst)
+        self.export_thread=QThread(self);self.export_worker=ExportWorker(self.records,dst);self.export_worker.moveToThread(self.export_thread)
+        self.export_thread.started.connect(self.export_worker.run)
+        self.export_worker.progress.connect(self.export_progress)
+        self.export_worker.finished.connect(self.export_done)
+        self.export_worker.failed.connect(self.export_failed)
+        self.export_worker.finished.connect(self.export_thread.quit)
+        self.export_worker.failed.connect(self.export_thread.quit)
+        self.export_thread.finished.connect(self.export_thread_done)
+        self.export_thread.start(QThread.Priority.LowPriority)
+
+    def export_progress(self,current,total,name):
+        self.set_operation_progress(
+            current,total,
+            self._tr_main('导出 {current}/{total}：{name}').format(
+                current=current,total=total,name=name
+            ),
+        )
+
+    def export_done(self,result):
+        runtime_event('export_complete',written=result.written)
+        self.finish_operation_ui()
+        self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True)
+        self.progress.setText(self._tr_main('导出完成：{count} 张').format(count=result.written))
+        QMessageBox.information(self,self._tr_main('导出完成'),self._tr_main('已导出 {count} 张当前推荐图片。\n\n组合图拆分已在前置阶段实体化，隔离原图不会进入导出。\n源图片未被修改。').format(count=result.written))
+
+    def export_failed(self,error):
+        runtime_event('export_failed',error=error)
+        self.finish_operation_ui()
+        self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True)
+        self.progress.setText(self._tr_main('导出失败'))
+        QMessageBox.critical(self,self._tr_main('导出失败'),error)
+
+    def export_thread_done(self):
+        if self.export_worker:self.export_worker.deleteLater()
+        if self.export_thread:self.export_thread.deleteLater()
+        self.export_worker=None;self.export_thread=None
 
 def self_test():
     """Portable / CI smoke test: load the core models without opening the GUI."""
