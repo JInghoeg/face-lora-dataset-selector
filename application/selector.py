@@ -233,7 +233,13 @@ class SelectorApplication:
             target_mode,
         )
 
-    def refresh_dataset(self, folder: Path, status=None, progress=None):
+    def refresh_dataset(
+        self,
+        folder: Path,
+        status=None,
+        progress=None,
+        cancelled=None,
+    ):
         organizer = self._source_organizer_module(required=False)
         if organizer is not None:
             recovered = organizer.recover_incomplete_transactions(folder)
@@ -242,12 +248,17 @@ class SelectorApplication:
                     f"已恢复 {recovered} 个未完成的 Source Organizer 事务，继续刷新…"
                 )
         return self.refresh_service.refresh(
-            folder, status=status, progress=progress
+            folder,
+            status=status,
+            progress=progress,
+            cancelled=cancelled,
         )
 
-    def analyze_generated(self, items, progress=None):
+    def analyze_generated(self, items, progress=None, cancelled=None):
         records = self.refresh_service.analyze_generated(
-            items, progress=progress
+            items,
+            progress=progress,
+            cancelled=cancelled,
         )
         for record in records:
             record.composite_scan_version = self.composite_proposal_version
@@ -323,7 +334,13 @@ class SelectorApplication:
     def auto_crop_model_cache(self):
         return self.model_cache_root / "auto_crop"
 
-    def scan_auto_crop(self, records, progress=None, force=False):
+    def scan_auto_crop(
+        self,
+        records,
+        progress=None,
+        force=False,
+        cancelled=None,
+    ):
         unresolved = [
             r for r in records
             if r.status == "推荐"
@@ -341,6 +358,7 @@ class SelectorApplication:
             self.auto_crop_model_cache,
             progress=progress,
             force=force,
+            cancelled=cancelled,
         )
 
     def auto_crop_scan_todo(self, records):
@@ -425,11 +443,18 @@ class SelectorApplication:
     def text_cleanup_state_records(self, folder: Path):
         return self._text_cleanup_service(required=True).state_records(folder)
 
-    def scan_text_cleanup(self, folder: Path, cached=None, progress=None):
+    def scan_text_cleanup(
+        self,
+        folder: Path,
+        cached=None,
+        progress=None,
+        cancelled=None,
+    ):
         return self._text_cleanup_service(required=True).scan_folder(
             folder,
             cached=cached,
             progress=progress,
+            cancelled=cancelled,
         )
 
     def text_cleanup_load_image(self, path: Path, grayscale=False):
@@ -481,12 +506,12 @@ class SelectorApplication:
             progress=progress,
         )
 
-    def export_recommended(self, records, dst: Path):
+    def export_recommended(self, records, dst: Path, progress=None):
+        progress = progress or (lambda _current, _total, _name: None)
+        selected = [record for record in records if record.status == "推荐"]
         written = 0
         auto_crop = self._auto_crop_module(required=False)
-        for record in records:
-            if record.status != "推荐":
-                continue
+        for current, record in enumerate(selected, 1):
             box = auto_crop.accepted_box(record) if auto_crop is not None else None
             if box:
                 dst.mkdir(parents=True, exist_ok=True)
@@ -495,4 +520,5 @@ class SelectorApplication:
             else:
                 copy_file(record.path, dst)
             written += 1
+            progress(current, len(selected), record.path.name)
         return ExportResult(written=written)
