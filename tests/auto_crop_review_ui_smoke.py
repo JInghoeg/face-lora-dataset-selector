@@ -294,6 +294,9 @@ def main():
         current = dialog.records[dialog.current]
         dialog.set_decision("accepted")
         assert app.BACKEND.auto_crop_proposal(current).decision == "accepted"
+        assert dialog._decision_in_flight
+        qapp.processEvents()
+        assert not dialog._decision_in_flight
         assert changed
 
         dialog.reject()  # cleanup / restore prior global Fluent theme
