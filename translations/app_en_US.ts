@@ -33,7 +33,8 @@
     <message><source>无法重置裁剪框</source><translation>Unable to Reset Crop</translation></message>
     <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
     <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
-  </context>
+      <message><source>保存裁剪决定失败</source><translation>Failed to Save Crop Decision</translation></message>
+</context>
   <context>
     <name>DuplicateReviewDialog</name>
     <message><source>推荐</source><translation>Recommended</translation></message>
@@ -427,6 +428,7 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>分析 {count} 张变化图片；其余恢复缓存…</source><translation>Analyzing {count} changed images; restoring the rest from cache…</translation></message>
     <message><source>无法打开图片</source><translation>Unable to Open Image</translation></message>
     <message><source>状态：{state}</source><translation>Status: {state}</translation></message>
+    <message><source>整理源文件正在移动文件。请等待当前事务完成后再关闭程序。</source><translation>Source Organizer is moving files. Wait for the current transaction to finish before closing the application.</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
