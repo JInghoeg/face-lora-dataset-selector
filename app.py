@@ -20,6 +20,7 @@ try:
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
     from application import SelectorApplication, SourceOrganizerBlocked
+    from core.cancellation import OperationCancelled
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
     from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
@@ -230,7 +231,7 @@ def required(paths):
     missing=[str(x) for x in paths if not x.exists()]
     if missing:raise RuntimeError('缺少模型文件：\n'+'\n'.join(missing))
 class Analyzer(QObject):
-    status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    status=Signal(str); progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
     def __init__(self,folder):
         super().__init__();self.folder=folder;self.had_v3_cache=False;self.changed_count=0;self.added_count=0;self.modified_count=0;self.deleted_count=0;self.unchanged_count=0
     def run(self):
@@ -239,6 +240,7 @@ class Analyzer(QObject):
                 self.folder,
                 status=self.status.emit,
                 progress=self.progress.emit,
+                cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.had_v3_cache=result.had_v3_cache
             self.changed_count=result.changed_count
@@ -247,16 +249,20 @@ class Analyzer(QObject):
             self.deleted_count=result.deleted_count
             self.unchanged_count=result.unchanged_count
             self.finished.emit(result.records)
+        except OperationCancelled:
+            self.cancelled.emit()
         except Exception:
             self.failed.emit(traceback.format_exc())
 class CompositeScanWorker(QObject):
-    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
     def __init__(self,records):super().__init__();self.records=records
     def run(self):
         try:
             todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version]
             total=len(todo)
             for i,r in enumerate(todo,1):
+                if QThread.currentThread().isInterruptionRequested():
+                    raise OperationCancelled()
                 with Image.open(r.path) as im:
                     try:im.seek(0)
                     except EOFError:pass
@@ -265,18 +271,21 @@ class CompositeScanWorker(QObject):
                 r.composite_scan_version=BACKEND.composite_proposal_version
                 self.progress.emit(i,total,r.path.name)
             self.finished.emit(self.records)
+        except OperationCancelled:self.cancelled.emit()
         except Exception:self.failed.emit(traceback.format_exc())
 
 class AutoCropScanWorker(QObject):
-    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
     def __init__(self,records):super().__init__();self.records=records
     def run(self):
         try:
             result=BACKEND.scan_auto_crop(
                 self.records,
                 progress=self.progress.emit,
+                cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.finished.emit(result)
+        except OperationCancelled:self.cancelled.emit()
         except Exception:self.failed.emit(traceback.format_exc())
 
 class SourceOrganizerWorker(QObject):
@@ -292,15 +301,17 @@ class SourceOrganizerWorker(QObject):
         except Exception:self.failed.emit(traceback.format_exc())
 
 class IncrementalAnalysisWorker(QObject):
-    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str)
+    progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
     def __init__(self,items):super().__init__();self.items=list(items)
     def run(self):
         try:
             records=BACKEND.analyze_generated(
                 self.items,
                 progress=self.progress.emit,
+                cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.finished.emit(records)
+        except OperationCancelled:self.cancelled.emit()
         except Exception:self.failed.emit(traceback.format_exc())
 
 class CompositeSplitReviewDialog(QDialog):
