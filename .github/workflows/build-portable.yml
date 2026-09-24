@@ -47,7 +47,41 @@ jobs:
           }
 
           $before = "${{ github.event.before }}"
-          if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+
+          if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+$') {
+            $before = "${{ github.sha }}^"
+          }
+
+          $changed = @(git diff --name-only $before "${{ github.sha }}")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to inspect push diff for release gate."
+          }
+          if ($changed -notcontains $gatePath) {
+            exit 0
+          }
+
+          $gate = Get-Content $gatePath -Raw | ConvertFrom-Json
+          if ($gate.status -ne "APPROVED") {
+            Write-Host "Release gate changed but is not APPROVED; no release will be created."
+            exit 0
+          }
+          if ($gate.human_qa -ne "PASS") {
+            throw "Release gate is APPROVED without HUMAN PASS."
+          }
+          if ($gate.version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version in release gate: $($gate.version)"
+          }
+          if ([string]::IsNullOrWhiteSpace($gate.accepted_on) -or [string]::IsNullOrWhiteSpace($gate.evidence)) {
+            throw "Release gate requires accepted_on and evidence."
+          }
+
+          $notes = "docs/releases/$($gate.version).md"
+          if (-not (Test-Path $notes)) {
+            throw "Missing release notes for approved version: $notes"
+          }
+
+          "should_release=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$($gate.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "notes=$notes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
