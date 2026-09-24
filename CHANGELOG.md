@@ -53,9 +53,9 @@ v0.3 turns the selector from a mostly single-pass quality filter into a complete
 
 - Python 3.9 / 3.12 production and feature regression coverage.
 - Windows Portable packaged EXE self-test.
-- Consolidated Stage 4 human QA: PASS.
-- Source Organizer human validation performed on a disposable copied dataset before release trust.
-- Auto Crop Light/Dark production review: PASS.
+- Consolidated Stage 4 human QA: **NOT PASSED / REOPENED**.
+- Source Organizer real human validation: pending.
+- Auto Crop Light/Dark real human review: pending as part of the consolidated QA checkpoint.
 
 ## v0.2.0 — 2026-09-19
 
