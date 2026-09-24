@@ -90,8 +90,19 @@ class TextCleanupBatchWorker(QObject):
     progress = Signal(int, int, str)
     finished = Signal(object)
     failed = Signal(str)
+    cancelled = Signal()
 
-    def __init__(self, backend, folder, output, records, method, expand, radius):
+    def __init__(
+        self,
+        backend,
+        folder,
+        output,
+        records,
+        method,
+        expand,
+        radius,
+        cancellation_exception=None,
+    ):
         super().__init__()
         self.backend = backend
         self.folder = folder
@@ -100,6 +111,7 @@ class TextCleanupBatchWorker(QObject):
         self.method = method
         self.expand = expand
         self.radius = radius
+        self.cancellation_exception = cancellation_exception
 
     def run(self):
         try:
@@ -111,10 +123,17 @@ class TextCleanupBatchWorker(QObject):
                 expand=self.expand,
                 radius=self.radius,
                 progress=self.progress.emit,
+                cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.finished.emit(result)
-        except Exception:
-            self.failed.emit(traceback.format_exc())
+        except Exception as exc:
+            if (
+                self.cancellation_exception is not None
+                and isinstance(exc, self.cancellation_exception)
+            ):
+                self.cancelled.emit()
+            else:
+                self.failed.emit(traceback.format_exc())
 
 
 class SubtitleTab(QWidget):
@@ -172,6 +191,7 @@ class SubtitleTab(QWidget):
             self.output_label.setText(self._tr("未选择输出目录"))
         self.scan.setText(self._tr("扫描文字"))
         self.cancel_scan_btn.setText(self._tr("取消扫描"))
+        self.cancel_batch_btn.setText(self._tr("取消批量处理"))
         self.update_add_button_text()
         self.delete_btn.setText(self._tr("删除选中区域"))
         self.method_label.setText(self._tr("方式"))
@@ -265,6 +285,9 @@ class SubtitleTab(QWidget):
         self.preview_btn.clicked.connect(self.preview_repair)
         self.batch_btn = QPushButton()
         self.batch_btn.clicked.connect(self.start_batch)
+        self.cancel_batch_btn = QPushButton()
+        self.cancel_batch_btn.clicked.connect(self.cancel_batch)
+        self.cancel_batch_btn.hide()
         self.method_label = QLabel()
         for widget in (
             self.scan,
@@ -277,6 +300,7 @@ class SubtitleTab(QWidget):
             self.radius,
             self.preview_btn,
             self.batch_btn,
+            self.cancel_batch_btn,
         ):
             controls.addWidget(widget)
         layout.addLayout(controls)
@@ -456,7 +480,9 @@ class SubtitleTab(QWidget):
     def done(self):
         self.scan.setEnabled(True)
         self.pick_input_btn.setEnabled(True)
+        self.batch_btn.setEnabled(True)
         self.cancel_scan_btn.hide();self.cancel_scan_btn.setEnabled(True)
+        self.cancel_batch_btn.hide();self.cancel_batch_btn.setEnabled(True)
         self.worker = None
         self.thread.deleteLater()
         self.thread = None
@@ -820,6 +846,9 @@ class SubtitleTab(QWidget):
             )
             return
         self.scan.setEnabled(False)
+        self.pick_input_btn.setEnabled(False)
+        self.batch_btn.setEnabled(False)
+        self.cancel_batch_btn.setEnabled(True);self.cancel_batch_btn.show()
         self.bar.setRange(0, len(self.records))
         self.bar.setValue(0)
         self.bar.setFormat(self._tr("批量处理准备中…"))
@@ -832,16 +861,30 @@ class SubtitleTab(QWidget):
             _combo_value(self.method),
             self.expand.value(),
             self.radius.value(),
+            cancellation_exception=self.cancellation_exception,
         )
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.batch_progress)
         self.worker.finished.connect(self.batch_done)
         self.worker.failed.connect(self.batch_failed)
+        self.worker.cancelled.connect(self.batch_cancelled)
         self.worker.finished.connect(self.thread.quit)
         self.worker.failed.connect(self.thread.quit)
+        self.worker.cancelled.connect(self.thread.quit)
         self.thread.finished.connect(self.done)
-        self.thread.start()
+        self.thread.start(QThread.Priority.LowPriority)
+
+    def cancel_batch(self):
+        if self.thread and self.thread.isRunning():
+            self.thread.requestInterruption()
+            self.cancel_batch_btn.setEnabled(False)
+            self.bar.setFormat(self._tr("正在取消批量处理…"))
+
+    def batch_cancelled(self):
+        self.bar.setRange(0, 1)
+        self.bar.setValue(0)
+        self.bar.setFormat(self._tr("批量处理已取消"))
 
     def batch_progress(self, current, total, name):
         self.bar.setRange(0, total)
