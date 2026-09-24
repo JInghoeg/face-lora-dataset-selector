@@ -159,7 +159,9 @@ class DatasetRefreshService:
             derive_eligibility(record)
 
         if self.duplicate_grouper is not None:
-            self.duplicate_grouper(records)
+            check_cancelled(cancelled)
+            self.duplicate_grouper(records, cancelled=cancelled)
+            check_cancelled(cancelled)
         base_status(records)
 
         return DatasetRefreshResult(
