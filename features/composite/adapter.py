@@ -5,7 +5,7 @@ detector implementation directly.
 """
 from __future__ import annotations
 
-from composite_split import (
+from .proposal import (
     CompositeProposal,
     Detection,
     PROPOSAL_VERSION,
