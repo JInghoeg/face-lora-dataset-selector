@@ -4,24 +4,69 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "*.md"
-      - "**/*.md"
-      - "docs/**"
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - "*.md"
-      - "**/*.md"
-      - "docs/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.changes.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify change scope
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+
+          event = os.environ.get('EVENT_NAME') or ''
+          if event == 'workflow_dispatch':
+              changed = ['<manual>']
+          elif event == 'pull_request':
+              base = os.environ.get('BASE_REF') or 'main'
+              subprocess.run(['git', 'fetch', 'origin', base, '--quiet'], check=True)
+              changed = subprocess.check_output(
+                  ['git', 'diff', '--name-only', f'origin/{base}...HEAD'], text=True
+              ).splitlines()
+          else:
+              before = os.environ.get('BEFORE') or ''
+              sha = os.environ.get('SHA') or 'HEAD'
+              if not before or set(before) == {'0'}:
+                  before = f'{sha}^'
+              changed = subprocess.check_output(
+                  ['git', 'diff', '--name-only', before, sha], text=True
+              ).splitlines()
+
+          def docs_only(path: str) -> bool:
+              return path.endswith('.md') or path.startswith('docs/')
+
+          heavy = any(not docs_only(p) for p in changed)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"heavy={'true' if heavy else 'false'}\n")
+
+          print('Changed paths:')
+          for p in changed:
+              print(f'  {p}')
+          print(f'Heavy Portable build required: {heavy}')
+          PY
+
   windows-portable:
+    needs: classify
+    if: ${{ needs.classify.outputs.heavy == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -205,3 +250,36 @@ jobs:
           }
 
           gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs:
+      - classify
+      - windows-portable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required Portable scope
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          HEAVY: ${{ needs.classify.outputs.heavy }}
+          PORTABLE_RESULT: ${{ needs.windows-portable.result }}
+        run: |
+          python - <<'PY'
+          import os
+
+          classify = os.environ.get('CLASSIFY_RESULT')
+          heavy = os.environ.get('HEAVY')
+          portable = os.environ.get('PORTABLE_RESULT')
+
+          if classify != 'success':
+              raise SystemExit(f'Change classification failed: {classify}')
+
+          if heavy == 'true' and portable != 'success':
+              raise SystemExit(f'Heavy Portable validation required but result is: {portable}')
+
+          if heavy != 'true' and portable not in {'skipped', 'success'}:
+              raise SystemExit(f'Docs-only Portable result is unexpected: {portable}')
+
+          print(f'Build Windows Portable Merge Gate: PASS (heavy={heavy}, portable={portable})')
+          PY
