@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer
 
-from application import OperationCancelled
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -61,11 +60,12 @@ class TextScan(QObject):
     failed = Signal(str)
     cancelled = Signal()
 
-    def __init__(self, backend, folder, cached):
+    def __init__(self, backend, folder, cached, cancellation_exception=None):
         super().__init__()
         self.backend = backend
         self.folder = folder
         self.cached = cached
+        self.cancellation_exception = cancellation_exception
 
     def run(self):
         try:
@@ -76,10 +76,14 @@ class TextScan(QObject):
                 cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.finished.emit(records)
-        except OperationCancelled:
-            self.cancelled.emit()
-        except Exception:
-            self.failed.emit(traceback.format_exc())
+        except Exception as exc:
+            if (
+                self.cancellation_exception is not None
+                and isinstance(exc, self.cancellation_exception)
+            ):
+                self.cancelled.emit()
+            else:
+                self.failed.emit(traceback.format_exc())
 
 
 class TextCleanupBatchWorker(QObject):
@@ -116,9 +120,16 @@ class TextCleanupBatchWorker(QObject):
 class SubtitleTab(QWidget):
     PAGE_SIZE = 80
 
-    def __init__(self, backend, app_dir, thumbnail_cache):
+    def __init__(
+        self,
+        backend,
+        app_dir,
+        thumbnail_cache,
+        cancellation_exception=None,
+    ):
         super().__init__()
         self.backend = backend
+        self.cancellation_exception = cancellation_exception
         self.app_dir = Path(app_dir)
         self.thumbnail_cache = Path(thumbnail_cache)
         self.folder = None
@@ -360,9 +371,19 @@ class SubtitleTab(QWidget):
             str(self.folder or self.app_dir),
         )
         if value:
-            self.folder = Path(value)
+            new_folder = Path(value)
+            changed = self.folder is None or new_folder.resolve() != self.folder.resolve()
+            self.folder = new_folder
             self.input.setText(value)
+            if changed:
+                self.records = []
+                self.current = -1
+                self.page = 0
+                self.refresh()
             self.schedule_save()
+            self.bar.setRange(0, 0)
+            self.bar.setFormat(self._tr("准备扫描…"))
+            QTimer.singleShot(0, self.start_scan)
 
     def pick_output(self):
         value = QFileDialog.getExistingDirectory(
@@ -385,10 +406,16 @@ class SubtitleTab(QWidget):
         if not self.folder or self.thread and self.thread.isRunning():
             return
         self.scan.setEnabled(False)
+        self.pick_input_btn.setEnabled(False)
         self.cancel_scan_btn.setEnabled(True);self.cancel_scan_btn.show()
         self.bar.setRange(0, 0)
         self.thread = QThread(self)
-        self.worker = TextScan(self.backend, self.folder, self.state_records())
+        self.worker = TextScan(
+            self.backend,
+            self.folder,
+            self.state_records(),
+            cancellation_exception=self.cancellation_exception,
+        )
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.scan_progress)
@@ -428,6 +455,7 @@ class SubtitleTab(QWidget):
 
     def done(self):
         self.scan.setEnabled(True)
+        self.pick_input_btn.setEnabled(True)
         self.cancel_scan_btn.hide();self.cancel_scan_btn.setEnabled(True)
         self.worker = None
         self.thread.deleteLater()
