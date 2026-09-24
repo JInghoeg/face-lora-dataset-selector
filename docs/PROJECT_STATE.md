@@ -38,7 +38,9 @@ At code commit `8ce96a9`, the current recovery branch includes:
 - Text Cleanup batch repair is cooperatively cancellable and stages the whole run before commit; cancellation/failure removes staging and commit rollback protects pre-existing destination files;
 - main-window shutdown now owns/stops Text Cleanup scan/batch and Text Cleanup thumbnail QThreads;
 - regression coverage for long-operation controls, transactional Text Cleanup cancellation, shutdown lifecycle and Text Cleanup auto-scan.
-- manual Portable QA now uses the canonical `tools/qa-portable.ps1` workspace helper: one managed QA root, one `current` candidate, automatic replacement, `scratch` for disposable outputs, and explicit legacy cleanup.
+- manual Portable QA now uses the canonical `tools/qa-portable.ps1` workspace helper with a persistent Portable runtime and persistent `_FaceLoRA_ModelCache`; `current` contains only disposable QA metadata/scratch.
+- Build Windows Portable publishes both the full Portable and a fingerprinted QA Overlay. `Prepare` reuses compatible stable runtime files and downloads only the overlay; it automatically falls back to a full refresh when Python/dependency/packaged-runtime identity changes.
+- pre-convention `FaceLoRA-QA-*` directories are handled safely: `Prepare` may reuse a manifest-compatible old extracted runtime, while `CleanLegacy -Force` migrates cached models before deleting legacy folders.
 
 The GPU question is **not implemented yet**. Current inference remains CPU-oriented. GPU acceleration must be evaluated as a dependency/packaging/runtime decision before introducing `onnxruntime-gpu` or another GPU runtime.
 
@@ -52,6 +54,26 @@ For `8ce96a9`:
 - Windows Portable artifact: `10795898471`.
 - Portable artifact digest: `sha256:2a50cfd5232671bf65c2f0f262ca47c0265669f991c29c0e055dd566cd7fcbc7`.
 - Automated evidence is useful diagnostic evidence only and is **not** human release acceptance.
+
+## QA workspace / bandwidth validation
+
+QA infrastructure was end-to-end validated at commit `9b0c17133ddd1a0c742e3ab00d693f60ddfa0bed` with Build Windows Portable run `35975899284`:
+
+- packaged Portable self-test: **PASS**;
+- incremental QA Overlay build: **PASS**;
+- full ZIP/checksum build: **PASS**;
+- real helper roundtrip smoke: first `Prepare` = `full`, second `Prepare` = `overlay`: **PASS**;
+- the full artifact was requested exactly once across the two prepares;
+- a model-cache marker survived the overlay prepare;
+- the overlay-prepared EXE matched the built candidate and passed `--self-test`;
+- UI Polish helper safety smoke passed on Python 3.9 and 3.12: `Clean` preserves runtime/models, `ResetRuntime` preserves models, and `CleanLegacy -Force` migrates legacy model cache before deletion.
+
+Validated artifact sizes:
+
+- full Portable artifact: `10798038264` — 159,788,262 bytes;
+- QA Overlay artifact: `10798043254` — 10,930,018 bytes.
+
+For ordinary code-only QA updates with unchanged runtime identity, this reduces candidate download traffic by about **93%**, while on-demand model downloads are reused instead of downloaded again.
 
 ## Human-unverified items on the latest candidate
 
