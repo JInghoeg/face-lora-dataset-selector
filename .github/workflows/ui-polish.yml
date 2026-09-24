@@ -9,6 +9,8 @@ on:
       - "app.py"
       - "ui/qt/dataset_view.py"
       - "tests/dataset_view_ui_smoke.py"
+      - "tests/app_shutdown_smoke.py"
+      - "infrastructure/runtime_log.py"
       - "infrastructure/cache_store.py"
       - "application/selector.py"
       - ".github/workflows/ui-polish.yml"
@@ -109,3 +111,8 @@ jobs:
         shell: pwsh
         run: |
           python tests/dataset_view_ui_smoke.py
+
+      - name: Client shutdown lifecycle smoke
+        shell: pwsh
+        run: |
+          python tests/app_shutdown_smoke.py
