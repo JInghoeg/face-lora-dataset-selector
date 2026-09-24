@@ -18,6 +18,15 @@ from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
 
+class SourceOrganizerBlocked(RuntimeError):
+    """Stable application-level reason why Source Organizer cannot run yet."""
+
+    def __init__(self, code: str, count: int):
+        self.code = str(code)
+        self.count = int(count)
+        super().__init__(f"{self.code}:{self.count}")
+
+
 try:
     from features.duplicate import service as _duplicate_service
 except ImportError:
@@ -370,15 +379,15 @@ class SelectorApplication:
         if _auto_crop_service is not None:
             unscanned = self.auto_crop_scan_todo(records)
             if unscanned:
-                raise RuntimeError(
-                    f"还有 {unscanned} 张推荐图未完成 Auto Crop 扫描，"
-                    "请先完成 Auto Crop，再整理源文件。"
+                raise SourceOrganizerBlocked(
+                    "auto_crop_unscanned",
+                    unscanned,
                 )
             pending = self.pending_auto_crop(records)
             if pending:
-                raise RuntimeError(
-                    f"还有 {len(pending)} 张 Auto Crop 候选待复核，"
-                    "请先处理后再整理源文件。"
+                raise SourceOrganizerBlocked(
+                    "auto_crop_pending",
+                    len(pending),
                 )
 
         composite_pending = [
@@ -388,9 +397,9 @@ class SelectorApplication:
             and getattr(r.composite_proposal, "decision", None) == "pending"
         ]
         if composite_pending:
-            raise RuntimeError(
-                f"还有 {len(composite_pending)} 张 Composite Split 候选待复核，"
-                "请先处理后再整理源文件。"
+            raise SourceOrganizerBlocked(
+                "composite_pending",
+                len(composite_pending),
             )
 
         return self._source_organizer_module(required=True).build_plan(
