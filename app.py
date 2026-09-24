@@ -1029,14 +1029,14 @@ class Window(QMainWindow):
         if not todo:
             candidates=BACKEND.auto_crop_review_records(self.records)
             if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片没有需要自动裁剪复核的候选。'));return
-            AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button();return
+            AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self,event_logger=runtime_event).exec();self.update_auto_crop_button();return
         self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.progress.setText(self._tr_main('自动裁剪扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型').format(todo=todo))
         self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('自动裁剪 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start()
     def auto_crop_scan_done(self,result):
         self.progress.setText(self._tr_main('自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}').format(scanned=result.scanned,candidates=result.candidates,no_candidate=result.no_candidate,cached=result.skipped_existing))
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.update_auto_crop_button();self.save()
         candidates=BACKEND.auto_crop_review_records(self.records)
-        if candidates:AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self).exec();self.update_auto_crop_button()
+        if candidates:AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self,event_logger=runtime_event).exec();self.update_auto_crop_button()
         else:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片没有需要自动裁剪复核的候选。'))
     def auto_crop_scan_failed(self,error):
         self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.progress.setText(self._tr_main('自动裁剪扫描失败'));QMessageBox.critical(self,self._tr_main('自动裁剪扫描失败'),error)
