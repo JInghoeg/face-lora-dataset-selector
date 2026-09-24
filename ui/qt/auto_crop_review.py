@@ -141,8 +141,6 @@ class AutoCropROIWidget(QWidget):
         super().__init__(parent)
         self.image = None
         self.image_size = (0, 0)
-        self.roi = None
-        self.auto_outline = None
         self._loading = False
 
         layout = QVBoxLayout(self)
@@ -161,6 +159,51 @@ class AutoCropROIWidget(QWidget):
         self.image_item = pg.ImageItem()
         self.image_item.setOpts(axisOrder="row-major")
         self.view.addItem(self.image_item)
+
+        # Create the editable ROI and all native-backed pyqtgraph handles once
+        # for the lifetime of this widget. Repeatedly destroying/recreating
+        # RectROI Handle wrappers eventually corrupted Python/Shiboken GC on
+        # Windows during rapid review navigation.
+        self.roi = pg.RectROI(
+            [0, 0],
+            [1, 1],
+            sideScalers=False,
+            maxBounds=QRectF(0, 0, 1, 1),
+            movable=True,
+            rotatable=False,
+            resizable=True,
+            removable=False,
+            invertible=False,
+            scaleSnap=True,
+            translateSnap=True,
+            snapSize=1,
+            pen=pg.mkPen("#32e675", width=2),
+        )
+        for handle in list(self.roi.getHandles()):
+            self.roi.removeHandle(handle)
+        for pos, center in (
+            ([0, 0], [1, 1]),
+            ([0.5, 0], [0.5, 1]),
+            ([1, 0], [0, 1]),
+            ([0, 0.5], [1, 0.5]),
+            ([1, 0.5], [0, 0.5]),
+            ([0, 1], [1, 0]),
+            ([0.5, 1], [0.5, 0]),
+            ([1, 1], [0, 0]),
+        ):
+            self.roi.addScaleHandle(pos, center)
+        self.view.addItem(self.roi)
+        self.roi.sigRegionChanged.connect(self._changed)
+        self.roi.sigRegionChangeFinished.connect(self._finished)
+        self.roi.setVisible(False)
+
+        self.auto_outline = pg.PlotCurveItem(
+            [],
+            [],
+            pen=pg.mkPen("#4aa3ff", width=2, style=Qt.DashLine),
+        )
+        self.view.addItem(self.auto_outline)
+        self.auto_outline.setVisible(False)
         self.set_theme(False)
 
     @staticmethod
@@ -178,78 +221,42 @@ class AutoCropROIWidget(QWidget):
 
     def set_data(self, bgr, box, auto_box):
         self._loading = True
-        if self.roi is not None:
-            self.view.removeItem(self.roi)
-            self.roi = None
-        if self.auto_outline is not None:
-            self.view.removeItem(self.auto_outline)
-            self.auto_outline = None
+        try:
+            self.image = bgr
+            if bgr is None or not bgr.size:
+                self.image_item.clear()
+                self.image_size = (0, 0)
+                self.roi.setVisible(False)
+                self.auto_outline.setVisible(False)
+                return
 
-        self.image = bgr
-        if bgr is None or not bgr.size:
-            self.image_item.clear()
-            self.image_size = (0, 0)
+            h, w = bgr.shape[:2]
+            self.image_size = (w, h)
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            self.image_item.setImage(rgb, autoLevels=False, levels=(0, 255))
+
+            pad_x = max(16.0, w * 0.04)
+            pad_y = max(16.0, h * 0.04)
+            self._fit_padding = (pad_x, pad_y)
+            self._fit_source()
+
+            auto = self.normalized_box(auto_box, (w, h))
+            ax0, ay0, ax1, ay1 = auto
+            self.auto_outline.setData(
+                [ax0, ax1, ax1, ax0, ax0],
+                [ay0, ay0, ay1, ay1, ay0],
+            )
+            self.auto_outline.setVisible(True)
+
+            current = self.normalized_box(box, (w, h))
+            x0, y0, x1, y1 = current
+            self.roi.maxBounds = QRectF(0, 0, w, h)
+            self.roi.setPos([x0, y0], finish=False)
+            self.roi.setSize([x1 - x0, y1 - y0], finish=False)
+            self.roi.setVisible(True)
+        finally:
             self._loading = False
-            return
 
-        h, w = bgr.shape[:2]
-        self.image_size = (w, h)
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        self.image_item.setImage(rgb, autoLevels=False, levels=(0, 255))
-        # Keep a visual safety margin around the source.  The editable ROI is
-        # still constrained to the image via maxBounds, but edge-aligned
-        # borders/handles must remain fully visible to the reviewer.
-        pad_x = max(16.0, w * 0.04)
-        pad_y = max(16.0, h * 0.04)
-        self._fit_padding = (pad_x, pad_y)
-        self._fit_source()
-
-        auto = self.normalized_box(auto_box, (w, h))
-        ax0, ay0, ax1, ay1 = auto
-        self.auto_outline = pg.PlotCurveItem(
-            [ax0, ax1, ax1, ax0, ax0],
-            [ay0, ay0, ay1, ay1, ay0],
-            pen=pg.mkPen("#4aa3ff", width=2, style=Qt.DashLine),
-        )
-        self.view.addItem(self.auto_outline)
-
-        current = self.normalized_box(box, (w, h))
-        x0, y0, x1, y1 = current
-        self.roi = pg.RectROI(
-            [x0, y0],
-            [x1 - x0, y1 - y0],
-            sideScalers=False,
-            maxBounds=QRectF(0, 0, w, h),
-            movable=True,
-            rotatable=False,
-            resizable=True,
-            removable=False,
-            invertible=False,
-            scaleSnap=True,
-            translateSnap=True,
-            snapSize=1,
-            pen=pg.mkPen("#32e675", width=2),
-        )
-        # RectROI injects one default corner handle. Remove it, then define
-        # the complete eight-direction resize affordance explicitly so the
-        # interaction does not depend on pyqtgraph defaults.
-        for handle in list(self.roi.getHandles()):
-            self.roi.removeHandle(handle)
-        for pos, center in (
-            ([0, 0], [1, 1]),
-            ([0.5, 0], [0.5, 1]),
-            ([1, 0], [0, 1]),
-            ([0, 0.5], [1, 0.5]),
-            ([1, 0.5], [0, 0.5]),
-            ([0, 1], [1, 0]),
-            ([0.5, 1], [0.5, 0]),
-            ([1, 1], [0, 0]),
-        ):
-            self.roi.addScaleHandle(pos, center)
-        self.view.addItem(self.roi)
-        self.roi.sigRegionChanged.connect(self._changed)
-        self.roi.sigRegionChangeFinished.connect(self._finished)
-        self._loading = False
         # The dialog may not have its final splitter geometry yet. Re-fit once
         # Qt completes the layout, and again on later resize events.
         QTimer.singleShot(0, self._fit_source)
