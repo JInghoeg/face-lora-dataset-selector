@@ -148,12 +148,13 @@ class AutoCropROIWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.canvas = pg.GraphicsLayoutWidget()
         layout.addWidget(self.canvas)
-        # Mouse zoom/pan is disabled below, so keep aspect management under
-        # our control. ViewBox's own aspect lock re-crops the source after
-        # splitter/window resizes; _fit_source() preserves 1:1 pixels without
-        # allowing that automatic range rewrite.
-        self.view = self.canvas.addViewBox(lockAspect=False, enableMenu=False)
-        self.view.setAspectLocked(False)
+        # Image pixels must remain square at every splitter/window size.
+        # Earlier we disabled aspect lock to work around clipping, which made
+        # portrait sources visibly stretch when the review pane was resized.
+        # ROI maxBounds constrains editing; the ViewBox itself stays free to
+        # expand either axis so the complete source remains visible.
+        self.view = self.canvas.addViewBox(lockAspect=True, enableMenu=False)
+        self.view.setAspectLocked(True, ratio=1)
         self.view.setMouseEnabled(x=False, y=False)
         self.view.invertY(True)
         self.image_item = pg.ImageItem()
@@ -199,12 +200,6 @@ class AutoCropROIWidget(QWidget):
         # borders/handles must remain fully visible to the reviewer.
         pad_x = max(16.0, w * 0.04)
         pad_y = max(16.0, h * 0.04)
-        self.view.setLimits(
-            xMin=-w * 0.25,
-            xMax=w * 1.25,
-            yMin=-h * 0.25,
-            yMax=h * 1.25,
-        )
         self._fit_padding = (pad_x, pad_y)
         self._fit_source()
 
@@ -267,38 +262,15 @@ class AutoCropROIWidget(QWidget):
             "_fit_padding",
             (max(16.0, w * 0.04), max(16.0, h * 0.04)),
         )
-        content_w = w + pad_x * 2
-        content_h = h + pad_y * 2
-
-        # Match the target rect to the actual viewport aspect. With the same
-        # aspect ratio, ViewBox's locked-aspect correction cannot crop either
-        # source axis; it can only show the requested padded contain rect.
-        viewport_w = float(self.view.width())
-        viewport_h = float(self.view.height())
-        if viewport_w <= 1 or viewport_h <= 1:
-            viewport = self.canvas.viewport().size()
-            viewport_w = max(1.0, float(viewport.width()))
-            viewport_h = max(1.0, float(viewport.height()))
-        viewport_aspect = viewport_w / viewport_h
-        content_aspect = content_w / content_h
-
-        target_w = content_w
-        target_h = content_h
-        if viewport_aspect > content_aspect:
-            target_w = target_h * viewport_aspect
-        else:
-            target_h = target_w / viewport_aspect
-
-        center_x = w / 2.0
-        center_y = h / 2.0
+        # Request one padded source rectangle. With aspectLocked=1 and no
+        # restrictive ViewBox limits, pyqtgraph expands the orthogonal axis as
+        # needed to contain this entire rect while preserving square pixels.
         self.view.setRange(
-            xRange=(
-                center_x - target_w / 2.0,
-                center_x + target_w / 2.0,
-            ),
-            yRange=(
-                center_y - target_h / 2.0,
-                center_y + target_h / 2.0,
+            rect=QRectF(
+                -pad_x,
+                -pad_y,
+                w + pad_x * 2,
+                h + pad_y * 2,
             ),
             padding=0,
             disableAutoRange=True,
@@ -364,6 +336,8 @@ class AutoCropReviewDialog(QDialog):
         event_logger=None,
     ):
         super().__init__(parent)
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
+        self._window_drag_offset = None
         self.backend = backend
         self._event_logger = event_logger or (lambda _name, **_fields: None)
         self.records = backend.auto_crop_review_records(records)
@@ -402,6 +376,31 @@ class AutoCropReviewDialog(QDialog):
         self.retranslate()
         self.apply_theme(self._preferred_theme)
         self.reload()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and event.position().y() <= 58:
+            self._window_drag_offset = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self._window_drag_offset is not None
+            and event.buttons() & Qt.LeftButton
+        ):
+            self.move(
+                event.globalPosition().toPoint() - self._window_drag_offset
+            )
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._window_drag_offset = None
+        super().mouseReleaseEvent(event)
 
     @staticmethod
     def pixmap_from_bgr(img, max_w=520, max_h=440):
