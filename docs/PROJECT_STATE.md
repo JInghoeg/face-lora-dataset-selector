@@ -36,6 +36,7 @@ Historical repository note:
 - Issue #66 — project governance hardening.
 - Issue #65 — docs-only PR Portable-build filtering; resolved by the governance hardening change once merged.
 - Repository-level `main` protection/ruleset still requires administrator configuration after the workflow changes land.
+- Issue #68 tracks stale remote branches and `delete_branch_on_merge: false`.
 
 ## Current objective
 
@@ -47,8 +48,8 @@ Historical repository note:
 
 ## Blockers / uncertainties
 
-- GitHub Rulesets API currently reports no repository rulesets.
-- Legacy branch-protection state is not readable by the connected GitHub integration (403), while direct `main` writes have been possible in practice.
+- GitHub reports `main` as **protected: false** and repository Rulesets API returns no rulesets.
+- Repository currently has **44 remote branches / 43 non-main branches**, and `delete_branch_on_merge` is false (#68).
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
 - Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
 - README screenshots remain non-blocking documentation work (#57).
@@ -93,6 +94,7 @@ Current:
 - #57 — README screenshots
 - #65 — avoid full Portable builds for docs-only PRs
 - #66 — project governance hardening
+- #68 — stale branch cleanup + auto-delete policy
 
 Completed baseline:
 - PR #54 — v0.3 recovery implementation
