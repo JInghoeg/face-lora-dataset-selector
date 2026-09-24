@@ -1,5 +1,11 @@
 # Face LoRA Dataset Selector
 
+[![Release](https://img.shields.io/github/v/release/JInghoeg/face-lora-dataset-selector?label=Release)](https://github.com/JInghoeg/face-lora-dataset-selector/releases)
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#下载与安装)
+[![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](LICENSE)
+
+**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)** · [更新记录](CHANGELOG.md) · [开发文档](docs/ARCHITECTURE.md)
+
 用于人物 / 人像 AI 训练数据集的本地整理与筛选工具。
 
 面向以人物图片为训练素材的 LoRA、模型等训练任务，提供数据集分析、筛选与优化流程。
@@ -9,6 +15,32 @@
 **Windows · 本地运行 · 解压即用 · 轻量快速**
 
 <!-- README hero screenshot: docs/assets/readme/hero.png -->
+
+## 目录
+
+- [它能做什么？](#它能做什么)
+- [适合什么场景？](#适合什么场景)
+- [推荐的数据集整理流程](#推荐的数据集整理流程)
+- 功能与复核
+  - [文字 / 水印处理](#文字--水印处理)
+  - [AI 辅助复核](#ai-辅助复核)
+  - [组合图自动拆分](#组合图自动拆分)
+  - [自动裁剪](#自动裁剪)
+  - [数据整理](#数据整理)
+- 分析与推荐
+  - [自动推荐是怎么工作的？](#自动推荐是怎么工作的)
+  - [当前使用的分析方法](#当前使用的分析方法)
+  - [分析效率与质量](#分析效率与质量)
+  - [人工筛选与自动结果](#人工筛选与自动结果)
+- [非破坏性文件操作](#非破坏性文件操作)
+- [稳定版和开发版](#稳定版和开发版)
+- [下载与安装](#下载与安装)
+- [模型与缓存](#模型与缓存)
+- [使用教程](#使用教程)
+- [开发文档](#开发文档)
+- [License](#license)
+
+---
 
 ## 它能做什么？
 
