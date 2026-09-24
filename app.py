@@ -300,6 +300,20 @@ class SourceOrganizerWorker(QObject):
             self.finished.emit(result)
         except Exception:self.failed.emit(traceback.format_exc())
 
+class ExportWorker(QObject):
+    progress=Signal(int,int,str);finished=Signal(object);failed=Signal(str)
+    def __init__(self,records,dst):
+        super().__init__();self.records=list(records);self.dst=Path(dst)
+    def run(self):
+        try:
+            result=BACKEND.export_recommended(
+                self.records,
+                self.dst,
+                progress=self.progress.emit,
+            )
+            self.finished.emit(result)
+        except Exception:self.failed.emit(traceback.format_exc())
+
 class IncrementalAnalysisWorker(QObject):
     progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
     def __init__(self,items):super().__init__();self.items=list(items)
@@ -401,7 +415,7 @@ class CompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -491,6 +505,7 @@ class Window(QMainWindow):
         if not self.folder:self.folder_label.setText(self._tr_main('尚未选择文件夹'))
         if not self.records and not (self.thread and self.thread.isRunning()):self.progress.setText(self._tr_main('准备就绪'))
         self.language_label.setText(self._tr_main('语言 / Language'))
+        self.cancel_analysis_btn.setText(self._tr_main('取消'))
         self.auto_target_label.setText(self._tr_main('自动推荐目标：'))
         self.custom_mode.setText(self._tr_main('自定义'))
         self.custom.setToolTip(self._tr_main('仅输入数字；点击“应用”后切换到自定义目标。'))
@@ -590,7 +605,9 @@ class Window(QMainWindow):
         self.pick=QPushButton();self.pick.clicked.connect(self.choose)
         self.rescan=QPushButton();self.rescan.clicked.connect(self.start);self.rescan.setShortcut('F5');self.rescan.setEnabled(False)
         self.folder_label=QLabel();self.progress=QLabel()
-        t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress)
+        self.operation_bar=QProgressBar();self.operation_bar.setTextVisible(True);self.operation_bar.setMaximumWidth(220);self.operation_bar.hide()
+        self.cancel_analysis_btn=QPushButton();self.cancel_analysis_btn.clicked.connect(self.cancel_active_analysis);self.cancel_analysis_btn.hide()
+        t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);t.addWidget(self.operation_bar);t.addWidget(self.cancel_analysis_btn)
         self.language_label=QLabel();self.language_combo=QComboBox()
         for code,label in SUPPORTED_LANGUAGES:self.language_combo.addItem(label,code)
         manager=ui_language_manager();language_index=self.language_combo.findData(manager.language)
@@ -662,10 +679,85 @@ class Window(QMainWindow):
         self.clear_ai_btn=QPushButton();self.clear_ai_btn.clicked.connect(self.clear_ai_suggestion)
         aib.addWidget(self.accept_ai_btn);aib.addWidget(self.reject_ai_btn);aib.addWidget(self.clear_ai_btn);ail.addLayout(aib);sl.addWidget(self.ai_box);sl.addStretch(1)
         self.dataset_splitter.addWidget(side);self.dataset_splitter.setSizes([1030,370]);l.addWidget(self.dataset_splitter,1)
+    def set_operation_progress(self,current,total,text):
+        self.progress.setText(text)
+        self.operation_bar.show()
+        total=max(0,int(total));current=max(0,int(current))
+        if total>0:
+            self.operation_bar.setRange(0,total)
+            self.operation_bar.setValue(min(current,total))
+            self.operation_bar.setFormat(f'{min(current,total)}/{total}')
+        else:
+            self.operation_bar.setRange(0,0)
+
+    def begin_cancellable_analysis(self,text):
+        self.progress.setText(text)
+        self.operation_bar.setRange(0,0);self.operation_bar.show()
+        self.cancel_analysis_btn.setEnabled(True);self.cancel_analysis_btn.show()
+
+    def finish_operation_ui(self):
+        self.operation_bar.hide()
+        self.operation_bar.setRange(0,100);self.operation_bar.setValue(0)
+        self.cancel_analysis_btn.hide();self.cancel_analysis_btn.setEnabled(True)
+
+    def cancel_active_analysis(self):
+        for name in ('thread','composite_thread','auto_crop_thread','incremental_thread'):
+            thread=getattr(self,name,None)
+            if thread is not None and thread.isRunning():
+                runtime_event('analysis_cancel_requested',thread=name)
+                thread.requestInterruption()
+                self.cancel_analysis_btn.setEnabled(False)
+                self.progress.setText(self._tr_main('正在取消当前分析…'))
+                return
+
+    def analysis_progress(self,kind,current,total,name):
+        labels={
+            'dataset':'分析 {current}/{total}：{name}',
+            'auto_crop':'自动裁剪 {current}/{total}：{name}',
+            'composite':'组合图拆分 {current}/{total}：{name}',
+            'incremental':'分析组合图拆分新图 {current}/{total}：{name}',
+        }
+        source=labels.get(kind,'分析 {current}/{total}：{name}')
+        self.set_operation_progress(
+            current,total,
+            self._tr_main(source).format(current=current,total=total,name=name),
+        )
+
+    def analysis_cancelled(self,kind):
+        runtime_event('analysis_cancelled',kind=kind)
+        self.pick.setEnabled(True);self.rescan.setEnabled(bool(self.folder))
+        has_records=bool(self.records)
+        self.export.setEnabled(has_records);self.composite_btn.setEnabled(has_records);self.auto_crop_btn.setEnabled(has_records);self.organizer_btn.setEnabled(has_records)
+        self.update_composite_button();self.update_auto_crop_button()
+        self.finish_operation_ui()
+        names={
+            'dataset':'图片分析',
+            'auto_crop':'自动裁剪扫描',
+            'composite':'组合图拆分扫描',
+            'incremental':'组合图拆分新图分析',
+        }
+        self.progress.setText(
+            self._tr_main('{task}已取消').format(
+                task=self._tr_main(names.get(kind,'分析'))
+            )
+        )
+        if kind in ('auto_crop','composite','incremental') and self.folder:
+            self.save()
+
+    def analysis_failed_common(self,title,error):
+        self.pick.setEnabled(True);self.rescan.setEnabled(bool(self.folder))
+        has_records=bool(self.records)
+        self.export.setEnabled(has_records);self.composite_btn.setEnabled(has_records);self.auto_crop_btn.setEnabled(has_records);self.organizer_btn.setEnabled(has_records)
+        self.finish_operation_ui()
+        QMessageBox.critical(self,self._tr_main(title),error)
+
     def choose(self):
         x=QFileDialog.getExistingDirectory(self,self._tr_main('选择训练图片目录'),str(self.folder or APP_DIR))
         if x:
-            self.folder=Path(x);d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.target_mode=infer_target_mode(self.target,d.get('target_mode'));self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
+            new_folder=Path(x)
+            if self.folder is None or key(new_folder)!=key(self.folder):
+                self.records=[];self.dataset_model.clear();self.thumb_memory.clear()
+            self.folder=new_folder;d=load_data(self.folder);self.target=d.get('target',60) if isinstance(d.get('target',60),int) else 60;self.target_mode=infer_target_mode(self.target,d.get('target_mode'));self.saved_views=saved_views_from_data(self.folder);self.exported_bundle_ids=list(d.get('exported_bundle_ids',[])) if isinstance(d.get('exported_bundle_ids',[]),list) else [];self.pending_composite_outputs={}
             for item in d.get('pending_composite_outputs',[]):
                 if isinstance(item,dict) and isinstance(item.get('path'),str) and item.get('status') in ('推荐','淘汰'):self.pending_composite_outputs[key(Path(item['path']))]={'path':item['path'],'status':item['status']}
             for legacy in d.get('pending_composite_recommend_paths',[]):
@@ -673,7 +765,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
-        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(lambda m:self.progress.setText(self._backend_status_display(m)));self.worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('分析 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:QMessageBox.critical(self,self._tr_main('分析失败'),e));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start()
+        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.begin_cancellable_analysis(self._tr_main('分析准备中…'));self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(lambda m:self.progress.setText(self._backend_status_display(m)));self.worker.progress.connect(lambda n,t,name:self.analysis_progress('dataset',n,t,name));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:self.analysis_failed_common('分析失败',e));self.worker.cancelled.connect(lambda:self.analysis_cancelled('dataset'));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.worker.cancelled.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start(QThread.Priority.LowPriority)
     def done(self,rs):
         self.records=rs
         if self.pending_composite_outputs:
@@ -687,7 +779,7 @@ class Window(QMainWindow):
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
             self.quick_mode='';set_combo_value(self.view_combo,'全部');self.refresh()
-        self.save()
+        self.finish_operation_ui();self.save()
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
     @staticmethod
     def thumb(p):
