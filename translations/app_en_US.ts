@@ -515,6 +515,9 @@ Source images were not modified.</translation></message>
     <message><source>正在取消扫描…</source><translation>Cancelling scan…</translation></message>
     <message><source>扫描已取消</source><translation>Scan cancelled</translation></message>
     <message><source>准备扫描…</source><translation>Preparing scan…</translation></message>
+    <message><source>取消批量处理</source><translation>Cancel Batch Processing</translation></message>
+    <message><source>正在取消批量处理…</source><translation>Cancelling batch processing…</translation></message>
+    <message><source>批量处理已取消</source><translation>Batch processing cancelled</translation></message>
 </context>
   <context>
     <name>ImagePreview</name>
