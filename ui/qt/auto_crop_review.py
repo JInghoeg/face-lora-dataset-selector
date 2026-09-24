@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QSizeGrip,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -563,6 +564,8 @@ class AutoCropReviewDialog(QDialog):
         self.close_button = api["TransparentPushButton"]("")
         self.close_button.clicked.connect(self.accept)
         actions.addWidget(self.close_button)
+        self.size_grip = QSizeGrip(self)
+        actions.addWidget(self.size_grip)
         root.addLayout(actions)
 
     def _apply_initial_filmstrip_size(self):
@@ -639,6 +642,8 @@ class AutoCropReviewDialog(QDialog):
         self.close_button = QPushButton("")
         self.close_button.clicked.connect(self.accept)
         actions.addWidget(self.close_button)
+        self.size_grip = QSizeGrip(self)
+        actions.addWidget(self.size_grip)
         right_layout.addLayout(actions)
 
         split.addWidget(right)
