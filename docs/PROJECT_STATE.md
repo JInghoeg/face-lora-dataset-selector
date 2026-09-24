@@ -38,6 +38,7 @@ At code commit `8ce96a9`, the current recovery branch includes:
 - Text Cleanup batch repair is cooperatively cancellable and stages the whole run before commit; cancellation/failure removes staging and commit rollback protects pre-existing destination files;
 - main-window shutdown now owns/stops Text Cleanup scan/batch and Text Cleanup thumbnail QThreads;
 - regression coverage for long-operation controls, transactional Text Cleanup cancellation, shutdown lifecycle and Text Cleanup auto-scan.
+- manual Portable QA now uses the canonical `tools/qa-portable.ps1` workspace helper: one managed QA root, one `current` candidate, automatic replacement, `scratch` for disposable outputs, and explicit legacy cleanup.
 
 The GPU question is **not implemented yet**. Current inference remains CPU-oriented. GPU acceleration must be evaluated as a dependency/packaging/runtime decision before introducing `onnxruntime-gpu` or another GPU runtime.
 
