@@ -1,5 +1,7 @@
 # Face LoRA Dataset Selector
 
+**简体中文** | [English](docs/README.en.md)
+
 [![Release](https://img.shields.io/github/v/release/JInghoeg/face-lora-dataset-selector?label=Release)](https://github.com/JInghoeg/face-lora-dataset-selector/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#下载与安装)
 [![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](LICENSE)
