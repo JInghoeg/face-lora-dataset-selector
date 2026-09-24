@@ -1,6 +1,6 @@
 # Architecture
 
-Status: ACTIVE — v0.3 limited architecture boundary pass
+Status: ACTIVE — architecture baseline established in v0.3
 
 ## Goals
 

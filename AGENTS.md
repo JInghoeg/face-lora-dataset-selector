@@ -13,15 +13,18 @@ Before substantial work on an existing task:
 1. read `docs/PROJECT_STATE.md`;
 2. inspect the actual product branch and recent relevant merged/open/Draft PRs;
 3. detect stale summaries before acting;
-4. read `HANDOFF.md` only as supplementary context;
+4. read `.project/HANDOFF.md` only as supplementary context;
 5. follow only the Issues/Decision Records needed for the current task.
 
 If repository reality is newer than PROJECT_STATE, repair PROJECT_STATE before relying on it.
 
 ## Product branch
 
-Current v0.3 product branch:
-`feature/v0.3-workflow-recovery`
+Stable product branch:
+`main`
+
+Current next-release umbrella:
+Issue #60 — v0.4
 
 ## Architecture invariants
 
