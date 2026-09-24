@@ -55,7 +55,13 @@ $stableFiles = Get-ChildItem -LiteralPath $portable -Recurse -File |
         if ($_.Relative -ieq "_internal\base_library.zip") {
             return $false
         }
-        if ($_.Relative -match '(?i)\\[^\\]+\.dist-info\\RECORD
+        if ($_.Relative -match '(?i)\\[^\\]+\.dist-info\\RECORD$') {
+            return $false
+        }
+        return $true
+    } |
+    Sort-Object Relative
+
 foreach ($item in $stableFiles) {
     $hash = (Get-FileHash -LiteralPath $item.File.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     $manifestLines.Add(("{0}  {1}  {2}" -f $hash, $item.File.Length, $item.Relative))
