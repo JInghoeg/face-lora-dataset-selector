@@ -171,6 +171,11 @@ def verify_roi(qapp, dialog):
     assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
     assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
     assert len(dialog.roi_preview.roi.handles) == 8, len(dialog.roi_preview.roi.handles)
+    pixel_x, pixel_y = dialog.roi_preview.view.viewPixelSize()
+    assert abs(pixel_x - pixel_y) <= max(pixel_x, pixel_y) * 0.01, (
+        pixel_x,
+        pixel_y,
+    )
 
     # Horizontal comparison panes need an obvious, usable splitter rather than
     # two effectively fixed cards.
@@ -188,6 +193,11 @@ def verify_roi(qapp, dialog):
     x_range, y_range = dialog.roi_preview.view.viewRange()
     assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
     assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
+    pixel_x, pixel_y = dialog.roi_preview.view.viewPixelSize()
+    assert abs(pixel_x - pixel_y) <= max(pixel_x, pixel_y) * 0.01, (
+        pixel_x,
+        pixel_y,
+    )
 
     before = dialog.roi_preview.box()
     edited = [before[0] + 8, before[1] + 6, before[2] - 10, before[3] - 8]
@@ -243,6 +253,7 @@ def main():
 
         assert dialog._fluent is not None, "production Fluent UI was not loaded"
         assert dialog.windowTitle() == "自动裁剪复核"
+        assert dialog.windowFlags() & Qt.FramelessWindowHint
         assert dialog.items.viewMode() == QListView.ViewMode.IconMode
         assert dialog.items.flow() == QListView.Flow.LeftToRight
         assert dialog.items.count() == 12
