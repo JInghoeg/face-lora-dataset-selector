@@ -272,9 +272,18 @@ class SelectorApplication:
     def duplicate_ignored_group_id(self):
         return self._duplicate_module(required=True).IGNORED_GROUP_ID
 
-    def regroup_duplicates(self, records, threshold=8, adjacent=16):
+    def regroup_duplicates(
+        self,
+        records,
+        threshold=8,
+        adjacent=16,
+        cancelled=None,
+    ):
         return self._duplicate_module(required=True).group_duplicates(
-            records, threshold=threshold, adjacent=adjacent
+            records,
+            threshold=threshold,
+            adjacent=adjacent,
+            cancelled=cancelled,
         )
 
     def duplicate_group_ids(self, records):
