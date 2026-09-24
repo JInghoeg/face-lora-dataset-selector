@@ -214,6 +214,23 @@ def main() -> int:
         assert window.manual_box.title().startswith("Manual Status")
         assert window.ai_box.title() == "AI Review Suggestions"
 
+        organizer_blocks = [
+            window.source_organizer_block_text(
+                app.SourceOrganizerBlocked("auto_crop_unscanned", 3)
+            ),
+            window.source_organizer_block_text(
+                app.SourceOrganizerBlocked("auto_crop_pending", 112)
+            ),
+            window.source_organizer_block_text(
+                app.SourceOrganizerBlocked("composite_pending", 7)
+            ),
+        ]
+        assert organizer_blocks[1] == (
+            "112 Auto Crop candidates are still pending review. "
+            "Resolve them before organizing source files."
+        )
+        assert_no_han(*organizer_blocks)
+
         text_tab = window.sub
         assert text_tab is not None
         assert text_tab.pick_input_btn.text() == "Select Input Folder"
