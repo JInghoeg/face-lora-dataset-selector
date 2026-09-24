@@ -11,6 +11,7 @@ Canonical current-state entry point. Repository reality and current user instruc
 - Force pushes/deletion on `main`: **blocked**
 - PR requirement: **enabled**
 - Automatic head-branch deletion after merge: **enabled and verified**
+- Remote branches after historical cleanup: **1 total — main only**
 - Stable release: **v0.3.0**
 - Release target: `432321dacda585371b4728b0b2aee37909341f18`
 - Windows Portable SHA-256: `43d7f8404c4311ba397118d174a8531f4a35d5717b1214708acd649b149f7742`
@@ -35,27 +36,28 @@ Historical repository note:
 - Chinese + English README switch shipped in PR #64.
 - Project-governance hardening PR #67 merged after `continuity`, `Merge Gate`, full Portable and README-sync checks passed.
 - `main` protection/ruleset is active and cannot be bypassed by the current user.
-- PR #67's head branch was automatically deleted after merge, verifying the auto-delete setting.
+- Auto-delete-after-merge was verified on real PR branches.
 - Release publishing now requires a matching machine-readable approved release gate with explicit HUMAN PASS.
 - Docs-only PRs use a lightweight Portable classification path while still producing the required `Merge Gate`.
+- Historical branch cleanup completed: all 42 stale non-main branches were audited and removed.
 - Product architecture baseline is a modular monolith with feature-first boundaries.
 - Source-data safety remains the baseline.
 
 ## In progress
 
-- Issue #68 — prune stale historical branches; auto-delete is already enabled for future merged PRs.
-- Current remote branch count after #67 auto-delete: **43 total / 42 non-main**.
+- v0.4 planning / implementation under Issue #60.
+- Focused open backlog: #55 / #56 / #57 / #59.
 
 ## Current objective
 
-1. verify this docs-only state-sync PR passes `continuity` + lightweight `Merge Gate` without running the heavy Portable job;
-2. close completed governance trackers #65 and #66 with this merge;
-3. audit/prune stale historical branches under #68;
-4. resume v0.4 implementation from #60.
+1. use Issue #60 as the v0.4 release-level entry point;
+2. prioritize real-use UX/quality backlog from #59 / #56;
+3. evaluate GPU acceleration separately in #55 before changing runtime dependencies;
+4. keep README screenshot/document polish in #57 non-blocking;
+5. preserve v0.3 behavior, governance gates, and source-data safety as the baseline.
 
 ## Blockers / uncertainties
 
-- Historical remote branches still need safe pruning (#68).
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
 - Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
 - README screenshots remain non-blocking documentation work (#57).
@@ -70,10 +72,10 @@ Historical repository note:
 
 ## Next action
 
-1. complete the docs-only governance smoke PR and verify the heavy Portable job is skipped while `Merge Gate` passes;
-2. close #65 and #66 through that merge;
-3. prune stale branches under #68;
-4. begin v0.4 work from Issue #60.
+1. begin v0.4 work from Issue #60;
+2. start with the highest real-use impact items from #59 / #56;
+3. keep performance research in #55 separate from UX work;
+4. continue to use protected-main PR flow and post-merge PROJECT_STATE synchronization.
 
 ## Do not repeat
 
@@ -98,7 +100,6 @@ Current:
 - #56 — Text Cleanup review sorting
 - #55 — optional NVIDIA CUDA acceleration research
 - #57 — README screenshots
-- #68 — stale branch cleanup + auto-delete policy
 
 Completed baseline:
 - PR #54 — v0.3 recovery implementation
@@ -108,3 +109,4 @@ Completed baseline:
 - PR #64 — bilingual README
 - Issue #65 — docs-only Portable-build optimization
 - Issue #66 / PR #67 — project-governance hardening
+- Issue #68 — historical branch cleanup + auto-delete policy
