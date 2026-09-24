@@ -4,7 +4,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#下载与安装)
 [![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](LICENSE)
 
-**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)** · [更新记录](CHANGELOG.md) · [开发文档](docs/ARCHITECTURE.md)
+**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)** · [全部 Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [使用教程](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
 
 用于人物 / 人像 AI 训练数据集的本地整理与筛选工具。
 
@@ -37,7 +37,6 @@
 - [下载与安装](#下载与安装)
 - [模型与缓存](#模型与缓存)
 - [使用教程](#使用教程)
-- [开发文档](#开发文档)
 - [License](#license)
 
 ---
@@ -450,9 +449,7 @@ v0.2.0 已包含：
 
 v0.3 目前仍处于发布前测试阶段，没有替代 v0.2.0 成为稳定 Release。
 
-完整变化记录：
-
-[CHANGELOG.md](CHANGELOG.md)
+后续正式版本的变化会随 GitHub Release 一并说明。
 
 ---
 
@@ -540,18 +537,6 @@ README 主要介绍项目用途、能力和基本使用方式。
 - 文字 / 水印处理；
 - 数据整理与导出；
 - 常见问题和故障排查。
-
----
-
-## 开发文档
-
-如果你希望了解项目架构、开发流程或参与开发：
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Module Guide](docs/MODULE_GUIDE.md)
-- [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md)
-- [v0.3 Roadmap](docs/ROADMAP_v0.3.md)
-- [CHANGELOG](CHANGELOG.md)
 
 ---
 
