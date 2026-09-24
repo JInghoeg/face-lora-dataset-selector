@@ -6,6 +6,12 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
+from infrastructure.runtime_log import (
+    runtime_event,
+    runtime_log_path,
+    setup_runtime_logging,
+)
+
 try:
     import cv2, numpy as np
     from PIL import Image, ImageOps
@@ -1116,7 +1122,57 @@ class Window(QMainWindow):
         if self.folder and self.records:
             try:save_data(self.folder,self.records,self.target,self.saved_views,self.exported_bundle_ids,self.current_view_spec('last') if self.records else None,list(self.pending_composite_outputs.values()),self.target_mode)
             except Exception:self.progress.setText(self._tr_main('缓存保存失败'))
-    def closeEvent(self,e):self.save();self.sub.save() if self.sub is not None else None;e.accept()
+    def _background_threads(self):
+        threads=[]
+        for name in ('thread','composite_thread','auto_crop_thread','incremental_thread'):
+            thread=getattr(self,name,None)
+            if thread is not None:
+                threads.append((name,thread))
+        for index,thread in enumerate(list(self.thumb_threads)):
+            threads.append((f'thumbnail_{index}',thread))
+        return threads
+
+    def shutdown_background(self,force=True):
+        threads=[(name,thread) for name,thread in self._background_threads() if thread.isRunning()]
+        if not threads:
+            return True
+        runtime_event('background_shutdown_begin',threads=','.join(name for name,_ in threads))
+        self.thumb_generation+=1
+        for name,thread in threads:
+            try:
+                thread.requestInterruption();thread.quit()
+            except Exception as exc:
+                runtime_event('background_shutdown_request_failed',thread=name,error=exc)
+        deadline=time.monotonic()+3.0
+        for name,thread in threads:
+            if not thread.isRunning():continue
+            remaining=max(0.0,deadline-time.monotonic())
+            if remaining>0:thread.wait(int(remaining*1000))
+        stuck=[(name,thread) for name,thread in threads if thread.isRunning()]
+        if stuck and force:
+            for name,thread in stuck:
+                runtime_event('background_shutdown_force_terminate',thread=name)
+                thread.terminate()
+            for _name,thread in stuck:thread.wait(1500)
+        remaining=[name for name,thread in threads if thread.isRunning()]
+        runtime_event('background_shutdown_complete',remaining=','.join(remaining) if remaining else 'none')
+        return not remaining
+
+    def closeEvent(self,e):
+        if self.organizer_thread is not None and self.organizer_thread.isRunning():
+            runtime_event('window_close_blocked',reason='source_organizer_running')
+            QMessageBox.warning(
+                self,
+                self._tr_main('后台任务进行中'),
+                self._tr_main('整理源文件正在移动文件。请等待当前事务完成后再关闭程序。'),
+            )
+            e.ignore();return
+        runtime_event('window_close_begin')
+        self.save()
+        if self.sub is not None:self.sub.save()
+        stopped=self.shutdown_background(force=True)
+        runtime_event('window_close_complete',threads_stopped=stopped)
+        e.accept()
     def exported(self):
         sel=[r for r in self.records if r.status=='推荐']
         if not sel:QMessageBox.information(self,self._tr_main('没有可导出的图片'),self._tr_main('当前没有推荐图片。'));return
@@ -1321,4 +1377,15 @@ if __name__=='__main__':
         try:sys.exit(self_test())
         except Exception as e:
             print('SELF-TEST FAILED:',e);traceback.print_exc();sys.exit(1)
-    a=QApplication(sys.argv);a.setApplicationName('LoRA 数据集筛选与字幕清理');initialize_i18n(a);w=Window();w.show();sys.exit(a.exec())
+    log_path=setup_runtime_logging()
+    a=QApplication(sys.argv)
+    a.setApplicationName('LoRA 数据集筛选与字幕清理')
+    a.setQuitOnLastWindowClosed(True)
+    initialize_i18n(a)
+    w=Window()
+    a.aboutToQuit.connect(lambda:w.shutdown_background(force=True))
+    w.show()
+    runtime_event('qt_event_loop_start',log=log_path)
+    exit_code=a.exec()
+    runtime_event('process_exit',code=exit_code)
+    sys.exit(exit_code)
