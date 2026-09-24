@@ -62,6 +62,24 @@ At a checkpoint:
 4. fix failures;
 5. avoid restarting manual QA for unrelated non-fatal fixes until the next checkpoint.
 
+
+
+## Canonical manual-QA workspace
+
+Portable human QA must use the repository helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Prepare -RunId <verified-run-id>
+```
+
+The helper owns the local QA workspace and cleanup policy. Full rules: [MANUAL_QA.md](MANUAL_QA.md).
+
+Do **not** create ad-hoc top-level folders such as `G:\FaceLoRA-QA-<commit>` in future test instructions.
+
+Default managed root is `G:\FaceLoRA-QA` when G: exists, with exactly one active candidate under `current`. The next Prepare removes the previous `current` automatically. Disposable test outputs belong in `current\scratch`.
+
+Historical ad-hoc QA directories are cleaned with `CleanLegacy`, preview first and `-Force` only after the target list is visible.
+
 ## Research-first / mature-first rule
 
 Before custom work for a new model, algorithm, crop editor, task framework or UI primitive:
