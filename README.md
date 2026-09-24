@@ -4,7 +4,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#下载与安装)
 [![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](LICENSE)
 
-**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)** · [全部 Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [使用教程](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
+**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)** · [全部 Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [使用教程](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
 
 用于人物 / 人像 AI 训练数据集的本地整理与筛选工具。
 
@@ -434,27 +434,13 @@ Source Organizer 会根据当前筛选状态生成文件移动计划，例如将
 
 ## 稳定版和开发版
 
-### v0.2.0
+### v0.3.0
 
 当前稳定 Release：
 
-**[Face LoRA Dataset Selector v0.2.0](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)**
+**[Face LoRA Dataset Selector v0.3.0](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)**
 
-v0.2.0 已包含：
-
-- 自动分析；
-- 推荐 / 备选 / 淘汰筛选；
-- 角度与景别信息；
-- 近重复检测；
-- 文字 / 水印处理；
-- 训练图片导出；
-- Windows 解压即用版本。
-
-### v0.3
-
-当前仓库正在开发 v0.3。
-
-主要新增内容包括：
+v0.3.0 在原有分析、推荐、去重和文字 / 水印处理基础上，新增：
 
 - 独立重复组复核；
 - AI 辅助复核；
@@ -462,10 +448,14 @@ v0.2.0 已包含：
 - 自动裁剪与手动调整；
 - Source Organizer；
 - 更完整的数据集工作流；
-- 中英文界面切换；
-- 交互和稳定性改进。
+- 中英文实时切换；
+- 长任务进度、取消与稳定性改进。
 
-v0.3 已完成人工 QA，目前处于发布收口阶段；在正式 Release 发布前，v0.2.0 仍是当前稳定版本。
+v0.3.0 已完成自动验证和真实人工 QA。
+
+### v0.2.0
+
+v0.2.0 仍保留在 Releases 中，作为上一稳定版本。
 
 后续正式版本的变化会随 GitHub Release 一并说明。
 
@@ -477,7 +467,7 @@ v0.3 已完成人工 QA，目前处于发布收口阶段；在正式 Release 发
 
 下载：
 
-**[v0.2.0 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.2.0)**
+**[v0.3.0 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)**
 
 选择：
 

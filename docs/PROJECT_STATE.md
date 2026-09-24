@@ -16,14 +16,12 @@ Canonical current-state entry point.
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
-- Active recovery branch: `fix/v0.3-manual-qa-blockers`
-- Active PR: Draft #54 — `fix: address v0.3 manual QA blockers`
-- Last verified code commit: `8ce96a9bb085012649a8020d4b290e25e5324874`
-- **Public v0.3.0 release: WITHDRAWN**
+- v0.3 recovery PR: **#54 merged to main**.
+- v0.3 final pre-release CI: **10 / 10 PASS**.
 - v0.3 human QA: **PASS — explicitly accepted by the user on 2026-09-25**.
-- Current phase: **v0.3 release closeout**.
+- Current phase: **publishing final v0.3.0 release from main**.
 
-The previously published `v0.3.0` Release and tag are intentionally removed. Do not treat the old release artifact, old SHA-256, or the previous “QA PASS” documentation as valid release evidence.
+The prematurely published v0.3.0 artifact from 2026-09-24 remains invalid historical evidence. The current release is generated from the accepted post-recovery main line.
 
 ## Latest recovery batch
 
@@ -93,12 +91,11 @@ Key deferred items include:
 
 ## Current objective
 
-1. keep Draft #54 as the single v0.3 recovery/closeout line;
-2. preserve the accepted QA result and passing automated evidence;
-3. do not pull deferred v0.4 UX work back into v0.3;
-4. complete the final merge/release closeout;
-5. evaluate GPU acceleration separately before changing runtime dependencies;
-6. after release closeout, continue deferred UX/quality work from Issue #59.
+1. publish and verify the final v0.3.0 Release from main;
+2. close/archive the completed v0.3 trackers;
+3. recheck and finish repo-hygiene PR #58;
+4. keep deferred UX/quality work in v0.4 umbrella #60;
+5. do not pull v0.4 work back into the v0.3 release.
 
 ## Frozen workflow under test
 
@@ -123,7 +120,7 @@ Future release checkpoints must continue to require explicit human acceptance ra
 
 ## Authoritative trackers
 
-- PR #54 — current recovery implementation and QA candidate
+- PR #54 — merged v0.3 recovery implementation
 - Issue #17 — Stage 4 consolidated human QA (**PASS / completed 2026-09-25**)
 - Issue #2 — v0.3 umbrella (REOPENED)
 - Issue #9 — v0.3 QA (REOPENED)
@@ -134,3 +131,4 @@ Future release checkpoints must continue to require explicit human acceptance ra
 - Issue #55 — optional NVIDIA CUDA acceleration research
 - Issue #56 — Text Cleanup review sorting controls (deferred backlog)
 - Issue #59 — v0.4 UX backlog from accepted v0.3 human QA
+- Issue #60 — v0.4 umbrella
