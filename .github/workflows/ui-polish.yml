@@ -10,6 +10,9 @@ on:
       - "ui/qt/dataset_view.py"
       - "tests/dataset_view_ui_smoke.py"
       - "tests/app_shutdown_smoke.py"
+      - "tests/operation_control_smoke.py"
+      - "core/cancellation.py"
+      - "infrastructure/runtime_tuning.py"
       - "infrastructure/runtime_log.py"
       - "infrastructure/cache_store.py"
       - "application/selector.py"
@@ -116,3 +119,8 @@ jobs:
         shell: pwsh
         run: |
           python tests/app_shutdown_smoke.py
+
+      - name: Long-operation control smoke
+        shell: pwsh
+        run: |
+          python tests/operation_control_smoke.py
