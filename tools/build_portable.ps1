@@ -1,18 +1,19 @@
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $RepoRoot
 
 python -c "import qfluentwidgets" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    throw "Missing Fluent UI runtime. Run: python install_ui_dependencies.py"
+    throw "Missing Fluent UI runtime. Run: python tools/install_ui_dependencies.py"
 }
 
-python compile_translations.py
+python tools/compile_translations.py
 if ($LASTEXITCODE -ne 0) {
     throw "Qt translation compilation failed."
 }
 
-$build = Join-Path $PSScriptRoot "build"
-$dist = Join-Path $PSScriptRoot "dist"
+$build = Join-Path $RepoRoot "build"
+$dist = Join-Path $RepoRoot "dist"
 
 if (Test-Path $build) { Remove-Item $build -Recurse -Force }
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
@@ -38,7 +39,7 @@ try {
         "# Portable build: intentionally minimal package initializer." | Set-Content $file -Encoding UTF8
     }
 
-    python -m PyInstaller --noconfirm --clean portable.spec
+    python -m PyInstaller --noconfirm --clean packaging/portable.spec
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
     }

@@ -1,20 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+
+PROJECT_ROOT = Path(SPECPATH).resolve().parent
+
+def root_path(relative):
+    return str(PROJECT_ROOT / relative)
 
 # Bundle only the explicitly tracked runtime models. MI-GAN and Composite Split
 # detector caches remain on-demand and must never be swept into Portable builds
 # just because a developer has downloaded them locally.
 datas = [
-    ('models/yunet_2023mar.onnx', 'models'),
-    ('models/ediffiqa_t.onnx', 'models'),
-    ('models/brisque_model_live.yml', 'models'),
-    ('models/brisque_range_live.yml', 'models'),
-    ('models/mb1_120x120.onnx', 'models'),
-    ('models/param_mean_std_62d_120x120.pkl', 'models'),
-    ('models/pose_landmarker_lite.task', 'models'),
-    ('models/ppocrv5_mobile_det/inference.onnx', 'models/ppocrv5_mobile_det'),
-    ('models/ppocrv5_mobile_det/inference.yml', 'models/ppocrv5_mobile_det'),
-    ('translations/app_en_US.qm', 'translations'),
+    (root_path('models/yunet_2023mar.onnx'), 'models'),
+    (root_path('models/ediffiqa_t.onnx'), 'models'),
+    (root_path('models/brisque_model_live.yml'), 'models'),
+    (root_path('models/brisque_range_live.yml'), 'models'),
+    (root_path('models/mb1_120x120.onnx'), 'models'),
+    (root_path('models/param_mean_std_62d_120x120.pkl'), 'models'),
+    (root_path('models/pose_landmarker_lite.task'), 'models'),
+    (root_path('models/ppocrv5_mobile_det/inference.onnx'), 'models/ppocrv5_mobile_det'),
+    (root_path('models/ppocrv5_mobile_det/inference.yml'), 'models/ppocrv5_mobile_det'),
+    (root_path('translations/app_en_US.qm'), 'translations'),
 ]
 
 # QFluentWidgets loads packaged QSS/resources at runtime.  The selected Auto
@@ -33,8 +39,8 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    ['app.py'],
-    pathex=[],
+    [root_path('app.py')],
+    pathex=[str(PROJECT_ROOT)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

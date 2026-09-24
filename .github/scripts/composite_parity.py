@@ -25,7 +25,7 @@ def serialize(items):
 
 
 def run_vendor(image_path: Path, output: Path):
-    from deepghs_yolo_runtime import detect_heads, detect_person
+    from features.composite.runtime import detect_heads, detect_person
 
     image = Image.open(image_path).convert("RGB")
     cache = Path("_parity_vendor_models")

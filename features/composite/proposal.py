@@ -243,7 +243,7 @@ def proposal_from_detections(image_size, people, heads) -> Optional[CompositePro
 
 
 def detect_proposal(image: Image.Image, model_cache: Path) -> Optional[CompositeProposal]:
-    from deepghs_yolo_runtime import detect_heads, detect_person
+    from .runtime import detect_heads, detect_person
 
     people = detect_person(
         image,

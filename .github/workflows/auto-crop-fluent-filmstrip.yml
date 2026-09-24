@@ -9,9 +9,9 @@ on:
       - "ui/qt/auto_crop_review.py"
       - "ui/qt/thumbnail.py"
       - "ui/qt/__init__.py"
-      - "install_ui_dependencies.py"
+      - "tools/install_ui_dependencies.py"
       - "安装.bat"
-      - "portable.spec"
+      - "packaging/portable.spec"
       - "tests/auto_crop_review_ui_smoke.py"
       - "openspec/changes/adopt-auto-crop-fluent-filmstrip/**"
       - ".github/workflows/auto-crop-fluent-filmstrip.yml"
@@ -21,9 +21,9 @@ on:
       - "ui/qt/auto_crop_review.py"
       - "ui/qt/thumbnail.py"
       - "ui/qt/__init__.py"
-      - "install_ui_dependencies.py"
+      - "tools/install_ui_dependencies.py"
       - "安装.bat"
-      - "portable.spec"
+      - "packaging/portable.spec"
       - "tests/auto_crop_review_ui_smoke.py"
       - "openspec/changes/adopt-auto-crop-fluent-filmstrip/**"
       - ".github/workflows/auto-crop-fluent-filmstrip.yml"
@@ -61,7 +61,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt
-          python install_ui_dependencies.py
+          python tools/install_ui_dependencies.py
 
       - name: Prove Essentials-only Fluent runtime
         shell: pwsh
@@ -72,7 +72,7 @@ jobs:
       - name: Compile production UI
         shell: pwsh
         run: |
-          python -m compileall ui app.py install_ui_dependencies.py tests/auto_crop_review_ui_smoke.py
+          python -m compileall ui app.py tools/install_ui_dependencies.py tests/auto_crop_review_ui_smoke.py
 
       - name: Full selector self-test
         shell: pwsh
@@ -160,13 +160,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
-          python install_ui_dependencies.py
+          python tools/install_ui_dependencies.py
           python -c "import importlib.util; assert importlib.util.find_spec('PySide6.QtCharts') is None"
 
       - name: Build Portable
         shell: pwsh
         run: |
-          .\build_portable.ps1
+          .\tools/build_portable.ps1
 
       - name: Portable self-test
         shell: pwsh

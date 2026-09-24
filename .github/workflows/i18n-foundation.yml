@@ -10,11 +10,11 @@ on:
       - "ui/qt/text_cleanup.py"
       - "ui/qt/image_preview.py"
       - "translations/**"
-      - "compile_translations.py"
+      - "tools/compile_translations.py"
       - "app.py"
       - "安装.bat"
-      - "build_portable.ps1"
-      - "portable.spec"
+      - "tools/build_portable.ps1"
+      - "packaging/portable.spec"
       - "tests/i18n_smoke.py"
       - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
@@ -26,11 +26,11 @@ on:
       - "ui/qt/text_cleanup.py"
       - "ui/qt/image_preview.py"
       - "translations/**"
-      - "compile_translations.py"
+      - "tools/compile_translations.py"
       - "app.py"
       - "安装.bat"
-      - "build_portable.ps1"
-      - "portable.spec"
+      - "tools/build_portable.ps1"
+      - "packaging/portable.spec"
       - "tests/i18n_smoke.py"
       - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
@@ -69,12 +69,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt
-          python install_ui_dependencies.py
+          python tools/install_ui_dependencies.py
 
       - name: Compile Qt translations
         shell: pwsh
         run: |
-          python compile_translations.py
+          python tools/compile_translations.py
           if (-not (Test-Path "translations\app_en_US.qm")) {
             throw "Compiled English QM catalog not found"
           }
@@ -82,7 +82,7 @@ jobs:
       - name: Compile i18n integration
         shell: pwsh
         run: |
-          python -m compileall ui app.py compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
+          python -m compileall ui app.py tools/compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
 
       - name: Validate catalog contract
         shell: pwsh
@@ -138,12 +138,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
-          python install_ui_dependencies.py
+          python tools/install_ui_dependencies.py
 
       - name: Build Portable with translations
         shell: pwsh
         run: |
-          .\build_portable.ps1
+          .\tools/build_portable.ps1
 
       - name: Verify packaged translation catalog
         shell: pwsh
