@@ -7,6 +7,8 @@ cache and filesystem work from the Qt presentation layer.
 from __future__ import annotations
 
 import json
+import shutil
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,7 +18,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from core.cancellation import check_cancelled
+from core.cancellation import OperationCancelled, check_cancelled
 from core.models import TextPhoto
 from infrastructure.filesystem import IMAGE_EXTENSIONS
 from infrastructure.runtime_tuning import analysis_thread_budget
@@ -635,6 +637,7 @@ class TextCleanupService:
         expand,
         radius,
         progress=None,
+        cancelled=None,
     ):
         folder = Path(folder).resolve()
         output = Path(output).resolve()
@@ -650,45 +653,111 @@ class TextCleanupService:
                 "输出目录必须是源目录以外的新目录。"
             )
 
+        check_cancelled(cancelled)
+        output_existed = output.exists()
         output.mkdir(parents=True, exist_ok=True)
+        run_root = output / f".text-cleanup-{uuid.uuid4().hex}.tmp"
+        staged_root = run_root / "staged"
+        backup_root = run_root / "backup"
+        staged_root.mkdir(parents=True, exist_ok=False)
         written = 0
 
-        for index, record in enumerate(records, 1):
-            destination = output / record.path.resolve().relative_to(folder)
-            destination.parent.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            image = (
-                self.repair_record(
-                    record,
-                    method=method,
-                    expand=expand,
-                    radius=radius,
+        try:
+            # Build the whole batch in an isolated staging tree first. A cancel
+            # or repair failure therefore leaves the selected output untouched.
+            for index, record in enumerate(records, 1):
+                check_cancelled(cancelled)
+                relative = record.path.resolve().relative_to(folder)
+                staged = staged_root / relative
+                staged.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
                 )
-                if any(record.selected)
-                else self.load_image(record.path)
-            )
 
-            if image is not None:
-                suffix = (
-                    ".webp"
-                    if record.path.suffix.lower() == ".webp"
-                    else record.path.suffix
+                image = (
+                    self.repair_record(
+                        record,
+                        method=method,
+                        expand=expand,
+                        radius=radius,
+                    )
+                    if any(record.selected)
+                    else self.load_image(record.path)
                 )
-                ok, encoded = cv2.imencode(suffix, image)
-                if ok:
-                    encoded.tofile(str(destination))
-                    written += 1
+                check_cancelled(cancelled)
 
-            progress(
-                index,
-                len(records),
-                record.path.name,
-            )
+                if image is not None:
+                    suffix = (
+                        ".webp"
+                        if record.path.suffix.lower() == ".webp"
+                        else record.path.suffix
+                    )
+                    ok, encoded = cv2.imencode(suffix, image)
+                    if ok:
+                        encoded.tofile(str(staged))
+                        written += 1
 
-        return TextCleanupBatchResult(written=written)
+                progress(
+                    index,
+                    len(records),
+                    record.path.name,
+                )
+                check_cancelled(cancelled)
+
+            check_cancelled(cancelled)
+
+            # Commit only after every source has been processed. Existing
+            # destination files are backed up inside the run tree so a commit
+            # failure/cancel can roll back without losing prior output.
+            committed = []
+            try:
+                for staged in sorted(
+                    (path for path in staged_root.rglob("*") if path.is_file()),
+                    key=lambda path: str(path).lower(),
+                ):
+                    check_cancelled(cancelled)
+                    relative = staged.relative_to(staged_root)
+                    destination = output / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    backup = backup_root / relative
+                    had_existing = destination.exists()
+
+                    if had_existing:
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        destination.replace(backup)
+
+                    try:
+                        staged.replace(destination)
+                    except Exception:
+                        if had_existing and backup.exists():
+                            backup.replace(destination)
+                        raise
+
+                    committed.append(
+                        (destination, backup if had_existing else None)
+                    )
+
+                check_cancelled(cancelled)
+            except Exception:
+                for destination, backup in reversed(committed):
+                    try:
+                        if destination.exists():
+                            destination.unlink()
+                        if backup is not None and backup.exists():
+                            backup.parent.mkdir(parents=True, exist_ok=True)
+                            backup.replace(destination)
+                    except Exception:
+                        pass
+                raise
+
+            return TextCleanupBatchResult(written=written)
+        finally:
+            shutil.rmtree(run_root, ignore_errors=True)
+            if not output_existed and output.exists():
+                try:
+                    output.rmdir()
+                except OSError:
+                    pass
 
 
 def self_test():
@@ -784,5 +853,35 @@ def self_test():
         )
         if result.written != 1 or not (output / "sample.png").exists():
             raise RuntimeError("Text Cleanup batch output smoke failed.")
+
+        # Cancellation must discard this run's staged output and preserve any
+        # files that were already present in the selected destination.
+        sentinel = output / "keep.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+        cancel_checks = {"count": 0}
+
+        def cancel_after_staging():
+            cancel_checks["count"] += 1
+            return cancel_checks["count"] >= 4
+
+        try:
+            service.batch_process(
+                folder=root,
+                output=output,
+                records=[record],
+                method=TELEA_METHOD,
+                expand=1,
+                radius=2,
+                cancelled=cancel_after_staging,
+            )
+        except OperationCancelled:
+            pass
+        else:
+            raise RuntimeError("Text Cleanup batch cancellation did not stop.")
+
+        if sentinel.read_text(encoding="utf-8") != "keep":
+            raise RuntimeError("Text Cleanup cancellation changed existing output.")
+        if any(path.name.startswith(".text-cleanup-") for path in output.iterdir()):
+            raise RuntimeError("Text Cleanup cancellation left staging garbage.")
 
     print("Text Cleanup backend self-test OK")
