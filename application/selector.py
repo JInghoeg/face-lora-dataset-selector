@@ -504,6 +504,7 @@ class SelectorApplication:
         expand,
         radius,
         progress=None,
+        cancelled=None,
     ):
         return self._text_cleanup_service(required=True).batch_process(
             folder=folder,
@@ -513,6 +514,7 @@ class SelectorApplication:
             expand=expand,
             radius=radius,
             progress=progress,
+            cancelled=cancelled,
         )
 
     def export_recommended(self, records, dst: Path, progress=None):
