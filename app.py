@@ -19,7 +19,7 @@ try:
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
-    from application import SelectorApplication
+    from application import SelectorApplication, SourceOrganizerBlocked
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
     from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
@@ -944,6 +944,24 @@ class Window(QMainWindow):
         r=self.record_from_view(index)
         if r is None:return
         r.manual_status='淘汰';BACKEND.recompute_recommendations(self.records,self.target);self.refresh();self.save()
+    def source_organizer_block_text(self, error):
+        if not isinstance(error, SourceOrganizerBlocked):
+            return str(error)
+        messages={
+            'auto_crop_unscanned':self._tr_main(
+                '还有 {count} 张推荐图未完成自动裁剪扫描，请先完成自动裁剪，再整理源文件。'
+            ),
+            'auto_crop_pending':self._tr_main(
+                '还有 {count} 张自动裁剪候选待复核，请先处理后再整理源文件。'
+            ),
+            'composite_pending':self._tr_main(
+                '还有 {count} 张组合图拆分候选待复核，请先处理后再整理源文件。'
+            ),
+        }
+        template=messages.get(error.code)
+        if template is None:return str(error)
+        return template.format(count=error.count)
+
     def source_organizer_busy(self):
         return any((
             self.thread and self.thread.isRunning(),
@@ -961,7 +979,11 @@ class Window(QMainWindow):
         try:
             plan=BACKEND.build_source_organizer_plan(self.folder,self.records)
         except Exception as e:
-            QMessageBox.warning(self,self._tr_main('暂时不能整理源文件'),str(e));return
+            QMessageBox.warning(
+                self,
+                self._tr_main('暂时不能整理源文件'),
+                self.source_organizer_block_text(e),
+            );return
         if not plan.moves:
             try:
                 result=BACKEND.execute_source_organizer(plan)
