@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer
 
-from core.cancellation import OperationCancelled
+from application import OperationCancelled
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
