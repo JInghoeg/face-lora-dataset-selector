@@ -20,8 +20,8 @@ Canonical current-state entry point.
 - Active PR: Draft #54 — `fix: address v0.3 manual QA blockers`
 - Last verified code commit: `8ce96a9bb085012649a8020d4b290e25e5324874`
 - **Public v0.3.0 release: WITHDRAWN**
-- v0.3.0 human QA: **NOT COMPLETE / NOT PASSED**
-- Current phase: **v0.3 release-blocker recovery + new human-QA candidate**.
+- v0.3 human QA: **PASS — explicitly accepted by the user on 2026-09-25**.
+- Current phase: **v0.3 release closeout**.
 
 The previously published `v0.3.0` Release and tag are intentionally removed. Do not treat the old release artifact, old SHA-256, or the previous “QA PASS” documentation as valid release evidence.
 
@@ -75,24 +75,30 @@ Validated artifact sizes:
 
 For ordinary code-only QA updates with unchanged runtime identity, this reduces candidate download traffic by about **93%**, while on-demand model downloads are reused instead of downloaded again.
 
-## Human-unverified items on the latest candidate
+## Human QA acceptance
 
-The following latest fixes are automated but still require the next consolidated real QA checkpoint:
+The consolidated real v0.3 QA checkpoint was explicitly accepted by the user on **2026-09-25**.
 
-- export progress and completion behavior;
-- cancellation behavior during long analyses;
-- UI responsiveness during analysis on the real workstation/data;
-- Text Cleanup folder selection -> automatic scan -> review -> batch repair flow, including cancelling a batch and verifying no partial batch output remains;
-- the rest of the reopened Stage 4 end-to-end checklist.
+Result: **PASS**.
+
+Non-blocking findings from the accepted QA are deferred to v0.4 rather than reopening the v0.3 gate. Canonical tracker: **Issue #59 — v0.4 UX backlog from v0.3 human QA**.
+
+Key deferred items include:
+- Text Cleanup pagination/navigation discoverability;
+- Text Cleanup zero-result ordering and review sorting;
+- clearer manual-box interaction and possible direct box editing;
+- Text Cleanup false-positive / false-negative tuning;
+- optional user-selected/manual Auto Crop entry point;
+- related backlog #56 and GPU research #55 remain separate as appropriate.
 
 ## Current objective
 
-1. keep Draft #54 as the single recovery line;
-2. preserve the latest passing Portable candidate and the exact human-unverified list;
-3. perform the consolidated human QA checkpoint on the new candidate before release;
-4. fix only confirmed remaining blockers/obvious workflow defects from that pass;
+1. keep Draft #54 as the single v0.3 recovery/closeout line;
+2. preserve the accepted QA result and passing automated evidence;
+3. do not pull deferred v0.4 UX work back into v0.3;
+4. complete the final merge/release closeout;
 5. evaluate GPU acceleration separately before changing runtime dependencies;
-6. publish only after the user explicitly reports QA PASS.
+6. after release closeout, continue deferred UX/quality work from Issue #59.
 
 ## Frozen workflow under test
 
@@ -109,14 +115,16 @@ Text Cleanup remains an optional sibling module and is verified separately as pa
 
 ## Release rule
 
-**Do not create or restore v0.3.0 until real human QA is explicitly completed and accepted.**
+The real v0.3 human QA requirement has now been explicitly satisfied on **2026-09-25**.
 
-No future assistant response may infer QA PASS from “完成了”, “好了”, CI green, Portable self-test, or any other ambiguous wording. The user must explicitly report that the manual QA passed.
+Do not confuse this accepted checkpoint with the previously withdrawn premature v0.3.0 release. The old Release/tag/artifact remains invalid historical evidence; final release closeout must use the current accepted recovery line and current automated evidence.
+
+Future release checkpoints must continue to require explicit human acceptance rather than inferring PASS from CI or ambiguous wording.
 
 ## Authoritative trackers
 
 - PR #54 — current recovery implementation and QA candidate
-- Issue #17 — Stage 4 consolidated human QA (REOPENED)
+- Issue #17 — Stage 4 consolidated human QA (**PASS / completed 2026-09-25**)
 - Issue #2 — v0.3 umbrella (REOPENED)
 - Issue #9 — v0.3 QA (REOPENED)
 - Issue #13 — Composite Split (REOPENED)
@@ -125,3 +133,4 @@ No future assistant response may infer QA PASS from “完成了”, “好了�
 - Issue #26 — Text Cleanup (REOPENED)
 - Issue #55 — optional NVIDIA CUDA acceleration research
 - Issue #56 — Text Cleanup review sorting controls (deferred backlog)
+- Issue #59 — v0.4 UX backlog from accepted v0.3 human QA
