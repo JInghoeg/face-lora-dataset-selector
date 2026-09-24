@@ -19,6 +19,7 @@ import numpy as np
 from core.cancellation import check_cancelled
 from core.models import TextPhoto
 from infrastructure.filesystem import IMAGE_EXTENSIONS
+from infrastructure.runtime_tuning import analysis_thread_budget
 from .detector import TextDetector
 from .runtime import MIRepair, ensure_migan, model_exists
 
@@ -67,8 +68,8 @@ def detector_config(model_path: Path):
         "score_mode": "fast",
         "use_cuda": False,
         "use_dml": False,
-        "intra_op_num_threads": -1,
-        "inter_op_num_threads": -1,
+        "intra_op_num_threads": analysis_thread_budget(),
+        "inter_op_num_threads": 1,
     }
 
 
