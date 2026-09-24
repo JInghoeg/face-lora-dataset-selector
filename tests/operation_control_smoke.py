@@ -92,12 +92,12 @@ def export_progress_smoke(root: Path):
         path = root / f"source-{index}.png"
         Image.new("RGB", (32, 32), (40 + index, 50, 60)).save(path)
         photo = Photo(path)
-        photo.status = "推荐"
+        photo.auto_status = "推荐"
         records.append(photo)
     rejected = root / "rejected.png"
     Image.new("RGB", (32, 32), (1, 2, 3)).save(rejected)
     skipped = Photo(rejected)
-    skipped.status = "淘汰"
+    skipped.auto_status = "淘汰"
     records.append(skipped)
 
     events = []
