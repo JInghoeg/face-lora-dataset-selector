@@ -18,7 +18,7 @@ Canonical current-state entry point.
 - Default branch: `main`
 - Active recovery branch: `fix/v0.3-manual-qa-blockers`
 - Active PR: Draft #54 — `fix: address v0.3 manual QA blockers`
-- Last verified code commit: `812a993dbd345288d7564e28c5069582d14ff792`
+- Last verified code commit: `8ce96a9bb085012649a8020d4b290e25e5324874`
 - **Public v0.3.0 release: WITHDRAWN**
 - v0.3.0 human QA: **NOT COMPLETE / NOT PASSED**
 - Current phase: **v0.3 release-blocker recovery + new human-QA candidate**.
@@ -27,7 +27,7 @@ The previously published `v0.3.0` Release and tag are intentionally removed. Do 
 
 ## Latest recovery batch
 
-At code commit `812a993`, the current recovery branch includes:
+At code commit `8ce96a9`, the current recovery branch includes:
 
 - truthful live zh_CN / en_US coverage across the currently exposed Dataset Selector and Text Cleanup surfaces;
 - Auto Crop fit-to-view / ROI-handle / splitter interaction fixes;
@@ -35,7 +35,9 @@ At code commit `812a993`, the current recovery branch includes:
 - cooperative cancellation for initial/refresh/re-analysis, Auto Crop, Text Cleanup scan, and duplicate grouping;
 - conservative native-runtime CPU thread budgeting so background inference does not consume every logical CPU and freeze the Qt process;
 - Text Cleanup input-folder selection automatically starts the real scan worker instead of appearing to do nothing;
-- regression coverage for the new long-operation controls and Text Cleanup auto-scan path.
+- Text Cleanup batch repair is cooperatively cancellable and stages the whole run before commit; cancellation/failure removes staging and commit rollback protects pre-existing destination files;
+- main-window shutdown now owns/stops Text Cleanup scan/batch and Text Cleanup thumbnail QThreads;
+- regression coverage for long-operation controls, transactional Text Cleanup cancellation, shutdown lifecycle and Text Cleanup auto-scan.
 
 The GPU question is **not implemented yet**. Current inference remains CPU-oriented. GPU acceleration must be evaluated as a dependency/packaging/runtime decision before introducing `onnxruntime-gpu` or another GPU runtime.
 
@@ -43,11 +45,11 @@ The optional self-selected/manual crop expansion requested during QA remains exp
 
 ## Automated validation
 
-For `812a993`:
+For `8ce96a9`:
 
 - 10 / 10 GitHub Actions workflows: **PASS**.
-- Windows Portable artifact: `10794467844`.
-- Portable artifact digest: `sha256:b325dc9c63bd76f28e50dab63d23297f3771537c85599c5ae94b328146d7514b`.
+- Windows Portable artifact: `10795898471`.
+- Portable artifact digest: `sha256:2a50cfd5232671bf65c2f0f262ca47c0265669f991c29c0e055dd566cd7fcbc7`.
 - Automated evidence is useful diagnostic evidence only and is **not** human release acceptance.
 
 ## Human-unverified items on the latest candidate
@@ -57,7 +59,7 @@ The following latest fixes are automated but still require the next consolidated
 - export progress and completion behavior;
 - cancellation behavior during long analyses;
 - UI responsiveness during analysis on the real workstation/data;
-- Text Cleanup folder selection -> automatic scan -> review -> batch repair flow;
+- Text Cleanup folder selection -> automatic scan -> review -> batch repair flow, including cancelling a batch and verifying no partial batch output remains;
 - the rest of the reopened Stage 4 end-to-end checklist.
 
 ## Current objective
@@ -98,3 +100,4 @@ No future assistant response may infer QA PASS from “完成了”, “好了�
 - Issue #21 — General Auto Crop (REOPENED)
 - Issue #23 — Source Organizer (REOPENED)
 - Issue #26 — Text Cleanup (REOPENED)
+- Issue #55 — optional NVIDIA CUDA acceleration research
