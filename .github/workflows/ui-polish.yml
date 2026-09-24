@@ -11,6 +11,7 @@ on:
       - "tests/dataset_view_ui_smoke.py"
       - "tests/app_shutdown_smoke.py"
       - "tests/operation_control_smoke.py"
+      - "tools/qa-portable.ps1"
       - "core/cancellation.py"
       - "infrastructure/runtime_tuning.py"
       - "infrastructure/runtime_log.py"
@@ -124,3 +125,10 @@ jobs:
         shell: pwsh
         run: |
           python tests/operation_control_smoke.py
+
+      - name: QA helper smoke
+        shell: pwsh
+        run: |
+          $qaRoot = Join-Path $env:RUNNER_TEMP "FaceLoRA-QA"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Status -Root $qaRoot
+
