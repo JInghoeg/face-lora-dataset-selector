@@ -100,6 +100,16 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Set-Content ($zip + ".sha256") -Encoding ascii
 
+      - name: QA Prepare full-to-overlay roundtrip smoke
+        shell: pwsh
+        run: |
+          .\tests\qa_portable_helper_smoke.ps1 `
+            -RepoRoot "." `
+            -PortableRoot ".\dist\Face-LoRA-Dataset-Selector" `
+            -OverlayRoot ".\qa-overlay" `
+            -FullZip ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip" `
+            -FullChecksum ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256"
+
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
