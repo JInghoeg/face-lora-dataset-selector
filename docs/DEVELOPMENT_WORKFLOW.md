@@ -107,6 +107,14 @@ Architecture changes require an ADR when they:
 
 Small internal refactors that preserve the existing decision do not need a new ADR.
 
+## Branch lifecycle
+
+- `main` is the only permanent product branch unless a long-lived branch is explicitly documented.
+- Delete merged/superseded feature/fix/chore/docs/test branches after their PR is complete.
+- Enable repository “Automatically delete head branches” so normal PR branches do not accumulate.
+- Before deleting old branches, verify their work is merged, tagged, closed/superseded, or otherwise recoverable.
+- Audit branch count/state at major release checkpoints.
+
 ## Bilingual public documentation
 
 `README.md` is the Simplified Chinese landing page and `docs/README.en.md` is the English landing page.
