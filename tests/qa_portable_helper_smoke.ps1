@@ -116,8 +116,8 @@ try {
         throw "First QA Prepare failed."
     }
 
-    $info = Get-Content -LiteralPath (Join-Path $qaRoot "current\QA_INFO.txt") -Raw
-    if ($info -notmatch '(?m)^Mode=full$') {
+    $infoLines = @(Get-Content -LiteralPath (Join-Path $qaRoot "current\QA_INFO.txt"))
+    if ("Mode=full" -notin $infoLines) {
         throw "First QA Prepare did not use full mode."
     }
 
@@ -134,8 +134,8 @@ try {
         throw "Second QA Prepare failed."
     }
 
-    $info = Get-Content -LiteralPath (Join-Path $qaRoot "current\QA_INFO.txt") -Raw
-    if ($info -notmatch '(?m)^Mode=overlay$') {
+    $infoLines = @(Get-Content -LiteralPath (Join-Path $qaRoot "current\QA_INFO.txt"))
+    if ("Mode=overlay" -notin $infoLines) {
         throw "Second QA Prepare did not use overlay mode."
     }
 
