@@ -22,7 +22,7 @@ Canonical current-state entry point.
 - v0.3 recovery PR #54: **MERGED**.
 - v0.3 final pre-release CI: **10 / 10 PASS**.
 - v0.3 human QA: **PASS — explicitly accepted by the user on 2026-09-25**.
-- Current phase: **v0.3 released; repository cleanup + v0.4 planning**.
+- Current phase: **v0.3 released; v0.4 planning / implementation ready**.
 
 The prematurely published/withdrawn v0.3.0 artifact from 2026-09-24 is obsolete historical evidence. The valid stable v0.3.0 is the release targeting commit `432321d`.
 
@@ -94,11 +94,11 @@ Key deferred items include:
 
 ## Current objective
 
-1. close/archive completed v0.3 trackers;
-2. recheck and finish repo-hygiene PR #58 without changing product behavior;
-3. use Issue #60 as the v0.4 umbrella;
-4. keep #55 / #56 / #57 / #59 as focused v0.4 backlog items;
-5. begin v0.4 implementation only after repository cleanup is settled.
+1. use Issue #60 as the v0.4 umbrella;
+2. prioritize focused backlog from #59 / #56 based on real-use impact;
+3. evaluate GPU acceleration separately in #55 before changing runtime dependencies;
+4. keep README screenshot/document polish in #57 non-blocking;
+5. preserve v0.3 behavior and source-data safety as the baseline.
 
 ## Frozen workflow under test
 
@@ -135,7 +135,8 @@ Completed v0.3:
 - Issue #52 — permanent Qt i18n foundation
 
 Current / next:
-- PR #58 — repository documentation hygiene
+- PR #61 — merged repository documentation hygiene
+- PR #58 — superseded/closed
 - Issue #55 — optional NVIDIA CUDA acceleration research
 - Issue #56 — Text Cleanup review sorting controls
 - Issue #57 — README screenshots
