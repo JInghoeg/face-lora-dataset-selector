@@ -595,7 +595,7 @@ class Window(QMainWindow):
     def ui(self):
         self.tabs=QTabWidget();self.setCentralWidget(self.tabs)
         w=QWidget();self.dataset_tab_index=self.tabs.addTab(w,'')
-        self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE) if BACKEND.feature_available('text_cleanup') else None
+        self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE,cancellation_exception=OperationCancelled) if BACKEND.feature_available('text_cleanup') else None
         self.text_cleanup_tab_index=-1
         if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
         l=QVBoxLayout(w)
