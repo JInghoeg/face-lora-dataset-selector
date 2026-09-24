@@ -129,6 +129,23 @@ jobs:
       - name: QA helper smoke
         shell: pwsh
         run: |
-          $qaRoot = Join-Path $env:RUNNER_TEMP "FaceLoRA-QA"
+          $qaParent = Join-Path $env:RUNNER_TEMP "face-lora-qa-helper-smoke"
+          $qaRoot = Join-Path $qaParent "FaceLoRA-QA"
+          New-Item -ItemType Directory -Force -Path $qaRoot | Out-Null
+          Set-Content -Path (Join-Path $qaRoot ".face-lora-qa-root") -Value "smoke"
+          New-Item -ItemType Directory -Force -Path (Join-Path $qaRoot "current") | Out-Null
+          Set-Content -Path (Join-Path $qaRoot "current\junk.txt") -Value "junk"
+
           powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Status -Root $qaRoot
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Clean -Root $qaRoot
+          if (Test-Path (Join-Path $qaRoot "current")) { throw "QA Clean did not remove current" }
+          if (-not (Test-Path $qaRoot)) { throw "QA Clean removed canonical root" }
+
+          $legacy = Join-Path $qaParent "FaceLoRA-QA-old"
+          New-Item -ItemType Directory -Force -Path $legacy | Out-Null
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action CleanLegacy -Root $qaRoot
+          if (-not (Test-Path $legacy)) { throw "QA CleanLegacy deleted without -Force" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action CleanLegacy -Root $qaRoot -Force
+          if (Test-Path $legacy) { throw "QA CleanLegacy -Force did not remove legacy folder" }
+          if (-not (Test-Path $qaRoot)) { throw "QA CleanLegacy removed canonical root" }
 
