@@ -57,13 +57,23 @@ def main():
         assert window.shutdown_background(force=False)
         assert not thread.isRunning()
 
-        # Exercise the actual closeEvent path as well.
+        # Exercise the actual closeEvent path as well, including the
+        # Text Cleanup-owned worker and thumbnail threads.
         thread2, worker2 = start_worker(window)
         window.incremental_thread = thread2
         window.incremental_worker = worker2
+
+        text_thread, text_worker = start_worker(window.sub)
+        window.sub.thread = text_thread
+        window.sub.worker = text_worker
+        text_thumb, _text_thumb_worker = start_worker(window.sub)
+        window.sub.thumb_threads.append(text_thumb)
+
         window.close()
         qapp.processEvents()
         assert not thread2.isRunning()
+        assert not text_thread.isRunning()
+        assert not text_thumb.isRunning()
         assert not window.isVisible()
 
     print("Application shutdown smoke OK")
