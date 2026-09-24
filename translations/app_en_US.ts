@@ -514,6 +514,7 @@ Source images were not modified.</translation></message>
       <message><source>取消扫描</source><translation>Cancel Scan</translation></message>
     <message><source>正在取消扫描…</source><translation>Cancelling scan…</translation></message>
     <message><source>扫描已取消</source><translation>Scan cancelled</translation></message>
+    <message><source>准备扫描…</source><translation>Preparing scan…</translation></message>
 </context>
   <context>
     <name>ImagePreview</name>
