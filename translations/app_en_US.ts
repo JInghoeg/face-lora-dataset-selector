@@ -429,6 +429,9 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>无法打开图片</source><translation>Unable to Open Image</translation></message>
     <message><source>状态：{state}</source><translation>Status: {state}</translation></message>
     <message><source>整理源文件正在移动文件。请等待当前事务完成后再关闭程序。</source><translation>Source Organizer is moving files. Wait for the current transaction to finish before closing the application.</translation></message>
+    <message><source>还有 {count} 张推荐图未完成自动裁剪扫描，请先完成自动裁剪，再整理源文件。</source><translation>{count} recommended images have not completed Auto Crop scanning. Finish Auto Crop before organizing source files.</translation></message>
+    <message><source>还有 {count} 张自动裁剪候选待复核，请先处理后再整理源文件。</source><translation>{count} Auto Crop candidates are still pending review. Resolve them before organizing source files.</translation></message>
+    <message><source>还有 {count} 张组合图拆分候选待复核，请先处理后再整理源文件。</source><translation>{count} Composite Split candidates are still pending review. Resolve them before organizing source files.</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
