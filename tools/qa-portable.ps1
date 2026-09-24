@@ -428,7 +428,7 @@ switch ($Action) {
     "CleanLegacy" {
         Ensure-QaRoot $QaRoot
         Assert-ManagedRoot $QaRoot
-        $legacy = Get-LegacyQaDirectories -CanonicalRoot $QaRoot
+        $legacy = @(Get-LegacyQaDirectories -CanonicalRoot $QaRoot)
 
         if ($legacy.Count -eq 0) {
             Write-Host "No legacy FaceLoRA QA directories found."
@@ -513,7 +513,7 @@ switch ($Action) {
                         $reusable = $true
                     }
                     else {
-                        foreach ($legacyDir in Get-LegacyQaDirectories -CanonicalRoot $QaRoot) {
+                        foreach ($legacyDir in @(Get-LegacyQaDirectories -CanonicalRoot $QaRoot)) {
                             if (Try-Adopt-Portable -SearchRoot $legacyDir.FullName -ManifestPath $overlayManifestFile.FullName -DestinationRoot $PortableRoot -ModelCacheRoot $ModelCacheRoot) {
                                 $reusable = $true
                                 break
