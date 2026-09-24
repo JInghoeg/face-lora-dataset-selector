@@ -76,7 +76,7 @@ The helper owns the local QA workspace and cleanup policy. Full rules: [MANUAL_Q
 
 Do **not** create ad-hoc top-level folders such as `G:\FaceLoRA-QA-<commit>` in future test instructions.
 
-Default managed root is `G:\FaceLoRA-QA` when G: exists, with exactly one active candidate under `current`. The next Prepare removes the previous `current` automatically. Disposable test outputs belong in `current\scratch`.
+Default managed root is `G:\FaceLoRA-QA` when G: exists. The Portable runtime and `_FaceLoRA_ModelCache` persist under `runtime`; only `current` metadata/scratch is disposable. `Prepare` prefers the small fingerprinted QA overlay and falls back to the full Portable only when the stable runtime changed. Disposable test outputs belong in `current\scratch`.
 
 Historical ad-hoc QA directories are cleaned with `CleanLegacy`, preview first and `-Force` only after the target list is visible.
 
