@@ -163,6 +163,42 @@ def verify_filmstrip_navigation(qapp, dialog):
 
 def verify_roi(qapp, dialog):
     assert dialog.roi_preview.roi is not None
+
+    # The reviewer must see the complete source boundary and every resize
+    # handle, including when a proposal touches an image edge.
+    x_range, y_range = dialog.roi_preview.view.viewRange()
+    w, h = dialog.roi_preview.image_size
+    assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
+    assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
+    assert len(dialog.roi_preview.roi.handles) == 8, len(dialog.roi_preview.roi.handles)
+    pixel_x, pixel_y = dialog.roi_preview.view.viewPixelSize()
+    assert abs(pixel_x - pixel_y) <= max(pixel_x, pixel_y) * 0.01, (
+        pixel_x,
+        pixel_y,
+    )
+
+    # Horizontal comparison panes need an obvious, usable splitter rather than
+    # two effectively fixed cards.
+    assert dialog.work_splitter.handleWidth() >= 8
+    assert not dialog.work_splitter.childrenCollapsible()
+    before_split = dialog.work_splitter.sizes()
+    dialog.work_splitter.setSizes([600, 700])
+    qapp.processEvents()
+    after_split = dialog.work_splitter.sizes()
+    assert after_split != before_split, (before_split, after_split)
+    assert after_split[1] > before_split[1], (before_split, after_split)
+
+    # Reflowing the horizontal panes must keep the complete source visible.
+    qapp.processEvents()
+    x_range, y_range = dialog.roi_preview.view.viewRange()
+    assert x_range[0] < 0 and x_range[1] > w, (x_range, w)
+    assert y_range[0] < 0 and y_range[1] > h, (y_range, h)
+    pixel_x, pixel_y = dialog.roi_preview.view.viewPixelSize()
+    assert abs(pixel_x - pixel_y) <= max(pixel_x, pixel_y) * 0.01, (
+        pixel_x,
+        pixel_y,
+    )
+
     before = dialog.roi_preview.box()
     edited = [before[0] + 8, before[1] + 6, before[2] - 10, before[3] - 8]
     dialog.roi_preview.set_box(edited)
@@ -217,12 +253,33 @@ def main():
 
         assert dialog._fluent is not None, "production Fluent UI was not loaded"
         assert dialog.windowTitle() == "自动裁剪复核"
+        assert dialog.windowFlags() & Qt.FramelessWindowHint
         assert dialog.items.viewMode() == QListView.ViewMode.IconMode
         assert dialog.items.flow() == QListView.Flow.LeftToRight
         assert dialog.items.count() == 12
         assert dialog.theme_button is not None
 
         wait_thumbnails(qapp, dialog)
+
+        # Native-lifetime regression: candidate navigation must reuse the same
+        # RectROI and the same 8 pyqtgraph Handle wrappers. Recreating handles
+        # per image caused Windows-native GC/Shiboken access violations after
+        # sustained review.
+        roi_identity = id(dialog.roi_preview.roi)
+        handle_identities = tuple(
+            id(handle) for handle in dialog.roi_preview.roi.getHandles()
+        )
+        assert len(handle_identities) == 8
+        for cycle in range(80):
+            row = cycle % dialog.items.count()
+            item = dialog.items.item(row)
+            dialog.show_item(item)
+            qapp.processEvents()
+            assert id(dialog.roi_preview.roi) == roi_identity
+            assert tuple(
+                id(handle) for handle in dialog.roi_preview.roi.getHandles()
+            ) == handle_identities
+
         # Native IconMode must render a real thumbnail cell rather than the
         # compressed row delegate used by QFluentWidgets ListWidget.
         qapp.processEvents()
@@ -268,6 +325,9 @@ def main():
         current = dialog.records[dialog.current]
         dialog.set_decision("accepted")
         assert app.BACKEND.auto_crop_proposal(current).decision == "accepted"
+        assert dialog._decision_in_flight
+        qapp.processEvents()
+        assert not dialog._decision_in_flight
         assert changed
 
         dialog.reject()  # cleanup / restore prior global Fluent theme

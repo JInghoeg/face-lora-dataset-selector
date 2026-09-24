@@ -6,6 +6,8 @@ and does not depend on sibling feature packages.
 """
 from __future__ import annotations
 
+from core.cancellation import check_cancelled
+
 IGNORED_GROUP_ID = -1
 
 
@@ -14,13 +16,14 @@ def _quality_key(record):
     return (record.face_quality, -record.brisque, record.blur)
 
 
-def group_duplicates(records, threshold=8, adjacent=16):
+def group_duplicates(records, threshold=8, adjacent=16, cancelled=None):
     """Anchor-based pHash grouping; no transitive chain merging.
 
     This preserves the existing production semantics while moving ownership out
     of the ranking analysis feature.
     """
     for record in records:
+        check_cancelled(cancelled)
         record.duplicate_group = 0
 
     remaining = {
@@ -30,11 +33,14 @@ def group_duplicates(records, threshold=8, adjacent=16):
     }
     group_no = 1
     while remaining:
+        check_cancelled(cancelled)
         anchor = max(remaining, key=lambda i: _quality_key(records[i]))
         remaining.remove(anchor)
         members = [anchor]
 
-        for candidate in list(remaining):
+        for scan_index, candidate in enumerate(list(remaining), 1):
+            if scan_index % 128 == 0:
+                check_cancelled(cancelled)
             left, right = records[anchor], records[candidate]
             distance = bin(left.phash ^ right.phash).count("1")
             same_source = left.source == right.source

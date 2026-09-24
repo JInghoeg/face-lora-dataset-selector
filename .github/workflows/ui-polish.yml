@@ -9,6 +9,12 @@ on:
       - "app.py"
       - "ui/qt/dataset_view.py"
       - "tests/dataset_view_ui_smoke.py"
+      - "tests/app_shutdown_smoke.py"
+      - "tests/operation_control_smoke.py"
+      - "tools/qa-portable.ps1"
+      - "core/cancellation.py"
+      - "infrastructure/runtime_tuning.py"
+      - "infrastructure/runtime_log.py"
       - "infrastructure/cache_store.py"
       - "application/selector.py"
       - ".github/workflows/ui-polish.yml"
@@ -109,3 +115,53 @@ jobs:
         shell: pwsh
         run: |
           python tests/dataset_view_ui_smoke.py
+
+      - name: Client shutdown lifecycle smoke
+        shell: pwsh
+        run: |
+          python tests/app_shutdown_smoke.py
+
+      - name: Long-operation control smoke
+        shell: pwsh
+        run: |
+          python tests/operation_control_smoke.py
+
+      - name: QA helper smoke
+        shell: pwsh
+        run: |
+          $qaParent = Join-Path $env:RUNNER_TEMP "face-lora-qa-helper-smoke"
+          $qaRoot = Join-Path $qaParent "FaceLoRA-QA"
+          $runtime = Join-Path $qaRoot "runtime"
+          $portable = Join-Path $runtime "Face-LoRA-Dataset-Selector"
+          $modelCache = Join-Path $runtime "_FaceLoRA_ModelCache"
+
+          New-Item -ItemType Directory -Force -Path $qaRoot | Out-Null
+          Set-Content -Path (Join-Path $qaRoot ".face-lora-qa-root") -Value "smoke"
+          New-Item -ItemType Directory -Force -Path (Join-Path $qaRoot "current") | Out-Null
+          Set-Content -Path (Join-Path $qaRoot "current\junk.txt") -Value "junk"
+          New-Item -ItemType Directory -Force -Path $portable | Out-Null
+          Set-Content -Path (Join-Path $portable "runtime.txt") -Value "keep-runtime"
+          New-Item -ItemType Directory -Force -Path $modelCache | Out-Null
+          Set-Content -Path (Join-Path $modelCache "model.onnx") -Value "keep-model"
+
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Status -Root $qaRoot
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action Clean -Root $qaRoot
+          if (Test-Path (Join-Path $qaRoot "current")) { throw "QA Clean did not remove current" }
+          if (-not (Test-Path $portable)) { throw "QA Clean removed persistent runtime" }
+          if (-not (Test-Path (Join-Path $modelCache "model.onnx"))) { throw "QA Clean removed model cache" }
+
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action ResetRuntime -Root $qaRoot
+          if (Test-Path $portable) { throw "QA ResetRuntime did not remove Portable runtime" }
+          if (-not (Test-Path (Join-Path $modelCache "model.onnx"))) { throw "QA ResetRuntime removed model cache" }
+
+          $legacy = Join-Path $qaParent "FaceLoRA-QA-old"
+          $legacyCache = Join-Path $legacy "_FaceLoRA_ModelCache\auto_crop"
+          New-Item -ItemType Directory -Force -Path $legacyCache | Out-Null
+          Set-Content -Path (Join-Path $legacyCache "isnetis.onnx") -Value "legacy-model"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action CleanLegacy -Root $qaRoot
+          if (-not (Test-Path $legacy)) { throw "QA CleanLegacy deleted without -Force" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qa-portable.ps1 -Action CleanLegacy -Root $qaRoot -Force
+          if (Test-Path $legacy) { throw "QA CleanLegacy -Force did not remove legacy folder" }
+          if (-not (Test-Path (Join-Path $modelCache "auto_crop\isnetis.onnx"))) { throw "QA CleanLegacy did not preserve legacy model cache" }
+          if (-not (Test-Path $qaRoot)) { throw "QA CleanLegacy removed canonical root" }
+

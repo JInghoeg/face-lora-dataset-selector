@@ -7,6 +7,8 @@ on:
     paths:
       - "ui/i18n/**"
       - "ui/qt/auto_crop_review.py"
+      - "ui/qt/text_cleanup.py"
+      - "ui/qt/image_preview.py"
       - "translations/**"
       - "compile_translations.py"
       - "app.py"
@@ -14,12 +16,15 @@ on:
       - "build_portable.ps1"
       - "portable.spec"
       - "tests/i18n_smoke.py"
+      - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
       - ".github/workflows/i18n-foundation.yml"
   pull_request:
     paths:
       - "ui/i18n/**"
       - "ui/qt/auto_crop_review.py"
+      - "ui/qt/text_cleanup.py"
+      - "ui/qt/image_preview.py"
       - "translations/**"
       - "compile_translations.py"
       - "app.py"
@@ -27,6 +32,7 @@ on:
       - "build_portable.ps1"
       - "portable.spec"
       - "tests/i18n_smoke.py"
+      - "tests/i18n_catalog_contract.py"
       - "openspec/changes/add-i18n-foundation/**"
       - ".github/workflows/i18n-foundation.yml"
 
@@ -83,10 +89,30 @@ jobs:
         run: |
           python tests/i18n_catalog_contract.py
 
+      - name: Download temporary UI font for English screenshots
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "I18N_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Live language switch smoke
         shell: pwsh
         run: |
-          python tests/i18n_smoke.py
+          if ("${{ matrix.python }}" -eq "3.12") {
+            python tests/i18n_smoke.py --out i18n-render
+          } else {
+            python tests/i18n_smoke.py
+          }
+
+      - name: Upload English production screenshots
+        if: "${{ matrix.python == '3.12' && success() }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: i18n-production-english-screenshots
+          path: i18n-render/*.png
+          if-no-files-found: error
 
       - name: Full selector self-test
         shell: pwsh

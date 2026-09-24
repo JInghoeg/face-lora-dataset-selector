@@ -22,6 +22,7 @@ import onnxruntime as ort
 from PIL import Image
 
 from infrastructure.model_download import ModelSpec, ensure_model
+from infrastructure.runtime_tuning import configure_ort_cpu_options
 
 
 ISNETIS_SPEC = ModelSpec(
@@ -45,9 +46,7 @@ def _session_for(model_path: Path):
     with _SESSION_LOCK:
         item = _SESSIONS.get(key)
         if item is None:
-            options = ort.SessionOptions()
-            options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            options.intra_op_num_threads = os.cpu_count() or 1
+            options = configure_ort_cpu_options(ort)
             session = ort.InferenceSession(
                 key,
                 sess_options=options,

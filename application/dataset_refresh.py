@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from core.contracts import DatasetRefreshResult
 from core.models import derive_eligibility
+from core.cancellation import check_cancelled
 from features.ranking.analysis import (
     AnalysisEngine,
     base_status,
@@ -21,11 +22,13 @@ class DatasetRefreshService:
         self.active_files = active_files
         self.duplicate_grouper = duplicate_grouper
 
-    def refresh(self, folder, status=None, progress=None):
+    def refresh(self, folder, status=None, progress=None, cancelled=None):
         status = status or (lambda _message: None)
         progress = progress or (lambda _current, _total, _name: None)
 
+        check_cancelled(cancelled)
         files = self.active_files(folder)
+        check_cancelled(cancelled)
         if not files:
             raise RuntimeError("没有找到图片。")
 
@@ -45,6 +48,7 @@ class DatasetRefreshService:
         unchanged_count = 0
 
         for index, path in enumerate(files):
+            check_cancelled(cancelled)
             stat = path.stat()
             cached = old.get(self.cache.key(path))
             if (
@@ -74,7 +78,9 @@ class DatasetRefreshService:
 
         todo = []
         for index, path, size, mtime, path_cache in pending:
+            check_cancelled(cancelled)
             content_sha = sha256_file(path)
+            check_cancelled(cancelled)
             same = None
             if (
                 path_cache
@@ -117,13 +123,16 @@ class DatasetRefreshService:
                 for number, (index, path, size, mtime, content_sha) in enumerate(
                     todo, 1
                 ):
+                    check_cancelled(cancelled)
                     result[index] = engine.analyze_one(
-                        path, size, mtime, content_sha
+                        path, size, mtime, content_sha, cancelled=cancelled
                     )
                     progress(number, len(todo), path.name)
 
+        check_cancelled(cancelled)
         records = [item for item in result if item]
         for record in records:
+            check_cancelled(cancelled)
             historical = history.get(self.cache.key(record.path))
             same_content = bool(
                 historical
@@ -150,7 +159,9 @@ class DatasetRefreshService:
             derive_eligibility(record)
 
         if self.duplicate_grouper is not None:
-            self.duplicate_grouper(records)
+            check_cancelled(cancelled)
+            self.duplicate_grouper(records, cancelled=cancelled)
+            check_cancelled(cancelled)
         base_status(records)
 
         return DatasetRefreshResult(
@@ -164,7 +175,7 @@ class DatasetRefreshService:
         )
 
     @staticmethod
-    def analyze_generated(items, progress=None):
+    def analyze_generated(items, progress=None, cancelled=None):
         progress = progress or (lambda _current, _total, _name: None)
         output = []
         if not items:
@@ -172,9 +183,13 @@ class DatasetRefreshService:
         with AnalysisEngine() as engine:
             total = len(items)
             for index, (path, status_value) in enumerate(items, 1):
+                check_cancelled(cancelled)
                 stat = path.stat()
                 record = engine.analyze_one(
-                    path, stat.st_size, stat.st_mtime_ns
+                    path,
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    cancelled=cancelled,
                 )
                 record.manual_status = status_value
                 derive_eligibility(record)

@@ -83,6 +83,13 @@ jobs:
             throw "Portable self-test failed with exit code $($p.ExitCode)"
           }
 
+      - name: Build incremental QA overlay
+        shell: pwsh
+        run: |
+          .\tools\build-qa-overlay.ps1 `
+            -PortableRoot ".\dist\Face-LoRA-Dataset-Selector" `
+            -OverlayRoot ".\qa-overlay"
+
       - name: Create ZIP and checksum
         shell: pwsh
         run: |
@@ -93,6 +100,16 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Set-Content ($zip + ".sha256") -Encoding ascii
 
+      - name: QA Prepare full-to-overlay roundtrip smoke
+        shell: pwsh
+        run: |
+          .\tests\qa_portable_helper_smoke.ps1 `
+            -RepoRoot "." `
+            -PortableRoot ".\dist\Face-LoRA-Dataset-Selector" `
+            -OverlayRoot ".\qa-overlay" `
+            -FullZip ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip" `
+            -FullChecksum ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256"
+
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
@@ -101,6 +118,13 @@ jobs:
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip
             Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256
             portable-size-report.txt
+          if-no-files-found: error
+
+      - name: Upload incremental QA overlay
+        uses: actions/upload-artifact@v4
+        with:
+          name: Face-LoRA-Dataset-Selector-Windows-x64-QA-Overlay
+          path: qa-overlay/
           if-no-files-found: error
 
       - name: Attach portable build to GitHub Release

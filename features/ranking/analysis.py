@@ -27,8 +27,13 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
     VisionTaskRunningMode,
 )
 
+from core.cancellation import check_cancelled
 from core.models import AnalysisFinding, FaceDetection, Photo, derive_eligibility
 from infrastructure.filesystem import sha256_file
+from infrastructure.runtime_tuning import (
+    configure_opencv_threads,
+    configure_ort_cpu_options,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODELS = PROJECT_ROOT / "models"
@@ -246,11 +251,15 @@ class QualityModels:
             str(self.yunet_path), "", (320, 320), 0.45, 0.3, 5000
         )
         self.fq = ort.InferenceSession(
-            str(EDIFF), providers=["CPUExecutionProvider"]
+            str(EDIFF),
+            sess_options=configure_ort_cpu_options(ort),
+            providers=["CPUExecutionProvider"],
         )
         self.fqin = self.fq.get_inputs()[0].name
         self.pose = ort.InferenceSession(
-            str(DDDFA), providers=["CPUExecutionProvider"]
+            str(DDDFA),
+            sess_options=configure_ort_cpu_options(ort),
+            providers=["CPUExecutionProvider"],
         )
         self.posein = self.pose.get_inputs()[0].name
         with DDDFA_NORM.open("rb") as handle:
@@ -339,6 +348,7 @@ class QualityModels:
 
 class AnalysisEngine:
     def __init__(self):
+        configure_opencv_threads(cv2)
         self.models = QualityModels()
         options = PoseLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(ensure_pose())),
@@ -358,7 +368,8 @@ class AnalysisEngine:
     def __exit__(self, *_):
         self.close()
 
-    def analyze_one(self, path, size, mtime, content_sha=None):
+    def analyze_one(self, path, size, mtime, content_sha=None, cancelled=None):
+        check_cancelled(cancelled)
         record = Photo(path, size, mtime)
         record.content_sha256 = content_sha or sha256_file(path)
         record.sample_id = new_sample_id()
@@ -383,6 +394,7 @@ class AnalysisEngine:
             derive_eligibility(record)
             return record
 
+        check_cancelled(cancelled)
         pose_points = None
         head_roi = None
         try:
@@ -407,6 +419,7 @@ class AnalysisEngine:
                 )
             )
 
+        check_cancelled(cancelled)
         rows = []
         face_fallback_used = False
         try:
@@ -425,6 +438,7 @@ class AnalysisEngine:
                 )
             )
 
+        check_cancelled(cancelled)
         for index, face in enumerate(rows):
             x, y, width, height = map(float, face[:4])
             confidence = float(face[-1]) if len(face) > 14 else 1.0
@@ -475,6 +489,7 @@ class AnalysisEngine:
                         detail=f"主脸清晰度分析失败：{exc}",
                     )
                 )
+            check_cancelled(cancelled)
             try:
                 record.face_quality = self.models.quality(bgr, face)
             except Exception as exc:
@@ -485,6 +500,7 @@ class AnalysisEngine:
                         detail=f"eDifFIQA 分析失败：{exc}",
                     )
                 )
+            check_cancelled(cancelled)
             try:
                 record.yaw, record.pitch, record.roll = self.models.head(bgr, face)
                 record.angle_class = yaw_class(record.yaw)
@@ -503,6 +519,7 @@ class AnalysisEngine:
             except Exception:
                 pass
 
+        check_cancelled(cancelled)
         try:
             record.brisque = self.models.brisque(bgr)
         except Exception as exc:

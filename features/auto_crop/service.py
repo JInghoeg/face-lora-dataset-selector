@@ -17,6 +17,8 @@ from typing import Optional
 import numpy as np
 from PIL import Image, ImageOps
 
+from core.cancellation import check_cancelled
+
 from .runtime import get_isnetis_mask
 
 
@@ -262,12 +264,19 @@ def detect_proposal(
     )
 
 
-def scan_records(records, model_cache: Path, progress=None, force=False):
+def scan_records(
+    records,
+    model_cache: Path,
+    progress=None,
+    force=False,
+    cancelled=None,
+):
     progress = progress or (lambda _current, _total, _name: None)
     targets = [record for record in records if record.status == "推荐"]
     result = AutoCropScanResult()
 
     for index, record in enumerate(targets, 1):
+        check_cancelled(cancelled)
         state = _state(record)
         if not force and _state_is_current(state):
             result.skipped_existing += 1
@@ -275,6 +284,7 @@ def scan_records(records, model_cache: Path, progress=None, force=False):
             continue
 
         proposal = detect_proposal(record.path, model_cache)
+        check_cancelled(cancelled)
         result.scanned += 1
         if proposal is None:
             _write_state(record, None, state_kind="no_candidate")

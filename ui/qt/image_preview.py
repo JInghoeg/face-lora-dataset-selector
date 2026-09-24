@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
 
@@ -12,7 +12,7 @@ class ImagePreview(QLabel):
     drawn = Signal(object)
 
     def __init__(self):
-        super().__init__("选择缩略图查看文字框")
+        super().__init__()
         self.setMinimumSize(520, 400)
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("background:#222;color:#ddd")
@@ -23,6 +23,20 @@ class ImagePreview(QLabel):
         self.add = False
         self.start = None
         self.now = None
+        self.retranslate()
+
+    @staticmethod
+    def _tr(source):
+        return QCoreApplication.translate("ImagePreview", source)
+
+    def retranslate(self):
+        if self.img is None:
+            self.setText(self._tr("选择缩略图查看文字框"))
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.LanguageChange:
+            self.retranslate()
+        super().changeEvent(event)
 
     def set_data(self, img, boxes, selected, manual=None):
         self.img = img

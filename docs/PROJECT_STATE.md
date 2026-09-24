@@ -2,36 +2,103 @@
 
 Canonical current-state entry point.
 
+## Repository identity
+
+- Current canonical product/development repository: `JInghoeg/face-lora-dataset-selector`.
+- Current repository ID: `1375744778`; visibility: **public**.
+- Historical original/private repository was renamed to `JInghoeg/face-lora-dataset-selector-dev`.
+- Historical repository ID: `1364913841`; visibility: **private**.
+- Despite the `-dev` suffix, it is the old repository/history. **Current development also happens in the public `face-lora-dataset-selector` repository.**
+- Never treat the historical “private baseline” fact as the visibility/state of the current repository.
+- Do not warn the user merely because the current repository is public; that is the intended state.
+
 ## Repository state
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
+- Active recovery branch: `fix/v0.3-manual-qa-blockers`
+- Active PR: Draft #54 — `fix: address v0.3 manual QA blockers`
+- Last verified code commit: `8ce96a9bb085012649a8020d4b290e25e5324874`
 - **Public v0.3.0 release: WITHDRAWN**
-- v0.3.0 human QA: **NOT COMPLETE / NOT PASSED**
-- User reported multiple bugs after the release candidate was published.
-- Issue #17 and the v0.3 product trackers have been reopened.
-- Current phase: **v0.3 bug triage + real human QA recovery**.
+- v0.3 human QA: **PASS — explicitly accepted by the user on 2026-09-25**.
+- Current phase: **v0.3 release closeout**.
 
 The previously published `v0.3.0` Release and tag are intentionally removed. Do not treat the old release artifact, old SHA-256, or the previous “QA PASS” documentation as valid release evidence.
 
-## What remains valid
+## Latest recovery batch
 
-Automated evidence remains useful but is not release acceptance:
-- architecture-boundary CI passed on the integrated mainline;
-- Python 3.9 / 3.12 automated regression suites passed for covered paths;
-- the official Portable can build and pass packaged EXE self-test;
-- Fluent UI is packaged with PySide6-Essentials only.
+At code commit `8ce96a9`, the current recovery branch includes:
 
-These automated results did **not** replace the missing real manual workflow QA.
+- truthful live zh_CN / en_US coverage across the currently exposed Dataset Selector and Text Cleanup surfaces;
+- Auto Crop fit-to-view / ROI-handle / splitter interaction fixes;
+- explicit asynchronous final-export progress;
+- cooperative cancellation for initial/refresh/re-analysis, Auto Crop, Text Cleanup scan, and duplicate grouping;
+- conservative native-runtime CPU thread budgeting so background inference does not consume every logical CPU and freeze the Qt process;
+- Text Cleanup input-folder selection automatically starts the real scan worker instead of appearing to do nothing;
+- Text Cleanup batch repair is cooperatively cancellable and stages the whole run before commit; cancellation/failure removes staging and commit rollback protects pre-existing destination files;
+- main-window shutdown now owns/stops Text Cleanup scan/batch and Text Cleanup thumbnail QThreads;
+- regression coverage for long-operation controls, transactional Text Cleanup cancellation, shutdown lifecycle and Text Cleanup auto-scan.
+- manual Portable QA now uses the canonical `tools/qa-portable.ps1` workspace helper with a persistent Portable runtime and persistent `_FaceLoRA_ModelCache`; `current` contains only disposable QA metadata/scratch.
+- Build Windows Portable publishes both the full Portable and a fingerprinted QA Overlay. `Prepare` reuses compatible stable runtime files and downloads only the overlay; it automatically falls back to a full refresh when Python/dependency/packaged-runtime identity changes.
+- pre-convention `FaceLoRA-QA-*` directories are handled safely: `Prepare` may reuse a manifest-compatible old extracted runtime, while `CleanLegacy -Force` migrates cached models before deleting legacy folders.
+
+The GPU question is **not implemented yet**. Current inference remains CPU-oriented. GPU acceleration must be evaluated as a dependency/packaging/runtime decision before introducing `onnxruntime-gpu` or another GPU runtime.
+
+The optional self-selected/manual crop expansion requested during QA remains explicitly deferred; do not pull it into the current blocker batch.
+
+## Automated validation
+
+For `8ce96a9`:
+
+- 10 / 10 GitHub Actions workflows: **PASS**.
+- Windows Portable artifact: `10795898471`.
+- Portable artifact digest: `sha256:2a50cfd5232671bf65c2f0f262ca47c0265669f991c29c0e055dd566cd7fcbc7`.
+- Automated evidence is useful diagnostic evidence only and is **not** human release acceptance.
+
+## QA workspace / bandwidth validation
+
+QA infrastructure was end-to-end validated at commit `9b0c17133ddd1a0c742e3ab00d693f60ddfa0bed` with Build Windows Portable run `35975899284`:
+
+- packaged Portable self-test: **PASS**;
+- incremental QA Overlay build: **PASS**;
+- full ZIP/checksum build: **PASS**;
+- real helper roundtrip smoke: first `Prepare` = `full`, second `Prepare` = `overlay`: **PASS**;
+- the full artifact was requested exactly once across the two prepares;
+- a model-cache marker survived the overlay prepare;
+- the overlay-prepared EXE matched the built candidate and passed `--self-test`;
+- UI Polish helper safety smoke passed on Python 3.9 and 3.12: `Clean` preserves runtime/models, `ResetRuntime` preserves models, and `CleanLegacy -Force` migrates legacy model cache before deletion.
+
+Validated artifact sizes:
+
+- full Portable artifact: `10798038264` — 159,788,262 bytes;
+- QA Overlay artifact: `10798043254` — 10,930,018 bytes.
+
+For ordinary code-only QA updates with unchanged runtime identity, this reduces candidate download traffic by about **93%**, while on-demand model downloads are reused instead of downloaded again.
+
+## Human QA acceptance
+
+The consolidated real v0.3 QA checkpoint was explicitly accepted by the user on **2026-09-25**.
+
+Result: **PASS**.
+
+Non-blocking findings from the accepted QA are deferred to v0.4 rather than reopening the v0.3 gate. Canonical tracker: **Issue #59 — v0.4 UX backlog from v0.3 human QA**.
+
+Key deferred items include:
+- Text Cleanup pagination/navigation discoverability;
+- Text Cleanup zero-result ordering and review sorting;
+- clearer manual-box interaction and possible direct box editing;
+- Text Cleanup false-positive / false-negative tuning;
+- optional user-selected/manual Auto Crop entry point;
+- related backlog #56 and GPU research #55 remain separate as appropriate.
 
 ## Current objective
 
-1. collect and reproduce the user-reported bugs;
-2. record each issue in the reopened Stage 4 / feature trackers;
-3. fix blockers and obvious workflow defects;
-4. rebuild a new QA Portable candidate;
-5. run the full manual workflow QA before any new public v0.3 release;
-6. publish only after the user explicitly reports QA PASS.
+1. keep Draft #54 as the single v0.3 recovery/closeout line;
+2. preserve the accepted QA result and passing automated evidence;
+3. do not pull deferred v0.4 UX work back into v0.3;
+4. complete the final merge/release closeout;
+5. evaluate GPU acceleration separately before changing runtime dependencies;
+6. after release closeout, continue deferred UX/quality work from Issue #59.
 
 ## Frozen workflow under test
 
@@ -44,18 +111,26 @@ Initial analysis / recommendation
 -> Final Export
 ```
 
+Text Cleanup remains an optional sibling module and is verified separately as part of the release checkpoint.
+
 ## Release rule
 
-**Do not create or restore v0.3.0 until real human QA is explicitly completed and accepted.**
+The real v0.3 human QA requirement has now been explicitly satisfied on **2026-09-25**.
 
-No future assistant response may infer QA PASS from “完成了”, “好了”, CI green, Portable self-test, or any other ambiguous wording. The user must explicitly report that the manual QA passed.
+Do not confuse this accepted checkpoint with the previously withdrawn premature v0.3.0 release. The old Release/tag/artifact remains invalid historical evidence; final release closeout must use the current accepted recovery line and current automated evidence.
+
+Future release checkpoints must continue to require explicit human acceptance rather than inferring PASS from CI or ambiguous wording.
 
 ## Authoritative trackers
 
-- Issue #17 — Stage 4 consolidated human QA (REOPENED)
+- PR #54 — current recovery implementation and QA candidate
+- Issue #17 — Stage 4 consolidated human QA (**PASS / completed 2026-09-25**)
 - Issue #2 — v0.3 umbrella (REOPENED)
 - Issue #9 — v0.3 QA (REOPENED)
 - Issue #13 — Composite Split (REOPENED)
 - Issue #21 — General Auto Crop (REOPENED)
 - Issue #23 — Source Organizer (REOPENED)
 - Issue #26 — Text Cleanup (REOPENED)
+- Issue #55 — optional NVIDIA CUDA acceleration research
+- Issue #56 — Text Cleanup review sorting controls (deferred backlog)
+- Issue #59 — v0.4 UX backlog from accepted v0.3 human QA

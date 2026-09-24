@@ -18,6 +18,15 @@ from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
 
+class SourceOrganizerBlocked(RuntimeError):
+    """Stable application-level reason why Source Organizer cannot run yet."""
+
+    def __init__(self, code: str, count: int):
+        self.code = str(code)
+        self.count = int(count)
+        super().__init__(f"{self.code}:{self.count}")
+
+
 try:
     from features.duplicate import service as _duplicate_service
 except ImportError:
@@ -224,7 +233,13 @@ class SelectorApplication:
             target_mode,
         )
 
-    def refresh_dataset(self, folder: Path, status=None, progress=None):
+    def refresh_dataset(
+        self,
+        folder: Path,
+        status=None,
+        progress=None,
+        cancelled=None,
+    ):
         organizer = self._source_organizer_module(required=False)
         if organizer is not None:
             recovered = organizer.recover_incomplete_transactions(folder)
@@ -233,12 +248,17 @@ class SelectorApplication:
                     f"已恢复 {recovered} 个未完成的 Source Organizer 事务，继续刷新…"
                 )
         return self.refresh_service.refresh(
-            folder, status=status, progress=progress
+            folder,
+            status=status,
+            progress=progress,
+            cancelled=cancelled,
         )
 
-    def analyze_generated(self, items, progress=None):
+    def analyze_generated(self, items, progress=None, cancelled=None):
         records = self.refresh_service.analyze_generated(
-            items, progress=progress
+            items,
+            progress=progress,
+            cancelled=cancelled,
         )
         for record in records:
             record.composite_scan_version = self.composite_proposal_version
@@ -252,9 +272,18 @@ class SelectorApplication:
     def duplicate_ignored_group_id(self):
         return self._duplicate_module(required=True).IGNORED_GROUP_ID
 
-    def regroup_duplicates(self, records, threshold=8, adjacent=16):
+    def regroup_duplicates(
+        self,
+        records,
+        threshold=8,
+        adjacent=16,
+        cancelled=None,
+    ):
         return self._duplicate_module(required=True).group_duplicates(
-            records, threshold=threshold, adjacent=adjacent
+            records,
+            threshold=threshold,
+            adjacent=adjacent,
+            cancelled=cancelled,
         )
 
     def duplicate_group_ids(self, records):
@@ -314,7 +343,13 @@ class SelectorApplication:
     def auto_crop_model_cache(self):
         return self.model_cache_root / "auto_crop"
 
-    def scan_auto_crop(self, records, progress=None, force=False):
+    def scan_auto_crop(
+        self,
+        records,
+        progress=None,
+        force=False,
+        cancelled=None,
+    ):
         unresolved = [
             r for r in records
             if r.status == "推荐"
@@ -332,6 +367,7 @@ class SelectorApplication:
             self.auto_crop_model_cache,
             progress=progress,
             force=force,
+            cancelled=cancelled,
         )
 
     def auto_crop_scan_todo(self, records):
@@ -370,15 +406,15 @@ class SelectorApplication:
         if _auto_crop_service is not None:
             unscanned = self.auto_crop_scan_todo(records)
             if unscanned:
-                raise RuntimeError(
-                    f"还有 {unscanned} 张推荐图未完成 Auto Crop 扫描，"
-                    "请先完成 Auto Crop，再整理源文件。"
+                raise SourceOrganizerBlocked(
+                    "auto_crop_unscanned",
+                    unscanned,
                 )
             pending = self.pending_auto_crop(records)
             if pending:
-                raise RuntimeError(
-                    f"还有 {len(pending)} 张 Auto Crop 候选待复核，"
-                    "请先处理后再整理源文件。"
+                raise SourceOrganizerBlocked(
+                    "auto_crop_pending",
+                    len(pending),
                 )
 
         composite_pending = [
@@ -388,9 +424,9 @@ class SelectorApplication:
             and getattr(r.composite_proposal, "decision", None) == "pending"
         ]
         if composite_pending:
-            raise RuntimeError(
-                f"还有 {len(composite_pending)} 张 Composite Split 候选待复核，"
-                "请先处理后再整理源文件。"
+            raise SourceOrganizerBlocked(
+                "composite_pending",
+                len(composite_pending),
             )
 
         return self._source_organizer_module(required=True).build_plan(
@@ -416,11 +452,18 @@ class SelectorApplication:
     def text_cleanup_state_records(self, folder: Path):
         return self._text_cleanup_service(required=True).state_records(folder)
 
-    def scan_text_cleanup(self, folder: Path, cached=None, progress=None):
+    def scan_text_cleanup(
+        self,
+        folder: Path,
+        cached=None,
+        progress=None,
+        cancelled=None,
+    ):
         return self._text_cleanup_service(required=True).scan_folder(
             folder,
             cached=cached,
             progress=progress,
+            cancelled=cancelled,
         )
 
     def text_cleanup_load_image(self, path: Path, grayscale=False):
@@ -461,6 +504,7 @@ class SelectorApplication:
         expand,
         radius,
         progress=None,
+        cancelled=None,
     ):
         return self._text_cleanup_service(required=True).batch_process(
             folder=folder,
@@ -470,14 +514,15 @@ class SelectorApplication:
             expand=expand,
             radius=radius,
             progress=progress,
+            cancelled=cancelled,
         )
 
-    def export_recommended(self, records, dst: Path):
+    def export_recommended(self, records, dst: Path, progress=None):
+        progress = progress or (lambda _current, _total, _name: None)
+        selected = [record for record in records if record.status == "推荐"]
         written = 0
         auto_crop = self._auto_crop_module(required=False)
-        for record in records:
-            if record.status != "推荐":
-                continue
+        for current, record in enumerate(selected, 1):
             box = auto_crop.accepted_box(record) if auto_crop is not None else None
             if box:
                 dst.mkdir(parents=True, exist_ok=True)
@@ -486,4 +531,5 @@ class SelectorApplication:
             else:
                 copy_file(record.path, dst)
             written += 1
+            progress(current, len(selected), record.path.name)
         return ExportResult(written=written)

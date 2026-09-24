@@ -30,6 +30,8 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import onnxruntime as ort
+
+from infrastructure.runtime_tuning import configure_ort_cpu_options
 from PIL import Image
 
 
@@ -137,9 +139,7 @@ def _session_for(path: Path):
     with _SESSION_LOCK:
         item = _SESSIONS.get(cache_key)
         if item is None:
-            options = ort.SessionOptions()
-            options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            options.intra_op_num_threads = os.cpu_count() or 1
+            options = configure_ort_cpu_options(ort)
             session = ort.InferenceSession(
                 cache_key,
                 options,

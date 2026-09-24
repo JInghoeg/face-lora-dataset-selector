@@ -12,11 +12,23 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from PySide6.QtCore import QCoreApplication, QEvent, QThread, QTimer, Qt, Signal, QSize, QRectF
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    QThread,
+    QTimer,
+    Qt,
+    Signal,
+    QSize,
+    QRectF,
+)
 from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QListView,
@@ -25,6 +37,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QSizeGrip,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -84,6 +97,42 @@ class AutoCropFilmstripList(QListWidget):
         return hint
 
 
+class AspectPixmapLabel(QLabel):
+    """Keep a source pixmap fitted to the current label without cropping."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._source_pixmap = QPixmap()
+        self.setAlignment(Qt.AlignCenter)
+
+    def set_source_pixmap(self, pixmap):
+        self._source_pixmap = QPixmap(pixmap) if pixmap is not None else QPixmap()
+        self._rescale()
+
+    def clear(self):
+        self._source_pixmap = QPixmap()
+        super().clear()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._rescale()
+
+    def _rescale(self):
+        if self._source_pixmap.isNull():
+            super().clear()
+            return
+        size = self.contentsRect().size()
+        if size.width() <= 0 or size.height() <= 0:
+            return
+        super().setPixmap(
+            self._source_pixmap.scaled(
+                size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+
 class AutoCropROIWidget(QWidget):
     regionChanged = Signal(object)
     regionChangeFinished = Signal(object)
@@ -92,21 +141,69 @@ class AutoCropROIWidget(QWidget):
         super().__init__(parent)
         self.image = None
         self.image_size = (0, 0)
-        self.roi = None
-        self.auto_outline = None
         self._loading = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.canvas = pg.GraphicsLayoutWidget()
         layout.addWidget(self.canvas)
+        # Image pixels must remain square at every splitter/window size.
+        # Earlier we disabled aspect lock to work around clipping, which made
+        # portrait sources visibly stretch when the review pane was resized.
+        # ROI maxBounds constrains editing; the ViewBox itself stays free to
+        # expand either axis so the complete source remains visible.
         self.view = self.canvas.addViewBox(lockAspect=True, enableMenu=False)
-        self.view.setAspectLocked(True)
+        self.view.setAspectLocked(True, ratio=1)
         self.view.setMouseEnabled(x=False, y=False)
         self.view.invertY(True)
         self.image_item = pg.ImageItem()
         self.image_item.setOpts(axisOrder="row-major")
         self.view.addItem(self.image_item)
+
+        # Create the editable ROI and all native-backed pyqtgraph handles once
+        # for the lifetime of this widget. Repeatedly destroying/recreating
+        # RectROI Handle wrappers eventually corrupted Python/Shiboken GC on
+        # Windows during rapid review navigation.
+        self.roi = pg.RectROI(
+            [0, 0],
+            [1, 1],
+            sideScalers=False,
+            maxBounds=QRectF(0, 0, 1, 1),
+            movable=True,
+            rotatable=False,
+            resizable=True,
+            removable=False,
+            invertible=False,
+            scaleSnap=True,
+            translateSnap=True,
+            snapSize=1,
+            pen=pg.mkPen("#32e675", width=2),
+        )
+        for handle in list(self.roi.getHandles()):
+            self.roi.removeHandle(handle)
+        for pos, center in (
+            ([0, 0], [1, 1]),
+            ([0.5, 0], [0.5, 1]),
+            ([1, 0], [0, 1]),
+            ([0, 0.5], [1, 0.5]),
+            ([1, 0.5], [0, 0.5]),
+            ([0, 1], [1, 0]),
+            ([0.5, 1], [0.5, 0]),
+            ([1, 1], [0, 0]),
+        ):
+            self.roi.addScaleHandle(pos, center)
+        self.view.addItem(self.roi)
+        self.roi.sigRegionChanged.connect(self._changed)
+        self.roi.sigRegionChangeFinished.connect(self._finished)
+        self.roi.setVisible(False)
+
+        self.auto_outline = pg.PlotCurveItem(
+            [],
+            [],
+            pen=pg.mkPen("#4aa3ff", width=2, style=Qt.DashLine),
+        )
+        self.view.addItem(self.auto_outline)
+        self.auto_outline.setVisible(False)
         self.set_theme(False)
 
     @staticmethod
@@ -124,65 +221,73 @@ class AutoCropROIWidget(QWidget):
 
     def set_data(self, bgr, box, auto_box):
         self._loading = True
-        if self.roi is not None:
-            self.view.removeItem(self.roi)
-            self.roi = None
-        if self.auto_outline is not None:
-            self.view.removeItem(self.auto_outline)
-            self.auto_outline = None
+        try:
+            self.image = bgr
+            if bgr is None or not bgr.size:
+                self.image_item.clear()
+                self.image_size = (0, 0)
+                self.roi.setVisible(False)
+                self.auto_outline.setVisible(False)
+                return
 
-        self.image = bgr
-        if bgr is None or not bgr.size:
-            self.image_item.clear()
-            self.image_size = (0, 0)
+            h, w = bgr.shape[:2]
+            self.image_size = (w, h)
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            self.image_item.setImage(rgb, autoLevels=False, levels=(0, 255))
+
+            pad_x = max(16.0, w * 0.04)
+            pad_y = max(16.0, h * 0.04)
+            self._fit_padding = (pad_x, pad_y)
+            self._fit_source()
+
+            auto = self.normalized_box(auto_box, (w, h))
+            ax0, ay0, ax1, ay1 = auto
+            self.auto_outline.setData(
+                [ax0, ax1, ax1, ax0, ax0],
+                [ay0, ay0, ay1, ay1, ay0],
+            )
+            self.auto_outline.setVisible(True)
+
+            current = self.normalized_box(box, (w, h))
+            x0, y0, x1, y1 = current
+            self.roi.maxBounds = QRectF(0, 0, w, h)
+            self.roi.setPos([x0, y0], finish=False)
+            self.roi.setSize([x1 - x0, y1 - y0], finish=False)
+            self.roi.setVisible(True)
+        finally:
             self._loading = False
+
+        # The dialog may not have its final splitter geometry yet. Re-fit once
+        # Qt completes the layout, and again on later resize events.
+        QTimer.singleShot(0, self._fit_source)
+
+    def _fit_source(self):
+        w, h = self.image_size
+        if w <= 0 or h <= 0:
             return
-
-        h, w = bgr.shape[:2]
-        self.image_size = (w, h)
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        self.image_item.setImage(rgb, autoLevels=False, levels=(0, 255))
-        self.view.setLimits(xMin=0, xMax=w, yMin=0, yMax=h)
-        self.view.setRange(xRange=(0, w), yRange=(0, h), padding=0)
-
-        auto = self.normalized_box(auto_box, (w, h))
-        ax0, ay0, ax1, ay1 = auto
-        self.auto_outline = pg.PlotCurveItem(
-            [ax0, ax1, ax1, ax0, ax0],
-            [ay0, ay0, ay1, ay1, ay0],
-            pen=pg.mkPen("#4aa3ff", width=2, style=Qt.DashLine),
+        pad_x, pad_y = getattr(
+            self,
+            "_fit_padding",
+            (max(16.0, w * 0.04), max(16.0, h * 0.04)),
         )
-        self.view.addItem(self.auto_outline)
-
-        current = self.normalized_box(box, (w, h))
-        x0, y0, x1, y1 = current
-        self.roi = pg.RectROI(
-            [x0, y0],
-            [x1 - x0, y1 - y0],
-            sideScalers=True,
-            maxBounds=QRectF(0, 0, w, h),
-            movable=True,
-            rotatable=False,
-            resizable=True,
-            removable=False,
-            invertible=False,
-            scaleSnap=True,
-            translateSnap=True,
-            snapSize=1,
-            pen=pg.mkPen("#32e675", width=2),
+        # Request one padded source rectangle. With aspectLocked=1 and no
+        # restrictive ViewBox limits, pyqtgraph expands the orthogonal axis as
+        # needed to contain this entire rect while preserving square pixels.
+        self.view.setRange(
+            rect=QRectF(
+                -pad_x,
+                -pad_y,
+                w + pad_x * 2,
+                h + pad_y * 2,
+            ),
+            padding=0,
+            disableAutoRange=True,
         )
-        for pos, center in (
-            ([0, 0], [1, 1]),
-            ([1, 0], [0, 1]),
-            ([0, 1], [1, 0]),
-            ([0, 0.5], [1, 0.5]),
-            ([0.5, 0], [0.5, 1]),
-        ):
-            self.roi.addScaleHandle(pos, center)
-        self.view.addItem(self.roi)
-        self.roi.sigRegionChanged.connect(self._changed)
-        self.roi.sigRegionChangeFinished.connect(self._finished)
-        self._loading = False
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.image_size != (0, 0):
+            QTimer.singleShot(0, self._fit_source)
 
     def box(self):
         if self.roi is None:
@@ -229,9 +334,20 @@ class AutoCropReviewDialog(QDialog):
 
     _preferred_theme = "light"
 
-    def __init__(self, backend, records, changed, thumbnail_cache, parent=None):
+    def __init__(
+        self,
+        backend,
+        records,
+        changed,
+        thumbnail_cache,
+        parent=None,
+        event_logger=None,
+    ):
         super().__init__(parent)
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
+        self._window_drag_offset = None
         self.backend = backend
+        self._event_logger = event_logger or (lambda _name, **_fields: None)
         self.records = backend.auto_crop_review_records(records)
         self.changed = changed
         self.thumbnail_cache = Path(thumbnail_cache)
@@ -244,6 +360,7 @@ class AutoCropReviewDialog(QDialog):
         self.thumb_icons = {}
         self._thumb_token_ids = {}
         self._cleaned = False
+        self._decision_in_flight = False
 
         self._fluent = _load_fluent()
         self._initial_global_dark = (
@@ -267,6 +384,31 @@ class AutoCropReviewDialog(QDialog):
         self.retranslate()
         self.apply_theme(self._preferred_theme)
         self.reload()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and event.position().y() <= 58:
+            self._window_drag_offset = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self._window_drag_offset is not None
+            and event.buttons() & Qt.LeftButton
+        ):
+            self.move(
+                event.globalPosition().toPoint() - self._window_drag_offset
+            )
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._window_drag_offset = None
+        super().mouseReleaseEvent(event)
 
     @staticmethod
     def pixmap_from_bgr(img, max_w=520, max_h=440):
@@ -310,7 +452,12 @@ class AutoCropReviewDialog(QDialog):
         header.addWidget(self.theme_button)
         root.addLayout(header)
 
-        work = QSplitter(Qt.Horizontal)
+        self.work_splitter = QSplitter(Qt.Horizontal)
+        self.work_splitter.setObjectName("AutoCropWorkSplitter")
+        self.work_splitter.setChildrenCollapsible(False)
+        self.work_splitter.setHandleWidth(8)
+        self.work_splitter.setOpaqueResize(True)
+        work = self.work_splitter
         self.roi_card = api["SimpleCardWidget"]()
         roi_layout = QVBoxLayout(self.roi_card)
         roi_layout.setContentsMargins(10, 10, 10, 10)
@@ -332,13 +479,22 @@ class AutoCropReviewDialog(QDialog):
         self.info = api["BodyLabel"]("")
         self.info.setWordWrap(True)
         inspector_layout.addWidget(self.info)
-        self.crop_preview = QLabel()
+        self.crop_preview = AspectPixmapLabel()
         self.crop_preview.setObjectName("AutoCropCropPreview")
-        self.crop_preview.setAlignment(Qt.AlignCenter)
-        self.crop_preview.setMinimumSize(300, 300)
+        self.crop_preview.setMinimumSize(220, 220)
+        self.crop_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.crop_opacity = QGraphicsOpacityEffect(self.crop_preview)
+        self.crop_preview.setGraphicsEffect(self.crop_opacity)
+        self.crop_fade = QPropertyAnimation(self.crop_opacity, b"opacity", self)
+        self.crop_fade.setDuration(140)
+        self.crop_fade.setEasingCurve(QEasingCurve.OutCubic)
         inspector_layout.addWidget(self.crop_preview, 1)
         work.addWidget(self.inspector_card)
-        work.setSizes([1010, 360])
+        self.roi_card.setMinimumWidth(420)
+        self.inspector_card.setMinimumWidth(260)
+        work.setStretchFactor(0, 3)
+        work.setStretchFactor(1, 2)
+        work.setSizes([900, 500])
 
         self.filmstrip_card = api["SimpleCardWidget"]()
         film_layout = QVBoxLayout(self.filmstrip_card)
@@ -378,7 +534,10 @@ class AutoCropReviewDialog(QDialog):
         film_layout.addWidget(self.items)
 
         self.main_splitter = QSplitter(Qt.Vertical)
+        self.main_splitter.setObjectName("AutoCropMainSplitter")
         self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setHandleWidth(8)
+        self.main_splitter.setOpaqueResize(True)
         self.main_splitter.addWidget(work)
         self.main_splitter.addWidget(self.filmstrip_card)
         # Give spare dialog height to the work area, not the Filmstrip. This
@@ -412,6 +571,8 @@ class AutoCropReviewDialog(QDialog):
         self.close_button = api["TransparentPushButton"]("")
         self.close_button.clicked.connect(self.accept)
         actions.addWidget(self.close_button)
+        self.size_grip = QSizeGrip(self)
+        actions.addWidget(self.size_grip)
         root.addLayout(actions)
 
     def _apply_initial_filmstrip_size(self):
@@ -488,6 +649,8 @@ class AutoCropReviewDialog(QDialog):
         self.close_button = QPushButton("")
         self.close_button.clicked.connect(self.accept)
         actions.addWidget(self.close_button)
+        self.size_grip = QSizeGrip(self)
+        actions.addWidget(self.size_grip)
         right_layout.addLayout(actions)
 
         split.addWidget(right)
@@ -630,18 +793,21 @@ class AutoCropReviewDialog(QDialog):
             select_id = self.current_sample_id
         self.records = self.backend.auto_crop_review_records(self.records)
         self.thumb_generation += 1
-        self.items.clear()
-
-        placeholder = self.placeholder_icon()
-        for record in self.records:
-            icon = self.thumb_icons.get(record.sample_id, placeholder)
-            if self._fluent:
-                item = QListWidgetItem(icon, self.filmstrip_text(record))
-            else:
-                item = QListWidgetItem(self.label(record))
-            item.setData(Qt.UserRole, record.sample_id)
-            item.setToolTip(self.label(record))
-            self.items.addItem(item)
+        self.items.blockSignals(True)
+        try:
+            self.items.clear()
+            placeholder = self.placeholder_icon()
+            for record in self.records:
+                icon = self.thumb_icons.get(record.sample_id, placeholder)
+                if self._fluent:
+                    item = QListWidgetItem(icon, self.filmstrip_text(record))
+                else:
+                    item = QListWidgetItem(self.label(record))
+                item.setData(Qt.UserRole, record.sample_id)
+                item.setToolTip(self.label(record))
+                self.items.addItem(item)
+        finally:
+            self.items.blockSignals(False)
 
         total = len(self.records)
         if self.film_count is not None:
@@ -666,7 +832,9 @@ class AutoCropReviewDialog(QDialog):
                     target_row = row
                     break
 
+        self.items.blockSignals(True)
         self.items.setCurrentRow(target_row)
+        self.items.blockSignals(False)
         self.show_item(self.items.item(target_row))
         self.start_thumbnails()
 
@@ -772,7 +940,13 @@ class AutoCropReviewDialog(QDialog):
         h, w = self.current_image.shape[:2]
         x0, y0, x1, y1 = AutoCropROIWidget.normalized_box(box, (w, h))
         crop = self.current_image[y0:y1, x0:x1]
-        self.crop_preview.setPixmap(self.pixmap_from_bgr(crop, 360, 360))
+        self.crop_preview.set_source_pixmap(self.pixmap_from_bgr(crop, 900, 900))
+        if hasattr(self, "crop_fade"):
+            self.crop_fade.stop()
+            self.crop_opacity.setOpacity(0.72)
+            self.crop_fade.setStartValue(0.72)
+            self.crop_fade.setEndValue(1.0)
+            self.crop_fade.start()
 
     def warning_text(self, code):
         source = {
@@ -867,25 +1041,91 @@ class AutoCropReviewDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, self._tr("无法重置裁剪框"), str(exc))
 
+    def _set_decision_controls_enabled(self, enabled):
+        for widget in (
+            self.accept_button,
+            self.reset_button,
+            self.keep_button,
+            self.pending_button,
+            self.items,
+        ):
+            widget.setEnabled(enabled)
+
+    def _finish_decision_reload(self, next_id, sample_id, value):
+        try:
+            # Rebuild only after the Qt clicked callback has fully unwound.
+            # Destroying QListWidgetItem / pyqtgraph / Shiboken wrappers
+            # synchronously inside that callback caused a native GC crash.
+            self.reload(next_id)
+            self._event_logger(
+                "auto_crop_decision_complete",
+                sample_id=sample_id,
+                decision=value,
+            )
+        except Exception as exc:
+            self._event_logger(
+                "auto_crop_decision_reload_failed",
+                sample_id=sample_id,
+                decision=value,
+                error=exc,
+            )
+            QMessageBox.critical(
+                self,
+                self._tr("保存裁剪决定失败"),
+                str(exc),
+            )
+        finally:
+            self._decision_in_flight = False
+            self._set_decision_controls_enabled(True)
+
     def set_decision(self, value):
-        if self.current < 0:
+        if self.current < 0 or self._decision_in_flight:
             return
         record = self.records[self.current]
         current_index = self.current
+        sample_id = record.sample_id
+        self._decision_in_flight = True
+        self._set_decision_controls_enabled(False)
+        self._event_logger(
+            "auto_crop_decision_begin",
+            sample_id=sample_id,
+            decision=value,
+        )
 
-        if value == "accepted":
-            self.backend.accept_auto_crop(record)
-        elif value == "keep_original":
-            self.backend.keep_original_auto_crop(record)
-        else:
-            self.backend.restore_pending_auto_crop(record)
+        try:
+            if value == "accepted":
+                self.backend.accept_auto_crop(record)
+            elif value == "keep_original":
+                self.backend.keep_original_auto_crop(record)
+            else:
+                self.backend.restore_pending_auto_crop(record)
 
-        self.changed()
-        next_id = None
-        if self.records:
-            next_index = min(current_index + 1, len(self.records) - 1)
-            next_id = self.records[next_index].sample_id
-        self.reload(next_id)
+            self.changed()
+            next_id = None
+            if self.records:
+                next_index = min(current_index + 1, len(self.records) - 1)
+                next_id = self.records[next_index].sample_id
+        except Exception as exc:
+            self._event_logger(
+                "auto_crop_decision_failed",
+                sample_id=sample_id,
+                decision=value,
+                error=exc,
+            )
+            self._decision_in_flight = False
+            self._set_decision_controls_enabled(True)
+            QMessageBox.critical(
+                self,
+                self._tr("保存裁剪决定失败"),
+                str(exc),
+            )
+            return
+
+        QTimer.singleShot(
+            0,
+            lambda next_id=next_id, sample_id=sample_id, value=value:
+                self._finish_decision_reload(next_id, sample_id, value),
+        )
 
     def toggle_theme(self):
         if not self._fluent:
@@ -951,6 +1191,12 @@ class AutoCropReviewDialog(QDialog):
                 "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
                 "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
                 "background:transparent; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical { "
+                "background:rgba(255,255,255,22); border-radius:3px; margin:1px; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal:hover, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical:hover { "
+                "background:rgba(96,205,255,150); }"
             )
         else:
             self.setStyleSheet(
@@ -978,6 +1224,12 @@ class AutoCropReviewDialog(QDialog):
                 "QListWidget#AutoCropFilmstrip QScrollBar::add-page:vertical, "
                 "QListWidget#AutoCropFilmstrip QScrollBar::sub-page:vertical { "
                 "background:transparent; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical { "
+                "background:rgba(0,0,0,22); border-radius:3px; margin:1px; }"
+                "QSplitter#AutoCropWorkSplitter::handle:horizontal:hover, "
+                "QSplitter#AutoCropMainSplitter::handle:vertical:hover { "
+                "background:rgba(0,120,212,135); }"
             )
 
         if self._fluent:
