@@ -13,6 +13,8 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer
+
+from core.cancellation import OperationCancelled
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -57,6 +59,7 @@ class TextScan(QObject):
     progress = Signal(int, int, str)
     finished = Signal(object)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, backend, folder, cached):
         super().__init__()
@@ -70,8 +73,11 @@ class TextScan(QObject):
                 self.folder,
                 cached=self.cached,
                 progress=self.progress.emit,
+                cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
             )
             self.finished.emit(records)
+        except OperationCancelled:
+            self.cancelled.emit()
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -154,6 +160,7 @@ class SubtitleTab(QWidget):
         if not self.output:
             self.output_label.setText(self._tr("未选择输出目录"))
         self.scan.setText(self._tr("扫描文字"))
+        self.cancel_scan_btn.setText(self._tr("取消扫描"))
         self.update_add_button_text()
         self.delete_btn.setText(self._tr("删除选中区域"))
         self.method_label.setText(self._tr("方式"))
@@ -223,6 +230,9 @@ class SubtitleTab(QWidget):
         controls = QHBoxLayout()
         self.scan = QPushButton()
         self.scan.clicked.connect(self.start_scan)
+        self.cancel_scan_btn = QPushButton()
+        self.cancel_scan_btn.clicked.connect(self.cancel_scan)
+        self.cancel_scan_btn.hide()
         self.add = QPushButton()
         self.add.setCheckable(True)
         self.add.toggled.connect(
@@ -247,6 +257,7 @@ class SubtitleTab(QWidget):
         self.method_label = QLabel()
         for widget in (
             self.scan,
+            self.cancel_scan_btn,
             self.add,
             self.delete_btn,
             self.method_label,
@@ -374,6 +385,7 @@ class SubtitleTab(QWidget):
         if not self.folder or self.thread and self.thread.isRunning():
             return
         self.scan.setEnabled(False)
+        self.cancel_scan_btn.setEnabled(True);self.cancel_scan_btn.show()
         self.bar.setRange(0, 0)
         self.thread = QThread(self)
         self.worker = TextScan(self.backend, self.folder, self.state_records())
@@ -384,10 +396,22 @@ class SubtitleTab(QWidget):
         self.worker.failed.connect(
             lambda error: QMessageBox.critical(self, self._tr("扫描失败"), error)
         )
+        self.worker.cancelled.connect(self.scan_cancelled)
         self.worker.finished.connect(self.thread.quit)
         self.worker.failed.connect(self.thread.quit)
+        self.worker.cancelled.connect(self.thread.quit)
         self.thread.finished.connect(self.done)
-        self.thread.start()
+        self.thread.start(QThread.Priority.LowPriority)
+
+    def cancel_scan(self):
+        if self.thread and self.thread.isRunning():
+            self.thread.requestInterruption()
+            self.cancel_scan_btn.setEnabled(False)
+            self.bar.setFormat(self._tr("正在取消扫描…"))
+
+    def scan_cancelled(self):
+        self.bar.setRange(0, 1);self.bar.setValue(0)
+        self.bar.setFormat(self._tr("扫描已取消"))
 
     def scan_progress(self, current, total, name):
         self.bar.setRange(0, total)
@@ -404,6 +428,7 @@ class SubtitleTab(QWidget):
 
     def done(self):
         self.scan.setEnabled(True)
+        self.cancel_scan_btn.hide();self.cancel_scan_btn.setEnabled(True)
         self.worker = None
         self.thread.deleteLater()
         self.thread = None
