@@ -16,6 +16,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from core.cancellation import check_cancelled
 from core.models import TextPhoto
 from infrastructure.filesystem import IMAGE_EXTENSIONS
 from .detector import TextDetector
@@ -366,7 +367,13 @@ class TextCleanupService:
             encoding="utf-8",
         )
 
-    def scan_folder(self, folder: Path, cached=None, progress=None):
+    def scan_folder(
+        self,
+        folder: Path,
+        cached=None,
+        progress=None,
+        cancelled=None,
+    ):
         folder = Path(folder)
         cached = cached or {}
         progress = progress or (
@@ -388,6 +395,7 @@ class TextCleanupService:
         fresh = []
 
         for index, path in enumerate(files, 1):
+            check_cancelled(cancelled)
             stat = path.stat()
             old = cached.get(_key(path))
 
@@ -442,6 +450,7 @@ class TextCleanupService:
                     detector_config(self.ocr_model_path)
                 )
                 image = self.load_image(path)
+                check_cancelled(cancelled)
                 boxes, scores = (
                     ([], [])
                     if image is None
@@ -468,6 +477,7 @@ class TextCleanupService:
                 fresh.append(record)
 
             progress(index, len(files), path.name)
+            check_cancelled(cancelled)
 
         if fresh:
             suggest(output, fresh)
