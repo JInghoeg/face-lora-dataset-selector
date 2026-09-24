@@ -38,7 +38,7 @@ jobs:
       - name: Install Fluent UI runtime (Essentials-only)
         shell: pwsh
         run: |
-          python install_ui_dependencies.py
+          python tools/install_ui_dependencies.py
           python -c "import importlib.util, qfluentwidgets; assert importlib.util.find_spec('PySide6.QtCharts') is None, 'PySide6-Addons unexpectedly installed'; print('Fluent UI Essentials-only runtime OK')"
 
       - name: Source runtime self-test
@@ -49,7 +49,7 @@ jobs:
       - name: Build portable folder
         shell: pwsh
         run: |
-          .\build_portable.ps1
+          .\tools/build_portable.ps1
 
       - name: Portable size report
         shell: pwsh
@@ -148,9 +148,9 @@ jobs:
             $tag = $Matches[1]
           }
 
-          $notes = "RELEASE_NOTES_$tag.md"
+          $notes = "docs/releases/$tag.md"
           if (-not (Test-Path $notes)) {
-            $notes = "CHANGELOG.md"
+            $notes = "docs/releases/CHANGELOG.md"
           }
 
           gh release view $tag *> $null

@@ -3,7 +3,7 @@ name: Project Memory
 on:
   pull_request:
     branches:
-      - feature/v0.3-workflow-recovery
+      - main
 
 permissions:
   contents: read
@@ -41,13 +41,15 @@ jobs:
               raise SystemExit(f"Missing canonical state file: {state_path}")
 
           required = [
-              "## Current objective",
+              "## Repository state",
               "## Verified complete",
               "## In progress",
+              "## Current objective",
               "## Blockers / uncertainties",
               "## Human QA debt",
               "## Next action",
               "## Do not repeat",
+              "## Authoritative trackers",
           ]
           content = state.read_text(encoding="utf-8")
           missing = [h for h in required if h not in content]
@@ -65,7 +67,8 @@ jobs:
 
           high_signal = (
               "features/", "application/", "core/", "infrastructure/",
-              "src/", "app.py", "requirements", "pyproject.toml", ".github/workflows/"
+              "ui/", "packaging/", "tools/", "src/", "app.py", "requirements",
+              "pyproject.toml", ".github/workflows/"
           )
           suspicious = [
               p for p in changed
