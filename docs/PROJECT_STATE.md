@@ -6,6 +6,11 @@ Canonical current-state entry point. Repository reality and current user instruc
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
 - Default branch: `main`
+- `main` protection: **ACTIVE** via repository ruleset `Protect main`
+- Required checks on `main`: **continuity** + **Merge Gate**
+- Force pushes/deletion on `main`: **blocked**
+- PR requirement: **enabled**
+- Automatic head-branch deletion after merge: **enabled and verified**
 - Stable release: **v0.3.0**
 - Release target: `432321dacda585371b4728b0b2aee37909341f18`
 - Windows Portable SHA-256: `43d7f8404c4311ba397118d174a8531f4a35d5717b1214708acd649b149f7742`
@@ -24,32 +29,33 @@ Historical repository note:
 - Final v0.3 pre-release CI: 10 / 10 PASS.
 - v0.3 feature trackers closed after accepted human QA.
 - Internal project docs moved under `.project/` by PR #61.
-- Root-layout cleanup #62 / PR #63 completed with all 8 affected workflows passing.
+- Root-layout cleanup #62 / PR #63 completed with all affected workflows passing.
 - Build/packaging helpers live under `tools/` and `packaging/`.
 - Composite proposal/runtime implementation is owned by `features/composite/`.
 - Chinese + English README switch shipped in PR #64.
+- Project-governance hardening PR #67 merged after `continuity`, `Merge Gate`, full Portable and README-sync checks passed.
+- `main` protection/ruleset is active and cannot be bypassed by the current user.
+- PR #67's head branch was automatically deleted after merge, verifying the auto-delete setting.
+- Release publishing now requires a matching machine-readable approved release gate with explicit HUMAN PASS.
+- Docs-only PRs use a lightweight Portable classification path while still producing the required `Merge Gate`.
 - Product architecture baseline is a modular monolith with feature-first boundaries.
 - Source-data safety remains the baseline.
 
 ## In progress
 
-- Issue #66 — project governance hardening.
-- Issue #65 — docs-only PR Portable-build filtering; resolved by the governance hardening change once merged.
-- Repository-level `main` protection/ruleset still requires administrator configuration after the workflow changes land.
-- Issue #68 tracks stale remote branches and `delete_branch_on_merge: false`.
+- Issue #68 — prune stale historical branches; auto-delete is already enabled for future merged PRs.
+- Current remote branch count after #67 auto-delete: **43 total / 42 non-main**.
 
 ## Current objective
 
-1. merge the governance-hardening PR only after its workflow changes pass;
-2. configure `main` protection/ruleset to require PRs and required checks;
-3. close #65 when docs-only Portable filtering is verified;
-4. keep #66 open until repository protection is confirmed;
-5. then resume v0.4 implementation from #60.
+1. verify this docs-only state-sync PR passes `continuity` + lightweight `Merge Gate` without running the heavy Portable job;
+2. close completed governance trackers #65 and #66 with this merge;
+3. audit/prune stale historical branches under #68;
+4. resume v0.4 implementation from #60.
 
 ## Blockers / uncertainties
 
-- GitHub reports `main` as **protected: false** and repository Rulesets API returns no rulesets.
-- Repository currently has **44 remote branches / 43 non-main branches**, and `delete_branch_on_merge` is false (#68).
+- Historical remote branches still need safe pruning (#68).
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
 - Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
 - README screenshots remain non-blocking documentation work (#57).
@@ -64,9 +70,9 @@ Historical repository note:
 
 ## Next action
 
-1. complete Issue #66 workflow/process hardening and verify CI;
-2. configure the GitHub `main` branch ruleset/protection;
-3. re-audit current state after protection is active;
+1. complete the docs-only governance smoke PR and verify the heavy Portable job is skipped while `Merge Gate` passes;
+2. close #65 and #66 through that merge;
+3. prune stale branches under #68;
 4. begin v0.4 work from Issue #60.
 
 ## Do not repeat
@@ -92,8 +98,6 @@ Current:
 - #56 — Text Cleanup review sorting
 - #55 — optional NVIDIA CUDA acceleration research
 - #57 — README screenshots
-- #65 — avoid full Portable builds for docs-only PRs
-- #66 — project governance hardening
 - #68 — stale branch cleanup + auto-delete policy
 
 Completed baseline:
@@ -102,3 +106,5 @@ Completed baseline:
 - PR #61 — internal documentation hygiene
 - Issue #62 / PR #63 — repository root-layout cleanup
 - PR #64 — bilingual README
+- Issue #65 — docs-only Portable-build optimization
+- Issue #66 / PR #67 — project-governance hardening
