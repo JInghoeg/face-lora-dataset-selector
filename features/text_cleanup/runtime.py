@@ -9,6 +9,7 @@ import numpy as np
 import onnxruntime as ort
 
 from infrastructure.model_download import ModelSpec, ensure_model
+from infrastructure.runtime_tuning import configure_ort_cpu_options
 
 
 MIGAN_SPEC = ModelSpec(
@@ -60,6 +61,7 @@ class MIRepair:
             if session is None:
                 session = ort.InferenceSession(
                     key,
+                    sess_options=configure_ort_cpu_options(ort),
                     providers=["CPUExecutionProvider"],
                 )
                 _SESSIONS[key] = session
