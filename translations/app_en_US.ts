@@ -432,6 +432,18 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>还有 {count} 张推荐图未完成自动裁剪扫描，请先完成自动裁剪，再整理源文件。</source><translation>{count} recommended images have not completed Auto Crop scanning. Finish Auto Crop before organizing source files.</translation></message>
     <message><source>还有 {count} 张自动裁剪候选待复核，请先处理后再整理源文件。</source><translation>{count} Auto Crop candidates are still pending review. Resolve them before organizing source files.</translation></message>
     <message><source>还有 {count} 张组合图拆分候选待复核，请先处理后再整理源文件。</source><translation>{count} Composite Split candidates are still pending review. Resolve them before organizing source files.</translation></message>
+    <message><source>取消</source><translation>Cancel</translation></message>
+    <message><source>分析准备中…</source><translation>Preparing analysis…</translation></message>
+    <message><source>正在取消当前分析…</source><translation>Cancelling current analysis…</translation></message>
+    <message><source>{task}已取消</source><translation>{task} cancelled</translation></message>
+    <message><source>图片分析</source><translation>Image analysis</translation></message>
+    <message><source>自动裁剪扫描</source><translation>Auto Crop scan</translation></message>
+    <message><source>组合图拆分扫描</source><translation>Composite Split scan</translation></message>
+    <message><source>组合图拆分新图分析</source><translation>Composite Split generated-image analysis</translation></message>
+    <message><source>正在导出训练图片。请等待导出完成后再关闭程序。</source><translation>Training images are being exported. Wait for the export to finish before closing the application.</translation></message>
+    <message><source>导出准备中：0/{total}</source><translation>Preparing export: 0/{total}</translation></message>
+    <message><source>导出 {current}/{total}：{name}</source><translation>Exporting {current}/{total}: {name}</translation></message>
+    <message><source>导出完成：{count} 张</source><translation>Export complete: {count} images</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
@@ -499,7 +511,10 @@ Source images were not modified.</translation></message>
     <message><source>仅显示需要修复</source><translation>Needs Repair Only</translation></message>
     <message><source>仅显示有文字</source><translation>Contains Text Only</translation></message>
     <message><source>仅显示人工修改</source><translation>Manual Changes Only</translation></message>
-  </context>
+      <message><source>取消扫描</source><translation>Cancel Scan</translation></message>
+    <message><source>正在取消扫描…</source><translation>Cancelling scan…</translation></message>
+    <message><source>扫描已取消</source><translation>Scan cancelled</translation></message>
+</context>
   <context>
     <name>ImagePreview</name>
     <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
