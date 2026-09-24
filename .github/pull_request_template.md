@@ -13,6 +13,7 @@ Affected modules:
 - [ ] organizer/export
 - [ ] application/core/infrastructure
 - [ ] UI only
+- [ ] build / CI / repository process
 - [ ] docs / repo hygiene
 
 ## Behavior / data risk
@@ -38,25 +39,35 @@ Automated:
 - [ ] runtime CI
 - [ ] Portable smoke when required
 
-Human QA:
+Human QA — select exactly one:
 - [ ] HUMAN PASS
-- [ ] HUMAN UNVERIFIED — added to checkpoint Issue
-- [ ] Immediate human QA required because destructive/startup/release blocker
+- [ ] HUMAN UNVERIFIED
+- [ ] HUMAN NOT REQUIRED
+- [ ] IMMEDIATE HUMAN QA REQUIRED
+
+QA debt issue:
+State impact rationale:
 
 ## Project continuity
 
-State impact:
-- [ ] Yes — `docs/PROJECT_STATE.md` updated in this PR
+State impact — select exactly one:
+- [ ] Yes — `docs/PROJECT_STATE.md` updated to the expected post-merge state
 - [ ] No — canonical current state is unchanged
 
 Decision impact:
 - [ ] None
 - [ ] Existing/new Decision Record linked or updated
 
-If this PR changes a current objective, verified capability, blocker, architecture/workflow boundary, QA debt, frozen/rejected path, or immediate next action, choose **Yes**.
+## Release impact
+
+- [ ] Not a release-preparation PR
+- [ ] Release preparation — `.project/release_gate.json` matches the approved version and explicit HUMAN PASS
 
 ## GitHub sync
 
 - [ ] Relevant Issue updated when applicable.
+- [ ] Completing work uses `Closes #N` when appropriate.
 - [ ] Decisions/product semantics recorded before merge when applicable.
-- [ ] Roadmap/release notes updated if scope/status changed.
+- [ ] Release notes/public version links updated when applicable.
+
+For a genuinely language-specific README-only change, add `[readme-sync-exempt]` to the PR body and explain why.
