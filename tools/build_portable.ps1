@@ -12,8 +12,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Qt translation compilation failed."
 }
 
-$build = Join-Path $PSScriptRoot "build"
-$dist = Join-Path $PSScriptRoot "dist"
+$build = Join-Path $RepoRoot "build"
+$dist = Join-Path $RepoRoot "dist"
 
 if (Test-Path $build) { Remove-Item $build -Recurse -Force }
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
