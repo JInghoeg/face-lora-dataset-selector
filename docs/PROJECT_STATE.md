@@ -12,6 +12,7 @@ Canonical current-state entry point. Repository reality and current user instruc
 - v0.3 human QA: **PASS — explicitly accepted 2026-09-25**
 - Current release line: **v0.4**
 - v0.4 umbrella: **Issue #60**
+- Release approval record: `.project/release_gate.json`
 
 Historical repository note:
 - current public repository: `JInghoeg/face-lora-dataset-selector`;
@@ -19,30 +20,35 @@ Historical repository note:
 
 ## Verified complete
 
-- v0.3.0 recovery PR #54 merged.
+- v0.3.0 recovery PR #54 merged and stable v0.3.0 published.
 - Final v0.3 pre-release CI: 10 / 10 PASS.
-- Stable v0.3.0 Release and Portable published.
 - v0.3 feature trackers closed after accepted human QA.
 - Internal project docs moved under `.project/` by PR #61.
+- Root-layout cleanup #62 / PR #63 completed with all 8 affected workflows passing.
+- Build/packaging helpers live under `tools/` and `packaging/`.
+- Composite proposal/runtime implementation is owned by `features/composite/`.
+- Chinese + English README switch shipped in PR #64.
 - Product architecture baseline is a modular monolith with feature-first boundaries.
-- Long-running analysis/export operations have explicit progress/cancellation where implemented.
-- Source-data safety remains the baseline: analysis/export/repair/crop workflows do not silently overwrite source pixels.
+- Source-data safety remains the baseline.
 
 ## In progress
 
-- Issue #62 — clean repository root layout and finish feature ownership.
-- No open product PR is allowed to bypass the Project Memory Gate once #62 lands.
+- Issue #66 — project governance hardening.
+- Issue #65 — docs-only PR Portable-build filtering; resolved by the governance hardening change once merged.
+- Repository-level `main` protection/ruleset still requires administrator configuration after the workflow changes land.
 
 ## Current objective
 
-1. finish #62 with no product behavior change;
-2. keep root limited to deliberate project/user entrypoints, standard configs and source directories;
-3. use #60 as the v0.4 release-level entry point;
-4. prioritize real-use UX/quality backlog from #59 / #56;
-5. evaluate GPU acceleration separately in #55 before changing runtime dependencies.
+1. merge the governance-hardening PR only after its workflow changes pass;
+2. configure `main` protection/ruleset to require PRs and required checks;
+3. close #65 when docs-only Portable filtering is verified;
+4. keep #66 open until repository protection is confirmed;
+5. then resume v0.4 implementation from #60.
 
 ## Blockers / uncertainties
 
+- GitHub Rulesets API currently reports no repository rulesets.
+- Legacy branch-protection state is not readable by the connected GitHub integration (403), while direct `main` writes have been possible in practice.
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
 - Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
 - README screenshots remain non-blocking documentation work (#57).
@@ -50,24 +56,30 @@ Historical repository note:
 
 ## Human QA debt
 
-- **v0.3: none.** The release was explicitly accepted.
+- **v0.3: none.**
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
+- Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. complete #62 root-layout CI and merge only if all affected workflows pass;
-2. verify the final root tree after merge;
-3. close #62;
-4. begin v0.4 implementation from #60, starting with the highest real-use impact items.
+1. complete Issue #66 workflow/process hardening and verify CI;
+2. configure the GitHub `main` branch ruleset/protection;
+3. re-audit current state after protection is active;
+4. begin v0.4 work from Issue #60.
 
 ## Do not repeat
 
 - Do not infer human QA PASS from ambiguous wording or green CI.
-- Do not publish a release before explicit human acceptance.
+- Do not publish a release without a matching approved release gate and explicit human acceptance.
+- Do not write normal changes directly to `main`.
+- Do not describe temporary pre-merge state as canonical post-merge state.
+- Do not duplicate current state in HANDOFF or permanent workflow docs.
+- Do not hardcode current-release Issue numbers into permanent process documentation.
 - Do not scatter feature implementation/runtime files back into repository root.
 - Do not move path-sensitive files without updating CI/scripts in the same change.
-- Do not let Project Memory/continuity automation point at dead historical branches.
+- Do not let continuity automation point at dead historical branches.
+- Do not declare “nothing remains” after checking only open Issues/PRs; audit governance invariants too.
 - Do not stop for manual QA after every bounded non-destructive fix; accumulate HUMAN UNVERIFIED items to a checkpoint unless risk requires immediate testing.
 - Do not use chat summaries as a substitute for repository state.
 
@@ -79,9 +91,12 @@ Current:
 - #56 — Text Cleanup review sorting
 - #55 — optional NVIDIA CUDA acceleration research
 - #57 — README screenshots
-- #62 — repository root-layout cleanup
+- #65 — avoid full Portable builds for docs-only PRs
+- #66 — project governance hardening
 
 Completed baseline:
 - PR #54 — v0.3 recovery implementation
 - Issue #17 — v0.3 consolidated human QA
 - PR #61 — internal documentation hygiene
+- Issue #62 / PR #63 — repository root-layout cleanup
+- PR #64 — bilingual README
