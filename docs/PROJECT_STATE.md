@@ -2,6 +2,16 @@
 
 Canonical current-state entry point.
 
+## Repository identity
+
+- Current canonical product/development repository: `JInghoeg/face-lora-dataset-selector`.
+- Current repository ID: `1375744778`; visibility: **public**.
+- Historical original/private repository was renamed to `JInghoeg/face-lora-dataset-selector-dev`.
+- Historical repository ID: `1364913841`; visibility: **private**.
+- Despite the `-dev` suffix, it is the old repository/history. **Current development also happens in the public `face-lora-dataset-selector` repository.**
+- Never treat the historical “private baseline” fact as the visibility/state of the current repository.
+- Do not warn the user merely because the current repository is public; that is the intended state.
+
 ## Repository state
 
 - Repository: `JInghoeg/face-lora-dataset-selector`
