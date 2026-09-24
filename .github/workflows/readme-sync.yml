@@ -1,0 +1,71 @@
+name: README Language Sync
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "docs/README.en.md"
+      - ".github/workflows/readme-sync.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  readme-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate bilingual README sync
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+          from pathlib import Path
+
+          body = (os.environ.get("PR_BODY") or "").lower()
+          base = os.environ.get("BASE_REF") or "main"
+          subprocess.run(["git", "fetch", "origin", base, "--quiet"], check=True)
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--name-only", f"origin/{base}...HEAD"], text=True
+          ).splitlines())
+
+          zh_path = "README.md"
+          en_path = "docs/README.en.md"
+          touched = {p for p in (zh_path, en_path) if p in changed}
+
+          if len(touched) == 1 and "[readme-sync-exempt]" not in body:
+              changed_one = next(iter(touched))
+              missing = en_path if changed_one == zh_path else zh_path
+              raise SystemExit(
+                  f"Bilingual README drift risk: {changed_one} changed without {missing}. "
+                  "Update both, or document a genuine language-specific exception with [readme-sync-exempt]."
+              )
+
+          zh = Path(zh_path).read_text(encoding="utf-8")
+          en = Path(en_path).read_text(encoding="utf-8")
+
+          if "**简体中文** | [English](docs/README.en.md)" not in zh:
+              raise SystemExit("Chinese README language switch is missing or invalid.")
+          if "[简体中文](../README.md) | **English**" not in en:
+              raise SystemExit("English README language switch is missing or invalid.")
+
+          tag_re = re.compile(r"releases/tag/(v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)")
+          zh_tag = tag_re.search(zh)
+          en_tag = tag_re.search(en)
+          if not zh_tag or not en_tag:
+              raise SystemExit("Could not determine stable release tag from both READMEs.")
+          if zh_tag.group(1) != en_tag.group(1):
+              raise SystemExit(
+                  f"Stable release mismatch: Chinese={zh_tag.group(1)} English={en_tag.group(1)}"
+              )
+
+          print("README Language Sync: PASS")
+          PY

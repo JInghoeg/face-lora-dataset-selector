@@ -30,11 +30,33 @@ jobs:
 
           body = os.environ.get("PR_BODY") or ""
           state_path = os.environ["STATE_PATH"]
+
           yes = bool(re.search(r"^- \[[xX]\]\s+Yes\b", body, re.M))
           no = bool(re.search(r"^- \[[xX]\]\s+No\b", body, re.M))
-
           if yes == no:
               raise SystemExit("Select exactly one Project continuity State impact choice: Yes or No.")
+
+          qa_patterns = {
+              "pass": r"^- \[[xX]\]\s+HUMAN PASS\b",
+              "deferred": r"^- \[[xX]\]\s+HUMAN UNVERIFIED\b",
+              "not_required": r"^- \[[xX]\]\s+HUMAN NOT REQUIRED\b",
+              "immediate": r"^- \[[xX]\]\s+IMMEDIATE HUMAN QA REQUIRED\b",
+          }
+          qa = {k: bool(re.search(v, body, re.M)) for k, v in qa_patterns.items()}
+          if sum(qa.values()) != 1:
+              raise SystemExit("Select exactly one Human QA state.")
+
+          def field(label: str) -> str:
+              m = re.search(rf"^{re.escape(label)}:\s*(.*)$", body, re.M | re.I)
+              return (m.group(1).strip() if m else "")
+
+          if qa["immediate"]:
+              raise SystemExit("IMMEDIATE HUMAN QA REQUIRED is selected; merge remains blocked until this becomes HUMAN PASS.")
+
+          if qa["deferred"]:
+              debt = field("QA debt issue")
+              if not re.fullmatch(r"#\d+", debt):
+                  raise SystemExit("HUMAN UNVERIFIED requires 'QA debt issue: #N'.")
 
           state = Path(state_path)
           if not state.exists():
@@ -62,8 +84,11 @@ jobs:
               ["git", "diff", "--name-only", f"origin/{base}...HEAD"], text=True
           ).splitlines()
 
-          if yes and state_path not in changed:
+          state_changed = state_path in changed
+          if yes and not state_changed:
               raise SystemExit(f"State impact is Yes but {state_path} is unchanged.")
+          if no and state_changed:
+              raise SystemExit(f"State impact is No but {state_path} changed.")
 
           high_signal = (
               "features/", "application/", "core/", "infrastructure/",
@@ -76,13 +101,26 @@ jobs:
           ]
 
           if no and suspicious:
-              summary = os.environ.get("GITHUB_STEP_SUMMARY")
-              if summary:
-                  with open(summary, "a", encoding="utf-8") as fh:
-                      fh.write("## Project Memory Gate warning\n\n")
-                      fh.write("Declared **No state impact** while high-signal paths changed. Confirm this is intentional.\n\n")
-                      for p in suspicious:
-                          fh.write(f"- `{p}`\n")
+              rationale = field("State impact rationale")
+              if not rationale or rationale.lower() in {"n/a", "none", "-", "no"}:
+                  raise SystemExit(
+                      "High-signal paths changed while State impact is No. "
+                      "Provide a concrete 'State impact rationale: ...'."
+                  )
+
+          product_paths = (
+              "features/", "application/", "core/", "infrastructure/",
+              "ui/", "app.py", "requirements"
+          )
+          product_changed = [
+              p for p in changed
+              if any(p == x or p.startswith(x) for x in product_paths)
+          ]
+          if qa["not_required"] and product_changed:
+              raise SystemExit(
+                  "HUMAN NOT REQUIRED cannot be used when product/runtime paths changed: "
+                  + ", ".join(product_changed)
+              )
 
           print("Project Memory Gate: PASS")
           PY

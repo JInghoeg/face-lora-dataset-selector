@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
   pull_request:
     branches:
       - main
@@ -15,13 +13,120 @@ permissions:
   contents: write
 
 jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.changes.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify change scope
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+
+          event = os.environ.get('EVENT_NAME') or ''
+          if event == 'workflow_dispatch':
+              changed = ['<manual>']
+          elif event == 'pull_request':
+              base = os.environ.get('BASE_REF') or 'main'
+              subprocess.run(['git', 'fetch', 'origin', base, '--quiet'], check=True)
+              changed = subprocess.check_output(
+                  ['git', 'diff', '--name-only', f'origin/{base}...HEAD'], text=True
+              ).splitlines()
+          else:
+              before = os.environ.get('BEFORE') or ''
+              sha = os.environ.get('SHA') or 'HEAD'
+              if not before or set(before) == {'0'}:
+                  before = f'{sha}^'
+              changed = subprocess.check_output(
+                  ['git', 'diff', '--name-only', before, sha], text=True
+              ).splitlines()
+
+          def docs_only(path: str) -> bool:
+              return path.endswith('.md') or path.startswith('docs/')
+
+          heavy = any(not docs_only(p) for p in changed)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"heavy={'true' if heavy else 'false'}\n")
+
+          print('Changed paths:')
+          for p in changed:
+              print(f'  {p}')
+          print(f'Heavy Portable build required: {heavy}')
+          PY
+
   windows-portable:
+    needs: classify
+    if: ${{ needs.classify.outputs.heavy == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve approved release gate
+        id: release_gate
+        shell: pwsh
+        run: |
+          "should_release=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          if ("${{ github.event_name }}" -ne "push" -or "${{ github.ref }}" -ne "refs/heads/main") {
+            exit 0
+          }
+
+          $gatePath = ".project/release_gate.json"
+          if (-not (Test-Path $gatePath)) {
+            throw "Missing release gate: $gatePath"
+          }
+
+          $before = "${{ github.event.before }}"
+          if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+$') {
+            $before = "${{ github.sha }}^"
+          }
+
+          $changed = @(git diff --name-only $before "${{ github.sha }}")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to inspect push diff for release gate."
+          }
+          if ($changed -notcontains $gatePath) {
+            exit 0
+          }
+
+          $gate = Get-Content $gatePath -Raw | ConvertFrom-Json
+          if ($gate.status -ne "APPROVED") {
+            Write-Host "Release gate changed but is not APPROVED; no release will be created."
+            exit 0
+          }
+          if ($gate.human_qa -ne "PASS") {
+            throw "Release gate is APPROVED without HUMAN PASS."
+          }
+          if ($gate.version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version in release gate: $($gate.version)"
+          }
+          if ([string]::IsNullOrWhiteSpace($gate.accepted_on) -or [string]::IsNullOrWhiteSpace($gate.evidence)) {
+            throw "Release gate requires accepted_on and evidence."
+          }
+
+          $notes = "docs/releases/$($gate.version).md"
+          if (-not (Test-Path $notes)) {
+            throw "Missing release notes for approved version: $notes"
+          }
+
+          "should_release=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$($gate.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "notes=$notes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -127,35 +232,54 @@ jobs:
           path: qa-overlay/
           if-no-files-found: error
 
-      - name: Attach portable build to GitHub Release
-        if: "${{ startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: v')) }}"
+      - name: Attach approved portable build to GitHub Release
+        if: "${{ steps.release_gate.outputs.should_release == 'true' }}"
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           $zip = "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
           $sum = "$zip.sha256"
-
-          if ("${{ github.ref }}" -like "refs/tags/*") {
-            $tag = "${{ github.ref_name }}"
-          } else {
-            $firstLine = (($env:RELEASE_COMMIT_MESSAGE -split "\r?\n")[0]).Trim()
-            $pattern = '^release:\s+(v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$'
-            if ($firstLine -notmatch $pattern) {
-              throw "Release commit message must start with: release: vX.Y.Z"
-            }
-            $tag = $Matches[1]
-          }
-
-          $notes = "docs/releases/$tag.md"
-          if (-not (Test-Path $notes)) {
-            $notes = "docs/releases/CHANGELOG.md"
-          }
+          $tag = "${{ steps.release_gate.outputs.tag }}"
+          $notes = "${{ steps.release_gate.outputs.notes }}"
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $zip $sum --clobber
-          } else {
-            gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+            Write-Host "Release $tag already exists; refusing to overwrite published assets."
+            exit 0
           }
+
+          gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs:
+      - classify
+      - windows-portable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required Portable scope
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          HEAVY: ${{ needs.classify.outputs.heavy }}
+          PORTABLE_RESULT: ${{ needs.windows-portable.result }}
+        run: |
+          python - <<'PY'
+          import os
+
+          classify = os.environ.get('CLASSIFY_RESULT')
+          heavy = os.environ.get('HEAVY')
+          portable = os.environ.get('PORTABLE_RESULT')
+
+          if classify != 'success':
+              raise SystemExit(f'Change classification failed: {classify}')
+
+          if heavy == 'true' and portable != 'success':
+              raise SystemExit(f'Heavy Portable validation required but result is: {portable}')
+
+          if heavy != 'true' and portable not in {'skipped', 'success'}:
+              raise SystemExit(f'Docs-only Portable result is unexpected: {portable}')
+
+          print(f'Build Windows Portable Merge Gate: PASS (heavy={heavy}, portable={portable})')
+          PY

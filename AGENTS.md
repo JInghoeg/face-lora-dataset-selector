@@ -18,6 +18,15 @@ Before substantial work on an existing task:
 
 If repository reality is newer than PROJECT_STATE, repair PROJECT_STATE before relying on it.
 
+## Repository change rule
+
+- All normal repository changes go through a scoped branch + PR into `main`.
+- Do not write directly to `main`.
+- Release preparation also goes through a PR. Publishing is triggered only by the machine-readable `.project/release_gate.json` after explicit human acceptance.
+- A completion PR must leave `docs/PROJECT_STATE.md` describing the expected **post-merge** canonical state, not the temporary pre-merge state.
+- When a PR completes an Issue, prefer `Closes #N` in the PR body so Issue closure and post-merge state converge together.
+- `.project/HANDOFF.md` must not duplicate current project state.
+
 ## Product branch
 
 Stable product branch:
@@ -58,5 +67,14 @@ Use risk-based validation:
 Follow the Engineering-Playbook Project Continuity Protocol.
 
 A state-changing task is not complete until current canonical state is synchronized. Prefer code + `docs/PROJECT_STATE.md` in the same PR.
+
+Before declaring a release/checkpoint/repository cleanup complete, audit all of:
+- open Issues and PRs;
+- workflow triggers and required gates;
+- stale branch/version/Issue references in active process docs;
+- release-gate state;
+- branch/ruleset enforcement;
+- bilingual README synchronization;
+- root-layout / architecture invariants.
 
 Do not create duplicate CHECKPOINT files for history already preserved by Git.
