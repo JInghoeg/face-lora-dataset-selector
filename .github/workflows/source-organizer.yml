@@ -74,8 +74,8 @@ jobs:
         if: ${{ matrix.python == '3.12' }}
         shell: pwsh
         run: |
-          $feature = "features\source_organizer"
-          $featureOff = "features\source_organizer.__disabled_for_smoke__"
+          $feature = "src\features\source_organizer"
+          $featureOff = "src\features\source_organizer.__disabled_for_smoke__"
           try {
             Move-Item $feature $featureOff
             python -c "import app; assert not app.BACKEND.feature_available('source_organizer'); print('optional Source Organizer absence startup OK')"

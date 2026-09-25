@@ -26,7 +26,7 @@ try:
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
-    msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements.txt"
+    msg=f"缺少依赖：{exc}\n请先双击运行 安装.bat，或在本目录运行：python -m pip install -r requirements/runtime.txt"
     print(msg)
     if getattr(sys,'frozen',False):
         try:Path(sys.executable).with_name('startup-error.txt').write_text(msg,encoding='utf-8')

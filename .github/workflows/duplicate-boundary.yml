@@ -68,7 +68,7 @@ jobs:
       - name: Compile Duplicate boundary
         shell: pwsh
         run: |
-          python -m compileall src/features/duplicate application src/ui/qt/duplicate_review.py app.py
+          python -m compileall src/features/duplicate src/application src/ui/qt/duplicate_review.py app.py
 
       - name: Duplicate backend smoke
         shell: pwsh
@@ -112,8 +112,8 @@ jobs:
         if: ${{ matrix.python == '3.12' }}
         shell: pwsh
         run: |
-          $feature = "features\duplicate"
-          $featureOff = "features\duplicate.__disabled_for_smoke__"
+          $feature = "src\features\duplicate"
+          $featureOff = "src\features\duplicate.__disabled_for_smoke__"
           try {
             Move-Item $feature $featureOff
             python -c "import app; assert not app.BACKEND.feature_available('duplicates'); print('optional Duplicate absence startup OK')"
