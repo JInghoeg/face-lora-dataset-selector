@@ -47,21 +47,20 @@ Historical repository note:
 - Deferred v0.3 UI-polish Issue #16 was actually implemented and AUTO PASSed before closure; it is not lost carry-forward work.
 - Long-operation progress/cancellation, Text Cleanup folder auto-scan, rollback-safe batch repair, shutdown handling and reusable QA workspace were recovered in PR #54 and accepted in v0.3.
 - Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60; the 2026-09-25 audit restored two details that had been omitted during migration: disentanglement value where justified, and the quality-first rule for bundling required redistributable default models.
-- Carry-forward audit on 2026-09-25 found one missing high-confidence product direction: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
+- Carry-forward audit on 2026-09-25 found one missing high-confidence product mainline: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
+- Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
 
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
-- Project-continuity hardening for accepted future directions / authorization semantics is tracked by Issue #76.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. finish the project-level continuity fix in #76 so accepted future directions cannot silently disappear;
-2. preserve the recovered v0.4 plan in #60 / this file;
-3. do **not** auto-select the next product implementation slice from backlog order;
-4. preserve v0.3 behavior, governance gates, source-data safety, and the root-layout invariant.
+1. preserve the recovered v0.4 scope in #60 and the accepted-direction index below;
+2. do **not** auto-select the next product implementation slice from backlog order;
+3. preserve v0.3 behavior, governance gates, source-data safety, and the root-layout invariant.
 
 No next v0.4 product slice is currently authorized merely by repository state.
 
@@ -97,10 +96,9 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. merge the bounded #76 continuity hardening after required checks pass;
-2. after that, no product feature should start until the user explicitly selects/confirms the active v0.4 slice;
-3. when a slice is selected, move it from Accepted future directions into Current objective / Next action and use its focused Issue/branch/PR;
-4. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting each bounded non-destructive change.
+1. no product feature should start until the user explicitly selects/confirms the active v0.4 slice;
+2. when a slice is selected, move it from Accepted future directions into Current objective / Next action and use its focused Issue/branch/PR;
+3. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting each bounded non-destructive change.
 
 ## Do not repeat
 
@@ -130,7 +128,6 @@ Current:
 - #55 — optional NVIDIA CUDA acceleration research
 - #57 — README screenshots
 - #72 — HUMAN UNVERIFIED src-layout migration interactive checkpoint
-- #76 — accepted-plan / authorization continuity hardening
 
 Non-canonical existing work:
 - Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
@@ -145,3 +142,4 @@ Completed baseline:
 - Issue #66 / PR #67 — project-governance hardening
 - Issue #68 — historical branch cleanup + auto-delete policy
 - Issue #71 / PR #73 — Root Layout Phase 2 / src-layout consolidation
+- Issue #76 / PR #77 — accepted-plan / execution-authorization continuity hardening
