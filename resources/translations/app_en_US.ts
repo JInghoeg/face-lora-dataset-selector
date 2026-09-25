@@ -459,6 +459,12 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>预览修复</source><translation>Preview Repair</translation></message>
     <message><source>批量处理到新目录</source><translation>Batch Process to New Folder</translation></message>
     <message><source>查看</source><translation>View</translation></message>
+    <message><source>排序</source><translation>Sort</translation></message>
+    <message><source>优先待处理</source><translation>Review Priority</translation></message>
+    <message><source>原始顺序</source><translation>Original Order</translation></message>
+    <message><source>有效检测数量：多→少</source><translation>Effective Detections: High to Low</translation></message>
+    <message><source>最高置信度：高→低</source><translation>Highest Confidence: High to Low</translation></message>
+    <message><source>文件名：A→Z</source><translation>Filename: A to Z</translation></message>
     <message><source>全选建议修复</source><translation>Select All Suggested Repairs</translation></message>
     <message><source>取消当前页全部</source><translation>Clear Current Page</translation></message>
     <message><source>最小高 </source><translation>Min Height </translation></message>

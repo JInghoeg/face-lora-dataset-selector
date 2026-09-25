@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 from application import OperationCancelled, SelectorApplication
+from core.models import TextPhoto
 from ui.qt import SubtitleTab
 
 
@@ -37,6 +38,64 @@ def main():
     assert tab.backend is backend
     assert tab.preview is not None
     assert tab.scan is not None
+    assert tab.sort.currentData() == "优先待处理"
+
+    # Review navigation/sorting: zero-result records stay accessible but no
+    # longer occupy the front of the default review queue.
+    tab.start_thumbnails = lambda *_args, **_kwargs: None
+
+    def review_record(name, detections=0, selected=0, confidence=0.8):
+        boxes = [
+            [[0, 0], [20, 0], [20, 10], [0, 10]]
+            for _ in range(detections)
+        ]
+        return TextPhoto(
+            Path(name),
+            0,
+            0,
+            boxes=boxes,
+            selected=[index < selected for index in range(detections)],
+            manual=[False] * detections,
+            scores=[confidence] * detections,
+            suggested=[index < selected for index in range(detections)],
+            width=1000,
+            height=1000,
+        )
+
+    tab.records = [
+        review_record("00-zero.png"),
+        review_record("01-detected.png", detections=1, selected=0, confidence=0.7),
+        review_record("02-selected.png", detections=2, selected=1, confidence=0.9),
+    ]
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    original_index = tab.sort.findData("原始顺序")
+    assert original_index >= 0
+    tab.sort.setCurrentIndex(original_index)
+    assert tab.visible == [0, 1, 2], tab.visible
+
+    count_index = tab.sort.findData("有效检测数量：多→少")
+    assert count_index >= 0
+    tab.sort.setCurrentIndex(count_index)
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    # Page controls sit above the review list and expose the true queue size.
+    tab.records = [review_record(f"{index:03d}.png") for index in range(81)]
+    tab.sort.setCurrentIndex(original_index)
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.list.count() == 80
+    assert tab.next_page.isEnabled()
+    tab.change_page(1)
+    assert tab.page == 1
+    assert tab.list.count() == 1
+    assert not tab.next_page.isEnabled()
+
+    tab.records = []
+    tab.page = 0
+    tab.refresh(False)
 
     # Selecting an input folder must start the real QThread scan path, not
     # merely schedule a callback. An empty temporary folder keeps this smoke
