@@ -6,6 +6,7 @@ mechanism and receive progress through callbacks.
 from __future__ import annotations
 
 import math
+import sys
 import pickle
 import shutil
 import tempfile
