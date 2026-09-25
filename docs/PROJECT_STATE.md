@@ -40,21 +40,22 @@ Historical repository note:
 - Release publishing now requires a matching machine-readable approved release gate with explicit HUMAN PASS.
 - Docs-only PRs use a lightweight Portable classification path while still producing the required `Merge Gate`.
 - Historical branch cleanup completed: all 42 stale non-main branches were audited and removed.
-- Root Layout Phase 2 (#71) completed: product implementation is consolidated under `src/`, tracked runtime assets under `resources/`, and dependency manifests under `requirements/`.
+- Root Layout Phase 2 (#71 / PR #73) completed: product implementation is consolidated under `src/`, tracked runtime assets under `resources/`, and dependency manifests under `requirements/`.
 - Root `app.py` and `text_detector.py` are intentionally tiny compatibility/entry shims rather than product implementation.
 - Product architecture baseline is a modular monolith with feature-first boundaries.
 - Source-data safety remains the baseline.
+- Text Cleanup review navigation/sorting (#56 / PR #74) is complete in the expected post-merge state: pagination is visible above the review list, zero-result records remain accessible but no longer lead the default queue, and users can sort by review priority, original order, effective detection count, highest confidence, or filename.
 
 ## In progress
 
 - v0.4 planning / implementation under Issue #60.
-- Focused open backlog: #55 / #56 / #57 / #59.
+- Focused open backlog after PR #74: #55 / #57 / #59.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72; automated source/Portable/resource validation is the merge gate.
 
 ## Current objective
 
 1. continue v0.4 from Issue #60 on the consolidated src/resources layout;
-2. prioritize real-use UX/quality backlog from #59 / #56;
+2. continue the remaining real-use UX/quality backlog in #59 after the navigation/sorting slice from #56;
 3. evaluate GPU acceleration separately in #55 before changing runtime dependencies;
 4. keep README screenshot/document polish in #57 non-blocking;
 5. preserve v0.3 behavior, governance gates, source-data safety, and the new root-layout invariant as the baseline.
@@ -70,16 +71,17 @@ Historical repository note:
 
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
+- PR #74 Text Cleanup navigation/sorting remains HUMAN UNVERIFIED and is batched into the next v0.4 checkpoint.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. continue v0.4 work from Issue #60 on the consolidated repository layout;
-2. start with the highest real-use impact items from #59 / #56;
-3. keep performance research in #55 separate from UX work;
-4. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting each bounded change.
+1. continue the remaining Text Cleanup UX work in #59 after PR #74;
+2. prioritize manual-box discoverability and detection-count wording before model/threshold changes;
+3. keep detection-quality tuning evidence-driven and keep performance research in #55 separate from UX work;
+4. carry Issue #72 and PR #74 HUMAN UNVERIFIED behavior into the next v0.4 human-QA checkpoint rather than interrupting each bounded change.
 
 ## Do not repeat
 
@@ -101,7 +103,6 @@ Historical repository note:
 Current:
 - #60 — v0.4 umbrella
 - #59 — UX backlog from accepted v0.3 QA
-- #56 — Text Cleanup review sorting
 - #55 — optional NVIDIA CUDA acceleration research
 - #57 — README screenshots
 - #72 — HUMAN UNVERIFIED src-layout migration interactive checkpoint
@@ -115,4 +116,5 @@ Completed baseline:
 - Issue #65 — docs-only Portable-build optimization
 - Issue #66 / PR #67 — project-governance hardening
 - Issue #68 — historical branch cleanup + auto-delete policy
-- Issue #71 — Root Layout Phase 2 / src-layout consolidation
+- Issue #71 / PR #73 — Root Layout Phase 2 / src-layout consolidation
+- Issue #56 / PR #74 — Text Cleanup review navigation and sorting
