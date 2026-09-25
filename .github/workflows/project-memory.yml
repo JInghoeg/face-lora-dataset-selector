@@ -36,6 +36,16 @@ jobs:
           if yes == no:
               raise SystemExit("Select exactly one Project continuity State impact choice: Yes or No.")
 
+          plan_patterns = {
+              "none": r"^- \[[xX]\]\s+No accepted-plan change\s*$",
+              "change": r"^- \[[xX]\]\s+Adds/changes accepted future direction\s*$",
+              "remove": r"^- \[[xX]\]\s+Supersedes/removes accepted future direction\s*$",
+          }
+          plan = {k: bool(re.search(v, body, re.M)) for k, v in plan_patterns.items()}
+          if sum(plan.values()) != 1:
+              raise SystemExit("Select exactly one Plan impact choice.")
+          plan_changed = plan["change"] or plan["remove"]
+
           qa_patterns = {
               "pass": r"^- \[[xX]\]\s+HUMAN PASS\b",
               "deferred": r"^- \[[xX]\]\s+HUMAN UNVERIFIED\b",
@@ -58,6 +68,11 @@ jobs:
               if not re.fullmatch(r"#\d+", debt):
                   raise SystemExit("HUMAN UNVERIFIED requires 'QA debt issue: #N'.")
 
+          if plan_changed:
+              tracker = field("Plan tracker")
+              if not re.fullmatch(r"#\d+", tracker):
+                  raise SystemExit("Plan-impacting PRs require 'Plan tracker: #N'.")
+
           state = Path(state_path)
           if not state.exists():
               raise SystemExit(f"Missing canonical state file: {state_path}")
@@ -67,6 +82,7 @@ jobs:
               "## Verified complete",
               "## In progress",
               "## Current objective",
+              "## Accepted future directions",
               "## Blockers / uncertainties",
               "## Human QA debt",
               "## Next action",
@@ -89,6 +105,10 @@ jobs:
               raise SystemExit(f"State impact is Yes but {state_path} is unchanged.")
           if no and state_changed:
               raise SystemExit(f"State impact is No but {state_path} changed.")
+          if plan_changed and not state_changed:
+              raise SystemExit(
+                  "Accepted-plan impact requires docs/PROJECT_STATE.md to carry the post-merge plan state."
+              )
 
           high_signal = (
               "src/", "resources/", "packaging/", "tools/", "app.py",
@@ -115,6 +135,25 @@ jobs:
               p for p in changed
               if any(p == x or p.startswith(x) for x in product_paths)
           ]
+
+          if product_changed:
+              authorization = field("Execution authorization note")
+              if not authorization or authorization.lower() in {"n/a", "none", "-", "no"}:
+                  raise SystemExit(
+                      "Product/runtime changes require an 'Execution authorization note' "
+                      "that records the current user instruction authorizing this active slice."
+                  )
+              weak_authorization = re.fullmatch(
+                  r"(?:issue\s*)?#\d+|(?:backlog|project_state|next action|draft pr)",
+                  authorization.strip(),
+                  re.I,
+              )
+              if weak_authorization:
+                  raise SystemExit(
+                      "Execution authorization cannot be inferred only from an Issue/backlog/"
+                      "PROJECT_STATE/Draft PR. Record the current user instruction."
+                  )
+
           if qa["not_required"] and product_changed:
               raise SystemExit(
                   "HUMAN NOT REQUIRED cannot be used when product/runtime paths changed: "
