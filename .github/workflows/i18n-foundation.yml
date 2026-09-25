@@ -77,7 +77,7 @@ jobs:
         shell: pwsh
         run: |
           python tools/compile_translations.py
-          if (-not (Test-Path "translations\app_en_US.qm")) {
+          if (-not (Test-Path "resources\translations\app_en_US.qm")) {
             throw "Compiled English QM catalog not found"
           }
 
