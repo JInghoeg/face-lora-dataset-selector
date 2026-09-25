@@ -46,7 +46,7 @@ Historical repository note:
 - Source-data safety remains the baseline.
 - Deferred v0.3 UI-polish Issue #16 was actually implemented and AUTO PASSed before closure; it is not lost carry-forward work.
 - Long-operation progress/cancellation, Text Cleanup folder auto-scan, rollback-safe batch repair, shutdown handling and reusable QA workspace were recovered in PR #54 and accepted in v0.3.
-- Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60.
+- Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60; the 2026-09-25 audit restored two details that had been omitted during migration: disentanglement value where justified, and the quality-first rule for bundling required redistributable default models.
 - Carry-forward audit on 2026-09-25 found one missing high-confidence product direction: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
 
 ## In progress
@@ -71,8 +71,8 @@ This section is the compact recovery index for user-confirmed work that is **not
 
 - **ACCEPTED — NOT SCHEDULED:** whole-product UI/UX modernization (#75). Auto Crop Fluent/Filmstrip was the first production slice, not completion of this direction.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
-- **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/per-sample explanation work carried by #60.
-- **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60).
+- **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
+- **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
 - **RESEARCH ONLY — IMPLEMENTATION NOT AUTHORIZED:** optional NVIDIA CUDA acceleration (#55). Benchmark real end-to-end gain, responsiveness, VRAM, CPU fallback and Portable cost before any runtime dependency decision.
 - **EVALUATE ONLY — IMPLEMENTATION NOT AUTHORIZED:** optional user-selected/manual Auto Crop entry point for missed crop-worthy images (#59). The user explicitly said to assess cost and not implement it yet.
 - **DEFERRED / NON-BLOCKING:** real README product screenshots and public-facing screenshot polish (#57).
