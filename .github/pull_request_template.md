@@ -54,6 +54,14 @@ State impact — select exactly one:
 - [ ] Yes — `docs/PROJECT_STATE.md` updated to the expected post-merge state
 - [ ] No — canonical current state is unchanged
 
+Plan impact — select exactly one:
+- [ ] No accepted-plan change
+- [ ] Adds/changes accepted future direction
+- [ ] Supersedes/removes accepted future direction
+
+Plan tracker:
+Execution authorization note:
+
 Decision impact:
 - [ ] None
 - [ ] Existing/new Decision Record linked or updated
@@ -67,6 +75,7 @@ Decision impact:
 
 - [ ] Relevant Issue updated when applicable.
 - [ ] Completing work uses `Closes #N` when appropriate.
+- [ ] Accepted future directions are carried forward when a tracker/version is closed or superseded.
 - [ ] Decisions/product semantics recorded before merge when applicable.
 - [ ] Release notes/public version links updated when applicable.
 
