@@ -31,8 +31,16 @@ jobs:
           body = os.environ.get("PR_BODY") or ""
           state_path = os.environ["STATE_PATH"]
 
-          yes = bool(re.search(r"^- \[[xX]\]\s+Yes\b", body, re.M))
-          no = bool(re.search(r"^- \[[xX]\]\s+No\b", body, re.M))
+          yes = bool(re.search(
+              r"^- \[[xX]\]\s+Yes\s+—\s+\x60docs/PROJECT_STATE\.md\x60 updated to the expected post-merge state\s*$",
+              body,
+              re.M,
+          ))
+          no = bool(re.search(
+              r"^- \[[xX]\]\s+No\s+—\s+canonical current state is unchanged\s*$",
+              body,
+              re.M,
+          ))
           if yes == no:
               raise SystemExit("Select exactly one Project continuity State impact choice: Yes or No.")
 

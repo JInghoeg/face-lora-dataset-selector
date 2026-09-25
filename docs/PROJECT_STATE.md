@@ -49,20 +49,24 @@ Historical repository note:
 - Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60; the 2026-09-25 audit restored two details that had been omitted during migration: disentanglement value where justified, and the quality-first rule for bundling required redistributable default models.
 - Carry-forward audit on 2026-09-25 found one missing high-confidence product mainline: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
 - Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
+- PR #78 includes a follow-up continuity-gate bug fix: State impact matching is scoped to the full Yes/No state-choice text so the separate checked `No accepted-plan change` option cannot be misread as State impact = No.
 
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
+- **Current authorized research slice: #55 — GPU performance / necessity evaluation.** Authorization: user explicitly selected GPU performance research and asked to evaluate cost and necessity on 2026-09-26. This does not authorize production GPU integration or runtime-dependency replacement.
+- Research branch: `research/gpu-performance-benchmark`; goal is a research-only benchmark harness that reuses current feature runtimes without changing production provider selection.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. preserve the recovered v0.4 scope in #60 and the accepted-direction index below;
-2. do **not** auto-select the next product implementation slice from backlog order;
-3. preserve v0.3 behavior, governance gates, source-data safety, and the root-layout invariant.
+1. execute the explicitly authorized GPU performance research under #55;
+2. measure whether GPU acceleration materially improves real model-heavy workflows before any production provider/runtime change;
+3. compare lifecycle/deployment cost as well as inference speed, preserving CPU fallback and the current release runtime until evidence justifies a product decision;
+4. keep all other v0.4 product directions inactive unless separately authorized.
 
-No next v0.4 product slice is currently authorized merely by repository state.
+Current authorization is **research/evaluation only**. It does not authorize replacing `onnxruntime`, bundling CUDA/cuDNN, raising the Python floor, or changing production provider defaults.
 
 ## Accepted future directions
 
@@ -72,7 +76,6 @@ This section is the compact recovery index for user-confirmed work that is **not
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
-- **RESEARCH ONLY — IMPLEMENTATION NOT AUTHORIZED:** optional NVIDIA CUDA acceleration (#55). Benchmark real end-to-end gain, responsiveness, VRAM, CPU fallback and Portable cost before any runtime dependency decision.
 - **EVALUATE ONLY — IMPLEMENTATION NOT AUTHORIZED:** optional user-selected/manual Auto Crop entry point for missed crop-worthy images (#59). The user explicitly said to assess cost and not implement it yet.
 - **DEFERRED / NON-BLOCKING:** real README product screenshots and public-facing screenshot polish (#57).
 
@@ -96,9 +99,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. no product feature should start until the user explicitly selects/confirms the active v0.4 slice;
-2. when a slice is selected, move it from Accepted future directions into Current objective / Next action and use its focused Issue/branch/PR;
-3. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting each bounded non-destructive change.
+1. land the research-only benchmark harness for #55 without changing production runtime dependencies;
+2. run CPU and GPU candidates on the same representative real dataset on the target workstation;
+3. compare end-to-end wall time, per-feature model-heavy paths, responsiveness, GPU/CPU load, VRAM, cold-start, output parity, deployment size/prerequisites and CPU fallback;
+4. decide among **keep CPU / optional accelerator / production GPU path** only from measured evidence;
+5. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting this research.
 
 ## Do not repeat
 
