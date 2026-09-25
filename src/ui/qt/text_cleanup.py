@@ -219,6 +219,18 @@ class SubtitleTab(QWidget):
             ],
             "全部图片",
         )
+        self.sort_label.setText(self._tr("排序"))
+        self._retranslate_combo(
+            self.sort,
+            [
+                ("优先待处理", "优先待处理"),
+                ("原始顺序", "原始顺序"),
+                ("有效检测数量：多→少", "有效检测数量：多→少"),
+                ("最高置信度：高→低", "最高置信度：高→低"),
+                ("文件名：A→Z", "文件名：A→Z"),
+            ],
+            "优先待处理",
+        )
         self.select_suggested_btn.setText(self._tr("全选建议修复"))
         self.clear_page_btn.setText(self._tr("取消当前页全部"))
         self.min_height.setPrefix(self._tr("最小高 "))
@@ -308,6 +320,8 @@ class SubtitleTab(QWidget):
         filters = QHBoxLayout()
         self.view = QComboBox()
         self.view.currentIndexChanged.connect(self.filter_changed)
+        self.sort = QComboBox()
+        self.sort.currentIndexChanged.connect(self.filter_changed)
         self.select_suggested_btn = QPushButton()
         self.select_suggested_btn.clicked.connect(self.select_suggested)
         self.clear_page_btn = QPushButton()
@@ -323,6 +337,7 @@ class SubtitleTab(QWidget):
         self.min_conf.setSingleStep(0.05)
         self.min_conf.setValue(0.0)
         self.view_label = QLabel()
+        self.sort_label = QLabel()
         for widget in (
             self.view_label,
             self.view,
@@ -341,6 +356,20 @@ class SubtitleTab(QWidget):
         layout.addLayout(filters)
         self.bar = QProgressBar()
         layout.addWidget(self.bar)
+
+        review_nav = QHBoxLayout()
+        review_nav.addWidget(self.sort_label)
+        review_nav.addWidget(self.sort)
+        review_nav.addStretch(1)
+        self.prev_page = QPushButton()
+        self.prev_page.clicked.connect(lambda: self.change_page(-1))
+        self.page_label = QLabel()
+        self.next_page = QPushButton()
+        self.next_page.clicked.connect(lambda: self.change_page(1))
+        review_nav.addWidget(self.prev_page)
+        review_nav.addWidget(self.page_label)
+        review_nav.addWidget(self.next_page)
+        layout.addLayout(review_nav)
 
         splitter = QSplitter(Qt.Horizontal)
         self.list = QListWidget()
@@ -374,18 +403,6 @@ class SubtitleTab(QWidget):
         splitter.setSizes([500, 800])
         layout.addWidget(splitter, 1)
 
-        page_nav = QHBoxLayout()
-        self.prev_page = QPushButton()
-        self.prev_page.clicked.connect(lambda: self.change_page(-1))
-        self.page_label = QLabel()
-        self.next_page = QPushButton()
-        self.next_page.clicked.connect(lambda: self.change_page(1))
-        page_nav.addStretch(1)
-        page_nav.addWidget(self.prev_page)
-        page_nav.addWidget(self.page_label)
-        page_nav.addWidget(self.next_page)
-        page_nav.addStretch(1)
-        layout.addLayout(page_nav)
         self.retranslate()
 
     def pick_input(self):
@@ -507,19 +524,49 @@ class SubtitleTab(QWidget):
 
     def filtered(self):
         mode = _combo_value(self.view)
+        sort_mode = _combo_value(self.sort)
         output = []
+        metrics = {}
         for index, record in enumerate(self.records):
             good = self.eligible(record)
-            if mode == "仅显示需要修复" and not any(
-                record.selected[item] for item in good
-            ):
+            selected = sum(
+                bool(record.selected[item])
+                for item in good
+                if item < len(record.selected)
+            )
+            confidence = max(
+                (
+                    float(record.scores[item])
+                    if item < len(record.scores)
+                    else 1.0
+                )
+                for item in good
+            ) if good else 0.0
+            if mode == "仅显示需要修复" and not selected:
                 continue
             if mode == "仅显示有文字" and not good:
                 continue
             if mode == "仅显示人工修改" and not any(record.manual):
                 continue
             output.append(index)
-        return output
+            metrics[index] = (len(good), selected, confidence)
+
+        if sort_mode == "原始顺序":
+            return output
+
+        def sort_key(index):
+            detected, selected, confidence = metrics[index]
+            record = self.records[index]
+            if sort_mode == "有效检测数量：多→少":
+                return (-detected, -selected, -confidence, index)
+            if sort_mode == "最高置信度：高→低":
+                return (-confidence, -detected, -selected, index)
+            if sort_mode == "文件名：A→Z":
+                return (record.path.name.casefold(), index)
+            priority = 0 if selected else (1 if detected else 2)
+            return (priority, -selected, -detected, -confidence, index)
+
+        return sorted(output, key=sort_key)
 
     def status_text(self, record):
         good = self.eligible(record)
