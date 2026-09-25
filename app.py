@@ -13,8 +13,11 @@ SRC = Path(__file__).resolve().parent / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from app_main import *  # noqa: F401,F403
-from app_main import main as _main
+import app_main as _app_main
 
 if __name__ == "__main__":
-    _main()
+    _app_main.main()
+else:
+    # Return the implementation module itself for imports so mutable compatibility
+    # globals (for example BACKEND in tests/tools) keep their historical semantics.
+    sys.modules[__name__] = _app_main
