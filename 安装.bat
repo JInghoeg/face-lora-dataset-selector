@@ -37,7 +37,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo Installing dependencies...
-".venv\Scripts\python.exe" -m pip install -r requirements.txt
+".venv\Scripts\python.exe" -m pip install -r requirements\runtime.txt
 if errorlevel 1 goto :failed
 ".venv\Scripts\python.exe" tools\install_ui_dependencies.py
 if errorlevel 1 goto :failed

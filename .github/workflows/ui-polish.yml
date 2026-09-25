@@ -7,16 +7,17 @@ on:
   pull_request:
     paths:
       - "app.py"
-      - "ui/qt/dataset_view.py"
+      - "src/app_main.py"
+      - "src/ui/qt/dataset_view.py"
       - "tests/dataset_view_ui_smoke.py"
       - "tests/app_shutdown_smoke.py"
       - "tests/operation_control_smoke.py"
       - "tools/qa-portable.ps1"
-      - "core/cancellation.py"
-      - "infrastructure/runtime_tuning.py"
-      - "infrastructure/runtime_log.py"
-      - "infrastructure/cache_store.py"
-      - "application/selector.py"
+      - "src/core/cancellation.py"
+      - "src/infrastructure/runtime_tuning.py"
+      - "src/infrastructure/runtime_log.py"
+      - "src/infrastructure/cache_store.py"
+      - "src/application/selector.py"
       - ".github/workflows/ui-polish.yml"
 
 concurrency:
@@ -51,7 +52,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Full selector self-test
         shell: pwsh

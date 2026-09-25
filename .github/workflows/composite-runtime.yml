@@ -6,9 +6,9 @@ on:
     branches:
       - main
     paths:
-      - "features/composite/**"
-      - "application/**"
-      - "requirements*.txt"
+      - "src/features/composite/**"
+      - "src/application/**"
+      - "requirements/**"
       - "packaging/portable.spec"
       - "tools/build_portable.ps1"
       - ".github/workflows/composite-runtime.yml"
@@ -17,9 +17,9 @@ on:
     branches:
       - main
     paths:
-      - "features/composite/**"
-      - "application/**"
-      - "requirements*.txt"
+      - "src/features/composite/**"
+      - "src/application/**"
+      - "requirements/**"
       - "packaging/portable.spec"
       - "tools/build_portable.ps1"
       - ".github/workflows/composite-runtime.yml"
@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Dependency versions
         shell: pwsh
@@ -101,7 +101,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Download public DeepGHS parity image
         shell: pwsh
@@ -152,7 +152,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt -r requirements/build.txt
 
       - name: Build Portable
         shell: pwsh

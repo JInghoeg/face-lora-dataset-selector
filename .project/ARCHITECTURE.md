@@ -29,20 +29,20 @@ One process, one Portable application, one dataset state.
 Dependency direction:
 
 ```
-Qt UI / app.py
+Qt UI / src/app_main.py + src/ui/qt
       |
       v
-application/
+src/application/
       |
-      +------> features/*
+      +------> src/features/*
       |
-      +------> infrastructure/*
-                  ^
-                  |
-features/* --------+
+      +------> src/infrastructure/*
+                      ^
+                      |
+src/features/* --------+
       |
       v
-core/
+src/core/
 ```
 
 Rules:
@@ -56,46 +56,44 @@ Rules:
 
 ## Current packages
 
-### core/
+### src/core/
 
 Stable cross-layer DTOs and metadata. It must stay small.
 
 Current:
-- `core/contracts.py` — stable application/result DTOs.
-- `core/models.py` — shared dataset/domain records (`Photo`, findings, view state); no Qt/model runtime imports.
+- `src/core/contracts.py` — stable application/result DTOs.
+- `src/core/models.py` — shared dataset/domain records (`Photo`, findings, view state); no Qt/model runtime imports.
 
 Future domain records may move here only when doing so does not make Core depend on an optional feature.
 
-### features/
+### src/features/
 
 Feature-first organization. Each feature owns its product-specific semantics.
 
 Current:
-- `features/ranking` — quality-analysis engine, duplicate grouping primitives used by the ranking pipeline, and automatic recommendation semantics; analysis is Qt-free.
-- `features/composite` — Composite detector adapter and accept/materialization semantics.
-- `features/auto_crop` — ISNetIS runtime, crop proposal/decision semantics and export crop metadata.
-- `features/source_organizer` — dry-run planning, transaction/journal recovery and source organization semantics.
-- `features/text_cleanup` — subtitle/watermark detection + repair as one feature: PP-OCR, suggestion policy, state persistence, MI-GAN/TELEA/NS repair and batch output.
-
-Still deferred:
-- `features/duplicates` — grouping primitives are still coupled to Ranking and the review surface remains legacy Qt code.
+- `src/features/ranking` — quality-analysis engine, duplicate grouping primitives used by the ranking pipeline, and automatic recommendation semantics; analysis is Qt-free.
+- `src/features/composite` — Composite detector adapter and accept/materialization semantics.
+- `src/features/auto_crop` — ISNetIS runtime, crop proposal/decision semantics and export crop metadata.
+- `src/features/source_organizer` — dry-run planning, transaction/journal recovery and source organization semantics.
+- `src/features/text_cleanup` — subtitle/watermark detection + repair as one feature: PP-OCR, suggestion policy, state persistence, MI-GAN/TELEA/NS repair and batch output.
+- `src/features/duplicate` — duplicate grouping/review backend owned independently from Ranking and exposed through the Application boundary.
 
 A feature should be removable without requiring edits inside sibling feature packages.
 
-### infrastructure/
+### src/infrastructure/
 
 Generic implementation adapters.
 
 Current:
-- `infrastructure/filesystem.py` — generic file enumeration/copy/crop/archive/hash primitives.
-- `infrastructure/cache_store.py` — versioned dataset cache serialization with feature codec injection.
-- `infrastructure/model_download.py` — generic SHA-verified reusable model download/cache helper.
+- `src/infrastructure/filesystem.py` — generic file enumeration/copy/crop/archive/hash primitives.
+- `src/infrastructure/cache_store.py` — versioned dataset cache serialization with feature codec injection.
+- `src/infrastructure/model_download.py` — generic SHA-verified reusable model download/cache helper.
 
 Feature-specific model runtimes remain inside their owning feature packages.
 
-Infrastructure APIs must remain generic. Composite-specific naming and state belong in `features/composite`, not in filesystem infrastructure.
+Infrastructure APIs must remain generic. Composite-specific naming and state belong in `src/features/composite`, not in filesystem infrastructure.
 
-### application/
+### src/application/
 
 Workflow composition and stable in-process API consumed by UI.
 
@@ -110,14 +108,26 @@ The registry is intentionally small. It describes built-in feature capabilities/
 
 ### UI
 
-The current Qt UI still lives largely in `app.py` and is legacy migration debt.
+The product implementation now lives under `src/`. The remaining large presentation/orchestration entry is `src/app_main.py`; extracted reusable Qt presentation lives under `src/ui/qt`. Root `app.py` is only a launcher/compatibility shim.
 
-New UI/product actions should route through `SelectorApplication`. A later UX/UI phase should move presentation into a dedicated `ui/qt` package and use Qt Model/View rather than making widgets own the dataset.
+New UI/product actions should route through `SelectorApplication`. Continue moving presentation out of `src/app_main.py` incrementally, using `src/ui/qt` and Qt Model/View rather than making widgets own the dataset.
 
 Qt explicitly recommends Model/View for flexible item presentation; convenience item widgets such as QListWidget are less flexible than view/model classes.
 
 Reference:
 https://doc.qt.io/qt-6/model-view-programming.html
+
+## Repository ownership
+
+- Product Python implementation: `src/`
+- Tracked runtime models/catalogs: `resources/`
+- Dependency manifests: `requirements/`
+- Packaging: `packaging/`
+- Developer/QA helpers: `tools/`
+- Tests: `tests/`
+- Root `app.py` and `text_detector.py`: compatibility/entry shims only
+
+Do not grow new product implementation back into the repository root.
 
 ## Feature contribution model
 
@@ -143,7 +153,7 @@ backend.accept_composite(folder, source, proposal, keep_mask)
 backend.export_recommended(records, destination)
 ```
 
-Return values are DTOs from `core/contracts.py`.
+Return values are DTOs from `src/core/contracts.py`.
 
 Do not add new UI methods that directly:
 - call ONNX/model runtimes;

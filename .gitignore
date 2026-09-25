@@ -12,7 +12,7 @@ cache/
 
 # Optional third-party model downloaded by the user.
 # It is intentionally not redistributed in the public release.
-models/migan_pipeline_v2.onnx
+resources/models/migan_pipeline_v2.onnx
 .venv/
 build/
 dist/
@@ -21,7 +21,10 @@ dist/
 
 # Local research / benchmark artifacts
 _research_output/
-models/composite_split_cache/
+resources/models/composite_split_cache/
 
 # Generated Qt translation binaries
-translations/*.qm
+resources/translations/*.qm
+
+# Editable src-layout package metadata
+*.egg-info/

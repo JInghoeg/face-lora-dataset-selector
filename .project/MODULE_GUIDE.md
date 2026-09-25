@@ -20,7 +20,7 @@ If another feature must understand this feature's internals, the boundary is wro
 Preferred shape:
 
 ```
-features/<feature_id>/
+src/features/<feature_id>/
     __init__.py
     service.py
     # optional detector.py / policy.py / contracts.py only when needed

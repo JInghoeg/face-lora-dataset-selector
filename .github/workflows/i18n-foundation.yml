@@ -5,13 +5,14 @@ on:
     branches:
       - ux/i18n-foundation
     paths:
-      - "ui/i18n/**"
-      - "ui/qt/auto_crop_review.py"
-      - "ui/qt/text_cleanup.py"
-      - "ui/qt/image_preview.py"
-      - "translations/**"
+      - "src/ui/i18n/**"
+      - "src/ui/qt/auto_crop_review.py"
+      - "src/ui/qt/text_cleanup.py"
+      - "src/ui/qt/image_preview.py"
+      - "resources/translations/**"
       - "tools/compile_translations.py"
       - "app.py"
+      - "src/app_main.py"
       - "安装.bat"
       - "tools/build_portable.ps1"
       - "packaging/portable.spec"
@@ -21,13 +22,14 @@ on:
       - ".github/workflows/i18n-foundation.yml"
   pull_request:
     paths:
-      - "ui/i18n/**"
-      - "ui/qt/auto_crop_review.py"
-      - "ui/qt/text_cleanup.py"
-      - "ui/qt/image_preview.py"
-      - "translations/**"
+      - "src/ui/i18n/**"
+      - "src/ui/qt/auto_crop_review.py"
+      - "src/ui/qt/text_cleanup.py"
+      - "src/ui/qt/image_preview.py"
+      - "resources/translations/**"
       - "tools/compile_translations.py"
       - "app.py"
+      - "src/app_main.py"
       - "安装.bat"
       - "tools/build_portable.ps1"
       - "packaging/portable.spec"
@@ -68,7 +70,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
           python tools/install_ui_dependencies.py
 
       - name: Compile Qt translations
@@ -82,7 +84,7 @@ jobs:
       - name: Compile i18n integration
         shell: pwsh
         run: |
-          python -m compileall ui app.py tools/compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
+          python -m compileall src/ui src/app_main.py app.py tools/compile_translations.py tests/i18n_smoke.py tests/i18n_catalog_contract.py
 
       - name: Validate catalog contract
         shell: pwsh
@@ -137,7 +139,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt -r requirements/build.txt
           python tools/install_ui_dependencies.py
 
       - name: Build Portable with translations

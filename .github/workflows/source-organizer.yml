@@ -6,17 +6,19 @@ on:
       - feature/v0.3-source-organizer
     paths:
       - "app.py"
-      - "core/**"
-      - "features/source_organizer/**"
-      - "application/**"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/source_organizer/**"
+      - "src/application/**"
       - ".importlinter"
       - ".github/workflows/source-organizer.yml"
   pull_request:
     paths:
       - "app.py"
-      - "core/**"
-      - "features/source_organizer/**"
-      - "application/**"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/source_organizer/**"
+      - "src/application/**"
       - ".importlinter"
       - ".github/workflows/source-organizer.yml"
 
@@ -51,12 +53,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Compile Source Organizer
         shell: pwsh
         run: |
-          python -m compileall core features/source_organizer application
+          python -m compileall src/core src/features/source_organizer src/application
 
       - name: Source Organizer transaction self-test
         shell: pwsh

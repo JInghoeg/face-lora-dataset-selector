@@ -4,13 +4,14 @@ on:
   pull_request:
     paths:
       - "app.py"
-      - "core/**"
-      - "features/duplicate/**"
-      - "features/ranking/**"
-      - "application/**"
-      - "ui/qt/duplicate_review.py"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/duplicate/**"
+      - "src/features/ranking/**"
+      - "src/application/**"
+      - "src/ui/qt/duplicate_review.py"
       - "tests/duplicate_backend_smoke.py"
-      - "requirements*.txt"
+      - "requirements/**"
       - ".importlinter"
       - ".github/workflows/duplicate-boundary.yml"
   push:
@@ -19,13 +20,14 @@ on:
       - "refactor/**"
     paths:
       - "app.py"
-      - "core/**"
-      - "features/duplicate/**"
-      - "features/ranking/**"
-      - "application/**"
-      - "ui/qt/duplicate_review.py"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/duplicate/**"
+      - "src/features/ranking/**"
+      - "src/application/**"
+      - "src/ui/qt/duplicate_review.py"
       - "tests/duplicate_backend_smoke.py"
-      - "requirements*.txt"
+      - "requirements/**"
       - ".importlinter"
       - ".github/workflows/duplicate-boundary.yml"
 
@@ -61,12 +63,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Compile Duplicate boundary
         shell: pwsh
         run: |
-          python -m compileall features/duplicate application ui/qt/duplicate_review.py app.py
+          python -m compileall src/features/duplicate application src/ui/qt/duplicate_review.py app.py
 
       - name: Duplicate backend smoke
         shell: pwsh

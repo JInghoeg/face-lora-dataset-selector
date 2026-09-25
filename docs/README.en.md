@@ -509,7 +509,7 @@ Manual setup is also possible:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements\runtime.txt
 .\.venv\Scripts\python.exe app.py
 ```
 

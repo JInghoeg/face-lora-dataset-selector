@@ -8,7 +8,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSLATIONS = ROOT / "translations"
+TRANSLATIONS = ROOT / "resources" / "translations"
 
 
 def find_lrelease() -> str:
