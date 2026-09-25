@@ -11,16 +11,16 @@ def root_path(relative):
 # detector caches remain on-demand and must never be swept into Portable builds
 # just because a developer has downloaded them locally.
 datas = [
-    (root_path('models/yunet_2023mar.onnx'), 'models'),
-    (root_path('models/ediffiqa_t.onnx'), 'models'),
-    (root_path('models/brisque_model_live.yml'), 'models'),
-    (root_path('models/brisque_range_live.yml'), 'models'),
-    (root_path('models/mb1_120x120.onnx'), 'models'),
-    (root_path('models/param_mean_std_62d_120x120.pkl'), 'models'),
-    (root_path('models/pose_landmarker_lite.task'), 'models'),
-    (root_path('models/ppocrv5_mobile_det/inference.onnx'), 'models/ppocrv5_mobile_det'),
-    (root_path('models/ppocrv5_mobile_det/inference.yml'), 'models/ppocrv5_mobile_det'),
-    (root_path('translations/app_en_US.qm'), 'translations'),
+    (root_path('resources/models/yunet_2023mar.onnx'), 'models'),
+    (root_path('resources/models/ediffiqa_t.onnx'), 'models'),
+    (root_path('resources/models/brisque_model_live.yml'), 'models'),
+    (root_path('resources/models/brisque_range_live.yml'), 'models'),
+    (root_path('resources/models/mb1_120x120.onnx'), 'models'),
+    (root_path('resources/models/param_mean_std_62d_120x120.pkl'), 'models'),
+    (root_path('resources/models/pose_landmarker_lite.task'), 'models'),
+    (root_path('resources/models/ppocrv5_mobile_det/inference.onnx'), 'models/ppocrv5_mobile_det'),
+    (root_path('resources/models/ppocrv5_mobile_det/inference.yml'), 'models/ppocrv5_mobile_det'),
+    (root_path('resources/translations/app_en_US.qm'), 'translations'),
 ]
 
 # QFluentWidgets loads packaged QSS/resources at runtime.  The selected Auto
@@ -40,7 +40,7 @@ hiddenimports = [
 
 a = Analysis(
     [root_path('app.py')],
-    pathex=[str(PROJECT_ROOT)],
+    pathex=[root_path('src'), str(PROJECT_ROOT)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

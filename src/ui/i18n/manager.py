@@ -30,7 +30,7 @@ def _default_translation_root() -> Path:
         if bundle:
             return Path(bundle) / "translations"
         return Path(sys.executable).resolve().parent / "translations"
-    return Path(__file__).resolve().parents[2] / "translations"
+    return Path(__file__).resolve().parents[3] / "resources" / "translations"
 
 
 class LanguageManager(QObject):

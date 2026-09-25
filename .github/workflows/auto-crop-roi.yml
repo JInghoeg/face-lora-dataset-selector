@@ -6,17 +6,19 @@ on:
       - feature/v0.3-auto-crop-manual-roi
     paths:
       - "app.py"
-      - "features/auto_crop/**"
-      - "application/**"
-      - "requirements.txt"
+      - "src/app_main.py"
+      - "src/features/auto_crop/**"
+      - "src/application/**"
+      - "requirements/runtime.txt"
       - "packaging/portable.spec"
       - ".github/workflows/auto-crop-roi.yml"
   pull_request:
     paths:
       - "app.py"
-      - "features/auto_crop/**"
-      - "application/**"
-      - "requirements.txt"
+      - "src/app_main.py"
+      - "src/features/auto_crop/**"
+      - "src/application/**"
+      - "requirements/runtime.txt"
       - "packaging/portable.spec"
       - ".github/workflows/auto-crop-roi.yml"
 
@@ -52,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Full selector self-test
         shell: pwsh
@@ -110,7 +112,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt -r requirements/build.txt
           python tools/install_ui_dependencies.py
 
       - name: Build Portable

@@ -6,17 +6,19 @@ on:
       - feature/v0.3-source-organizer
     paths:
       - "app.py"
-      - "core/**"
-      - "features/source_organizer/**"
-      - "application/**"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/source_organizer/**"
+      - "src/application/**"
       - ".importlinter"
       - ".github/workflows/source-organizer.yml"
   pull_request:
     paths:
       - "app.py"
-      - "core/**"
-      - "features/source_organizer/**"
-      - "application/**"
+      - "src/app_main.py"
+      - "src/core/**"
+      - "src/features/source_organizer/**"
+      - "src/application/**"
       - ".importlinter"
       - ".github/workflows/source-organizer.yml"
 
@@ -51,12 +53,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Compile Source Organizer
         shell: pwsh
         run: |
-          python -m compileall core features/source_organizer application
+          python -m compileall src/core src/features/source_organizer src/application
 
       - name: Source Organizer transaction self-test
         shell: pwsh
@@ -72,8 +74,8 @@ jobs:
         if: ${{ matrix.python == '3.12' }}
         shell: pwsh
         run: |
-          $feature = "features\source_organizer"
-          $featureOff = "features\source_organizer.__disabled_for_smoke__"
+          $feature = "src\features\source_organizer"
+          $featureOff = "src\features\source_organizer.__disabled_for_smoke__"
           try {
             Move-Item $feature $featureOff
             python -c "import app; assert not app.BACKEND.feature_available('source_organizer'); print('optional Source Organizer absence startup OK')"

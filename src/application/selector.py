@@ -58,7 +58,15 @@ except ImportError:
 class SelectorApplication:
     def __init__(self, registry=None):
         self.registry = registry or default_registry()
-        project_root = Path(__file__).resolve().parents[1]
+        if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+            project_root = Path(sys._MEIPASS)
+            resource_root = project_root
+            repo_root = Path(sys.executable).resolve().parent
+        else:
+            repo_root = Path(__file__).resolve().parents[2]
+            project_root = repo_root
+            resource_root = repo_root / "resources"
+
         if os.environ.get("FACE_LORA_MODEL_CACHE_ROOT"):
             self.model_cache_root = Path(
                 os.environ["FACE_LORA_MODEL_CACHE_ROOT"]
@@ -69,7 +77,7 @@ class SelectorApplication:
                 / "_FaceLoRA_ModelCache"
             )
         else:
-            self.model_cache_root = project_root.parent / "_FaceLoRA_ModelCache"
+            self.model_cache_root = repo_root.parent / "_FaceLoRA_ModelCache"
 
         user_data_root = Path(
             os.environ.get("LOCALAPPDATA")
@@ -77,7 +85,7 @@ class SelectorApplication:
         ) / "Face LoRA Dataset Selector"
         self.cache = DatasetCache(
             cache_root=user_data_root / "cache",
-            legacy_cache_root=project_root / "cache",
+            legacy_cache_root=repo_root / "cache",
             analysis_version=4,
             proposal_loader=self.composite_proposal_from_dict,
             proposal_version_getter=lambda: self.composite_proposal_version,
@@ -95,14 +103,14 @@ class SelectorApplication:
 
         self.text_cleanup = (
             _TextCleanupService(
-                ocr_model_path=project_root
+                ocr_model_path=resource_root
                 / "models"
                 / "ppocrv5_mobile_det"
                 / "inference.onnx",
                 state_path=self.cache.cache_root / "subtitle_cleaner.json",
                 model_cache=self.model_cache_root / "text_cleanup",
                 model_reuse_roots=(
-                    project_root / "models",
+                    resource_root / "models",
                     self.model_cache_root.parent
                     / "_shared_cache"
                     / "face-lora-dataset-selector",

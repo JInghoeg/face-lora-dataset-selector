@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TS_PATH = ROOT / "translations" / "app_en_US.ts"
+TS_PATH = ROOT / "resources" / "translations" / "app_en_US.ts"
 PLACEHOLDER = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
@@ -61,15 +61,15 @@ def main():
         assert context in data, context
 
     auto_sources = literal_calls(
-        ROOT / "ui" / "qt" / "auto_crop_review.py",
+        ROOT / "src" / "ui" / "qt" / "auto_crop_review.py",
         "_tr",
     )
     composite_sources = literal_calls(
-        ROOT / "app.py",
+        ROOT / "src" / "app_main.py",
         "_tr_composite",
     )
     duplicate_sources = literal_calls(
-        ROOT / "ui" / "qt" / "duplicate_review.py",
+        ROOT / "src" / "ui" / "qt" / "duplicate_review.py",
         "_tr",
     )
     main_sources = literal_calls(
@@ -77,11 +77,11 @@ def main():
         "_tr_main",
     )
     text_cleanup_sources = literal_calls(
-        ROOT / "ui" / "qt" / "text_cleanup.py",
+        ROOT / "src" / "ui" / "qt" / "text_cleanup.py",
         "_tr",
     )
     image_preview_sources = literal_calls(
-        ROOT / "ui" / "qt" / "image_preview.py",
+        ROOT / "src" / "ui" / "qt" / "image_preview.py",
         "_tr",
     )
 

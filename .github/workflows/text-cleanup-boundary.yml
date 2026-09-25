@@ -6,25 +6,27 @@ on:
       - refactor/v0.3-text-cleanup-boundary
     paths:
       - "app.py"
+      - "src/app_main.py"
       - "text_detector.py"
-      - "core/**"
-      - "features/text_cleanup/**"
-      - "ui/**"
+      - "src/core/**"
+      - "src/features/text_cleanup/**"
+      - "src/ui/**"
       - "tests/text_cleanup_ui_smoke.py"
-      - "application/**"
-      - "infrastructure/**"
+      - "src/application/**"
+      - "src/infrastructure/**"
       - ".importlinter"
       - ".github/workflows/text-cleanup-boundary.yml"
   pull_request:
     paths:
       - "app.py"
+      - "src/app_main.py"
       - "text_detector.py"
-      - "core/**"
-      - "features/text_cleanup/**"
-      - "ui/**"
+      - "src/core/**"
+      - "src/features/text_cleanup/**"
+      - "src/ui/**"
       - "tests/text_cleanup_ui_smoke.py"
-      - "application/**"
-      - "infrastructure/**"
+      - "src/application/**"
+      - "src/infrastructure/**"
       - ".importlinter"
       - ".github/workflows/text-cleanup-boundary.yml"
 
@@ -60,12 +62,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt
 
       - name: Compile backend and UI adapters
         shell: pwsh
         run: |
-          python -m compileall features/text_cleanup application ui app.py text_detector.py
+          python -m compileall src/features/text_cleanup src/application src/ui src/app_main.py app.py text_detector.py
 
       - name: Text Cleanup backend self-test
         shell: pwsh
@@ -86,8 +88,8 @@ jobs:
         if: ${{ matrix.python == '3.12' }}
         shell: pwsh
         run: |
-          $feature = "features\text_cleanup"
-          $featureOff = "features\text_cleanup.__disabled_for_smoke__"
+          $feature = "src\features\text_cleanup"
+          $featureOff = "src\features\text_cleanup.__disabled_for_smoke__"
           try {
             Move-Item $feature $featureOff
             @'
@@ -126,7 +128,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
+          python -m pip install --no-cache-dir -r requirements/runtime.txt -r requirements/build.txt
           python tools/install_ui_dependencies.py
 
       - name: Build Portable

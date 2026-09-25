@@ -6,6 +6,7 @@ mechanism and receive progress through callbacks.
 from __future__ import annotations
 
 import math
+import sys
 import pickle
 import shutil
 import tempfile
@@ -35,8 +36,12 @@ from infrastructure.runtime_tuning import (
     configure_ort_cpu_options,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODELS = PROJECT_ROOT / "models"
+if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+    MODELS = PROJECT_ROOT / "models"
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    MODELS = PROJECT_ROOT / "resources" / "models"
 POSE = MODELS / "pose_landmarker_lite.task"
 YUNET = MODELS / "yunet_2023mar.onnx"
 EDIFF = MODELS / "ediffiqa_t.onnx"

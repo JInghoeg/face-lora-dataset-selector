@@ -16,6 +16,9 @@ import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -141,7 +144,7 @@ def main() -> int:
         manager = initialize_i18n(
             qapp,
             settings_path=settings_path,
-            translations_dir=ROOT / "translations",
+            translations_dir=ROOT / "resources" / "translations",
         )
         assert manager.language == "zh_CN"
 

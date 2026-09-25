@@ -44,6 +44,16 @@ Issue #60 — v0.4
 - Do not introduce microservices/local HTTP merely to claim frontend/backend separation.
 - Do not broaden a bounded feature extraction into a whole-application UI rewrite.
 
+## Repository layout invariant
+
+- Product implementation lives under `src/`.
+- Tracked runtime assets live under `resources/`.
+- Dependency manifests live under `requirements/`.
+- `tests/`, `tools/`, `packaging/`, `docs/`, and `openspec/` own their respective concerns.
+- Root-level `app.py` and `text_detector.py` are compatibility/entry shims only; do not grow product implementation back into them.
+- Do not add a new top-level product directory just because no existing owner was checked first.
+- Path moves are atomic: update imports, resources, CI, packaging, launch/install scripts, tests, and state in the same PR.
+
 ## Reuse-first
 
 Before custom-building mature generic capability, inspect existing maintained solutions and verify fit, license, compatibility, and lifecycle cost.

@@ -1,3 +1,4 @@
+-e .
 PySide6-Essentials>=6.6,<6.9
 mediapipe>=0.10.14,<0.11
 # BRISQUE 位于 OpenCV contrib；固定版本避免 Portable 中同时出现多套 OpenCV 二进制。

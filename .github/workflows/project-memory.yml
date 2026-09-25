@@ -91,9 +91,9 @@ jobs:
               raise SystemExit(f"State impact is No but {state_path} changed.")
 
           high_signal = (
-              "features/", "application/", "core/", "infrastructure/",
-              "ui/", "packaging/", "tools/", "src/", "app.py", "requirements",
-              "pyproject.toml", ".github/workflows/"
+              "src/", "resources/", "packaging/", "tools/", "app.py",
+              "text_detector.py", "requirements/", "pyproject.toml",
+              ".github/workflows/"
           )
           suspicious = [
               p for p in changed
@@ -109,8 +109,7 @@ jobs:
                   )
 
           product_paths = (
-              "features/", "application/", "core/", "infrastructure/",
-              "ui/", "app.py", "requirements"
+              "src/", "resources/", "app.py", "text_detector.py", "requirements/"
           )
           product_changed = [
               p for p in changed

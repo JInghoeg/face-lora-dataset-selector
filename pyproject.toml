@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face-lora-dataset-selector"
+version = "0.4.0.dev0"
+description = "Desktop workflow for curating Face LoRA training datasets."
+requires-python = ">=3.9,<3.13"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["app_main"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["application*", "core*", "features*", "infrastructure*", "ui*"]
