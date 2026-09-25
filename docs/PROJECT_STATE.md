@@ -49,6 +49,7 @@ Historical repository note:
 - Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60; the 2026-09-25 audit restored two details that had been omitted during migration: disentanglement value where justified, and the quality-first rule for bundling required redistributable default models.
 - Carry-forward audit on 2026-09-25 found one missing high-confidence product mainline: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
 - Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
+- PR #78 includes a follow-up continuity-gate bug fix: State impact matching is scoped to the full Yes/No state-choice text so the separate checked `No accepted-plan change` option cannot be misread as State impact = No.
 
 ## In progress
 
