@@ -4,7 +4,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#下载与安装)
 [![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](LICENSE)
 
-**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)** · [全部 Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [使用教程](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
+**[下载稳定版](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)** · [全部 Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [使用教程](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
 
 用于人物 / 人像 AI 训练数据集的本地整理与筛选工具。
 
@@ -434,6 +434,21 @@ Source Organizer 会根据当前筛选状态生成文件移动计划，例如将
 
 ## 稳定版和开发版
 
+### v0.3.1
+
+当前稳定 Release：
+
+**[Face LoRA Dataset Selector v0.3.1](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
+
+v0.3.1 是 v0.3.0 的紧急稳定性补丁：
+
+- 修复初始图片分析阶段可能触发的 Windows native access violation / 闪退；
+- 统一修复后台 worker 直接触碰 Qt UI 的同类风险；
+- Composite Split、Auto Crop ISNetIS、MI-GAN 的可再分发模型全部随 Portable 打包；
+- 新产生的缓存、状态、日志和模型缓存全部限制在当前 Portable 文件夹；
+- 首次启动会非破坏性复制旧 v0.3 AppData 记录，旧记录不会被删除。
+
+
 ### v0.3.0
 
 当前稳定 Release：
@@ -467,7 +482,7 @@ v0.2.0 仍保留在 Releases 中，作为上一稳定版本。
 
 下载：
 
-**[v0.3.0 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)**
+**[v0.3.1 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
 
 选择：
 
@@ -519,11 +534,9 @@ py -3.12 -m venv .venv
 
 ## 模型与缓存
 
-部分基础模型会随程序一起提供。
+v0.3.1 Windows Portable 会随包提供当前所有已确认允许再分发的运行模型，包括 Composite Split 的人物/头部检测模型、Auto Crop 的 ISNetIS，以及 Text Cleanup AI Repair 的 MI-GAN。
 
-少数体积较大或可选的功能模型会在第一次使用时按需下载，并在下载后进行完整性校验。
-
-已经下载的模型会保存在本地缓存中，之后继续使用或升级程序时可以复用。
+这些模型在构建时和打包后都会进行 SHA-256 校验，因此对应功能不再依赖第一次使用时联网下载。
 
 图片分析结果同样会缓存，因此再次打开已有数据集时，不需要从头重新处理所有图片。
 
