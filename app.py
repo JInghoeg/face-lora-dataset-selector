@@ -709,6 +709,8 @@ class Window(QMainWindow):
                 self.progress.setText(self._tr_main('正在取消当前分析…'))
                 return
 
+    # QThread workers must never touch QWidget state directly; keep these
+    # receivers on the Window object so queued delivery returns to the GUI thread.
     @Slot(str)
     def dataset_status(self, message):
         self.progress.setText(self._backend_status_display(message))
