@@ -11,6 +11,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Qt translation compilation failed."
 }
 
+python tools/prepare_bundled_models.py --root models
+if ($LASTEXITCODE -ne 0) {
+    throw "Bundled model preparation failed."
+}
+
 $build = Join-Path $PSScriptRoot "build"
 $dist = Join-Path $PSScriptRoot "dist"
 
@@ -65,6 +70,12 @@ foreach ($file in $ffmpeg) {
 Copy-Item "README.md" $portable -Force
 Copy-Item "LICENSE" $portable -Force
 Copy-Item "THIRD_PARTY_NOTICES.md" $portable -Force
+Copy-Item "THIRD_PARTY_MODEL_LICENSES.md" $portable -Force
+
+python tools/prepare_bundled_models.py --root (Join-Path $portable "_internal\models") --verify-only
+if ($LASTEXITCODE -ne 0) {
+    throw "Packaged bundled-model verification failed."
+}
 
 @"
 Face LoRA Dataset Selector - Windows x64 Portable
@@ -76,9 +87,8 @@ Face LoRA Dataset Selector - Windows x64 Portable
 
 注意：
 - 请不要只把 exe 单独复制出去，_internal 目录也是程序的一部分。
-- MI-GAN 不随压缩包分发；第一次使用 AI 修复时程序会自动下载并校验模型。
-- Composite Split 人物/头部检测模型不随压缩包分发；第一次使用 Composite Split 时会自动下载并缓存。
-- Auto Crop 的 ISNetIS 模型不随基础压缩包分发；第一次使用自动裁剪时会自动下载并做完整性校验。
+- v0.3.1 起，Composite Split、Auto Crop ISNetIS 和 MI-GAN 权重已随 Portable 打包并做 SHA-256 校验，不再依赖首次使用联网下载。
+- 程序自身产生的缓存、日志和状态只写入当前 Portable 文件夹；首次启动会只读旧 v0.3 AppData 并非破坏性复制历史记录。
 - 训练导出、文字修复和自动裁剪不会覆盖源图片像素。
 - 接受组合图拆分会把原组合图移入 _CompositeSplit_Originals；“整理源文件”会在你确认后真实移动文件位置。
 "@ | Set-Content (Join-Path $portable "使用说明.txt") -Encoding UTF8

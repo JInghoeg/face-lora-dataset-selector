@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.1 — 2026-10-04
+
+Emergency stability patch for v0.3.0.
+
+- Fix a reproduced Windows native access violation during initial dataset analysis by routing worker-to-UI signals through GUI QObject slots with explicit queued delivery.
+- Apply the same worker/UI safety rule to Composite Split, Auto Crop, incremental analysis, Source Organizer and export progress paths.
+- Bundle all currently redistributable feature weights in the Windows Portable: DeepGHS person/head detection, ISNetIS Auto Crop segmentation and MI-GAN repair.
+- Verify every bundled optional model by pinned SHA-256 during build and again in the packaged Portable.
+- Stop writing new application state to %LOCALAPPDATA%; cache, Text Cleanup state, thumbnails, logs and model cache now live inside the Portable folder.
+- On first v0.3.1 start, copy missing legacy v0.3 AppData records forward non-destructively without deleting the old copy.
+
 ## v0.3.0 — 2026-09-25
 
 v0.3 turns the selector from a mostly single-pass quality filter into a complete, human-authoritative LoRA dataset workflow.
