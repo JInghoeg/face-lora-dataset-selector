@@ -1,9 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
-# Bundle only the explicitly tracked runtime models. MI-GAN and Composite Split
-# detector caches remain on-demand and must never be swept into Portable builds
-# just because a developer has downloaded them locally.
+# Bundle all runtime model weights whose upstream licenses permit redistribution.
+# tools/prepare_bundled_models.py downloads fixed files and verifies SHA-256 first.
 datas = [
     ('models/yunet_2023mar.onnx', 'models'),
     ('models/ediffiqa_t.onnx', 'models'),
@@ -14,6 +13,10 @@ datas = [
     ('models/pose_landmarker_lite.task', 'models'),
     ('models/ppocrv5_mobile_det/inference.onnx', 'models/ppocrv5_mobile_det'),
     ('models/ppocrv5_mobile_det/inference.yml', 'models/ppocrv5_mobile_det'),
+    ('models/composite_split_cache/person_detect_v1.3_s/model.onnx', 'models/composite_split_cache/person_detect_v1.3_s'),
+    ('models/composite_split_cache/head_detect_v2.0_s/model.onnx', 'models/composite_split_cache/head_detect_v2.0_s'),
+    ('models/auto_crop/skytnt_anime_seg_isnetis/isnetis.onnx', 'models/auto_crop/skytnt_anime_seg_isnetis'),
+    ('models/text_cleanup/migan/migan_pipeline_v2.onnx', 'models/text_cleanup/migan'),
     ('translations/app_en_US.qm', 'translations'),
 ]
 
