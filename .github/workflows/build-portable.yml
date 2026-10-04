@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/v0.3-hotfix-base
   workflow_dispatch:
 
 permissions:
