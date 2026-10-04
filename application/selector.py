@@ -7,6 +7,7 @@ features without a dynamic-plugin system.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,6 +18,49 @@ from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
+
+
+def _copy_missing_tree(source: Path, destination: Path) -> None:
+    source = Path(source)
+    destination = Path(destination)
+    if not source.exists():
+        return
+    try:
+        if source.resolve() == destination.resolve():
+            return
+    except OSError:
+        pass
+    for src in source.rglob("*"):
+        if not src.is_file():
+            continue
+        try:
+            rel = src.relative_to(source)
+            dst = destination / rel
+            if dst.exists():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        except OSError:
+            continue
+
+
+def _migrate_legacy_user_data(destination: Path) -> None:
+    """Copy v0.3 AppData records forward once; never delete or overwrite legacy data."""
+    destination = Path(destination)
+    marker = destination / ".legacy_appdata_migrated_v031"
+    if marker.exists():
+        return
+    legacy_base = os.environ.get("LOCALAPPDATA")
+    if legacy_base:
+        _copy_missing_tree(
+            Path(legacy_base) / "Face LoRA Dataset Selector",
+            destination,
+        )
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        marker.write_text("v0.3.1\n", encoding="utf-8")
+    except OSError:
+        pass
 
 class SourceOrganizerBlocked(RuntimeError):
     """Stable application-level reason why Source Organizer cannot run yet."""
