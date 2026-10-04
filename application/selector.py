@@ -59,22 +59,19 @@ class SelectorApplication:
     def __init__(self, registry=None):
         self.registry = registry or default_registry()
         project_root = Path(__file__).resolve().parents[1]
-        if os.environ.get("FACE_LORA_MODEL_CACHE_ROOT"):
-            self.model_cache_root = Path(
-                os.environ["FACE_LORA_MODEL_CACHE_ROOT"]
-            ).resolve()
-        elif getattr(sys, "frozen", False):
-            self.model_cache_root = (
-                Path(sys.executable).resolve().parent.parent
-                / "_FaceLoRA_ModelCache"
-            )
-        else:
-            self.model_cache_root = project_root.parent / "_FaceLoRA_ModelCache"
+        app_root = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else project_root
+        )
+        self.app_root = app_root
+        self.bundled_models_root = project_root / "models"
+        self.model_cache_root = app_root / "_FaceLoRA_ModelCache"
 
-        user_data_root = Path(
-            os.environ.get("LOCALAPPDATA")
-            or (Path.home() / "AppData" / "Local")
-        ) / "Face LoRA Dataset Selector"
+        # Portable contract: all new persistent writes stay beside the app.
+        # v0.3 AppData is read once and copied forward non-destructively.
+        user_data_root = app_root / "_userdata"
+        _migrate_legacy_user_data(user_data_root)
         self.cache = DatasetCache(
             cache_root=user_data_root / "cache",
             legacy_cache_root=project_root / "cache",
@@ -100,13 +97,8 @@ class SelectorApplication:
                 / "ppocrv5_mobile_det"
                 / "inference.onnx",
                 state_path=self.cache.cache_root / "subtitle_cleaner.json",
-                model_cache=self.model_cache_root / "text_cleanup",
-                model_reuse_roots=(
-                    project_root / "models",
-                    self.model_cache_root.parent
-                    / "_shared_cache"
-                    / "face-lora-dataset-selector",
-                ),
+                model_cache=self.bundled_models_root / "text_cleanup",
+                model_reuse_roots=(self.bundled_models_root,),
             )
             if _TextCleanupService is not None
             else None
@@ -341,7 +333,7 @@ class SelectorApplication:
 
     @property
     def auto_crop_model_cache(self):
-        return self.model_cache_root / "auto_crop"
+        return self.bundled_models_root / "auto_crop"
 
     def scan_auto_crop(
         self,
