@@ -471,7 +471,7 @@ v0.2.0 仍保留在 Releases 中，作为上一稳定版本。
 
 下载：
 
-**[v0.3.0 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
+**[v0.3.1 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
 
 选择：
 
