@@ -6,7 +6,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)](#download--installation)
 [![License](https://img.shields.io/github/license/JInghoeg/face-lora-dataset-selector)](../LICENSE)
 
-**[Download stable release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)** · [All Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [User Guide](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
+**[Download stable release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)** · [All Releases](https://github.com/JInghoeg/face-lora-dataset-selector/releases) · [User Guide](https://github.com/JInghoeg/face-lora-dataset-selector/wiki)
 
 A local tool for organizing and filtering people / portrait datasets used in AI training.
 
@@ -432,13 +432,13 @@ These operations do not happen silently in the background.
 
 ## Stable and development versions
 
-### v0.3.0
+### v0.3.1
 
 Current stable release:
 
-**[Face LoRA Dataset Selector v0.3.0](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)**
+**[Face LoRA Dataset Selector v0.3.1](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
 
-Compared with the previous analysis, recommendation, duplicate, and text-cleanup workflows, v0.3.0 adds:
+v0.3.1 is an emergency stability patch for v0.3.0 and contains the complete v0.3 feature set. Compared with earlier versions, v0.3 adds:
 
 - dedicated duplicate-group review;
 - AI-assisted review;
@@ -449,7 +449,9 @@ Compared with the previous analysis, recommendation, duplicate, and text-cleanup
 - live Chinese / English UI switching;
 - progress, cancellation, and stability improvements for long-running operations.
 
-v0.3.0 has passed both automated validation and real human QA.
+v0.3.1 fixes a reproduced Windows native-crash risk during initial Dataset Analysis and routes the related background worker → Qt UI paths through queued GUI-thread delivery. The official Portable also bundles the redistributable models required by Composite Split, Auto Crop ISNetIS, and MI-GAN instead of relying on first-use downloads.
+
+v0.3.1 completed automated validation and was deployed and verified in a real Windows environment.
 
 ### v0.2.0
 
@@ -465,7 +467,7 @@ Future version changes will be documented together with each GitHub Release.
 
 Download:
 
-**[v0.3.0 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.0)**
+**[v0.3.1 Release](https://github.com/JInghoeg/face-lora-dataset-selector/releases/tag/v0.3.1)**
 
 Choose:
 
@@ -517,13 +519,11 @@ py -3.12 -m venv .venv
 
 ## Models and cache
 
-Several base models are included with the application.
+The Windows Portable bundles all runtime models currently confirmed as redistributable, including the Composite Split person/head detectors, Auto Crop ISNetIS, and MI-GAN for Text Cleanup AI repair.
 
-Some larger or optional models are downloaded on first use and verified after download.
+These models are SHA-256 verified during the build and again in the packaged Portable, so those workflows no longer depend on a first-use network download.
 
-Downloaded models are stored in a local cache and can be reused after continuing work or upgrading the application.
-
-Image-analysis results are cached as well, so reopening an existing dataset does not require a complete re-analysis.
+Application-controlled analysis cache, Text Cleanup state, thumbnails, runtime logs, and model cache stay inside the current application directory. Analysis results are reused, so unchanged images do not require a complete re-analysis when an existing dataset is reopened.
 
 ---
 
