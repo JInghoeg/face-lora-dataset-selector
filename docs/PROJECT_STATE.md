@@ -56,21 +56,20 @@ Historical repository note:
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
-- **Current authorized implementation slice: #80 — carry the released v0.3.1 stability baseline into current v0.4/main.** Authorization: user explicitly said “ok。可以开始开发0.4了” on 2026-10-05. Repository inspection then proved current `main` still predated release-critical v0.3.1 fixes, so stabilizing the v0.4 baseline is the first bounded implementation slice before new features.
-- Active branch: `fix/v0.4-carry-v0.3.1-stability`.
-- #80 scope is limited to queued worker→GUI delivery, app-folder-only state/logging, redistributable model bundling/verification, regression coverage and current-state/public-doc truth. It does **not** authorize unrelated v0.4 UI/algorithm/GPU work.
+- v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
+- There is currently **no subsequent bounded v0.4 implementation slice selected**. The user's 2026-10-05 instruction authorizes starting v0.4, but execution order among accepted future directions is not inferred from the backlog.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. finish #80 and restore all released v0.3.1 stability guarantees on the current `src/` architecture;
-2. prove the carry-forward with source regression checks, architecture/continuity gates, a full Windows Portable build, packaged EXE self-test, and packaged-model SHA verification;
-3. merge #80 only after required checks pass;
-4. keep unrelated v0.4 product directions inactive until a subsequent current user instruction selects the next bounded slice.
+1. preserve the now-merged v0.3.1 stability baseline on `main`;
+2. keep #72 / #80 runtime behavior in the next coherent v0.4 HUMAN UNVERIFIED checkpoint rather than interrupting every bounded change;
+3. select the next bounded v0.4 implementation/research slice from the accepted future directions using current user authorization;
+4. do not infer execution order merely from Issue numbering, old “next action” text, or dormant Draft PRs.
 
-This bootstrap is a **stability-baseline carry-forward**, not a new feature redesign. It does not authorize production GPU integration, PR #74, whole-product UI rewrite, recommendation/model changes, or manual Auto Crop entry-point implementation.
+No production GPU integration, PR #74 adoption, whole-app rewrite, recommendation/model change, or manual Auto Crop entry-point implementation is active merely because it exists in the backlog.
 
 ## Accepted future directions
 
@@ -104,11 +103,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. complete #80 on `fix/v0.4-carry-v0.3.1-stability`;
-2. run all triggered CI, including full Windows Portable build, packaged EXE self-test and bundled-model SHA verification;
-3. fix only evidence-backed failures, then merge #80 to `main`;
-4. keep Issue #72 and #80 runtime behavior in the next coherent v0.4 human-QA checkpoint;
-5. after the baseline is green on `main`, select the next bounded v0.4 implementation/research slice from the accepted directions instead of inferring execution order from the backlog.
+1. select the next bounded v0.4 slice from the accepted directions with current-user authorization;
+2. recommended candidate for product work is #75 whole-product UI/UX modernization, but its first surface must be explicitly selected rather than inferred;
+3. alternatively, target-workstation GPU benchmarking under #55 can resume as research if the user chooses performance evaluation next;
+4. keep #72 as the accumulated v0.4 interactive QA checkpoint unless a startup/data-loss/destructive blocker requires immediate human verification.
 
 ## Do not repeat
 
@@ -131,7 +129,6 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Authoritative trackers
 
 Current:
-- #80 — active v0.4 bootstrap: carry released v0.3.1 stability baseline into main
 - #60 — v0.4 umbrella / accepted scope
 - #75 — whole-product UI/UX modernization
 - #59 — UX/quality backlog from accepted v0.3 QA
@@ -144,6 +141,7 @@ Non-canonical existing work:
 - Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
 
 Completed baseline:
+- #80 / PR #81 — v0.3.1 stability baseline carried into v0.4/main; merged at `89be1d8aa6f24e87131ce81343297309ba748ed8`
 - PR #54 — v0.3 recovery implementation
 - Issue #17 — v0.3 consolidated human QA
 - PR #61 — internal documentation hygiene
