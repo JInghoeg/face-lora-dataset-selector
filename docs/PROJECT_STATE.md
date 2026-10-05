@@ -57,25 +57,28 @@ Historical repository note:
 
 - v0.4 scope is tracked under Issue #60.
 - v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
-- There is currently **no subsequent bounded v0.4 implementation slice selected**. The user's 2026-10-05 instruction authorizes starting v0.4, but execution order among accepted future directions is not inferred from the backlog.
+- **Current authorized implementation slice: #83 — modernize the main Dataset Review shell under #75.** Authorization: after the v0.4 bootstrap, the user explicitly said “可以，按照之前的形式推进吧” on 2026-10-05, accepting the immediately proposed main Dataset Selector / review presentation as the next bounded slice.
+- Active branch: `ui/v0.4-main-dataset-review-shell`.
+- #83 is presentation-only: extract the current-view header + gallery + inspector into `ui/qt`, prefer Fluent cards/buttons with native fallback, add an independently scrollable inspector, and preserve all existing Model/View/backend/i18n/source-data behavior.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. preserve the now-merged v0.3.1 stability baseline on `main`;
-2. keep #72 / #80 runtime behavior in the next coherent v0.4 HUMAN UNVERIFIED checkpoint rather than interrupting every bounded change;
-3. select the next bounded v0.4 implementation/research slice from the accepted future directions using current user authorization;
-4. do not infer execution order merely from Issue numbering, old “next action” text, or dormant Draft PRs.
+1. complete #83 as the first bounded main-screen UI/UX modernization slice under #75;
+2. keep the proven DatasetListModel / DatasetListView seam and all filtering, sorting, recommendation, persistence and file behavior unchanged;
+3. validate both Fluent and no-Fluent fallback presentation paths plus the full Windows Portable;
+4. accumulate #83 as HUMAN UNVERIFIED under #72 unless automation exposes a startup/data-loss/destructive blocker;
+5. after #83 merges, select the next bounded surface rather than expanding the PR into a whole-product rewrite.
 
-No production GPU integration, PR #74 adoption, whole-app rewrite, recommendation/model change, or manual Auto Crop entry-point implementation is active merely because it exists in the backlog.
+No production GPU integration, PR #74 adoption, recommendation/model change, global dark-mode rollout, or manual Auto Crop entry-point implementation is active in this slice.
 
 ## Accepted future directions
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACCEPTED — NOT SCHEDULED:** whole-product UI/UX modernization (#75). Auto Crop Fluent/Filmstrip was the first production slice, not completion of this direction.
+- **ACTIVE BOUNDED SLICE:** whole-product UI/UX modernization (#75) is active only through #83 (main Dataset Review shell). Auto Crop Fluent/Filmstrip remains the first production slice; #83 is the next presentation slice, not authorization for the remaining surfaces.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -103,10 +106,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. select the next bounded v0.4 slice from the accepted directions with current-user authorization;
-2. recommended candidate for product work is #75 whole-product UI/UX modernization, but its first surface must be explicitly selected rather than inferred;
-3. alternatively, target-workstation GPU benchmarking under #55 can resume as research if the user chooses performance evaluation next;
-4. keep #72 as the accumulated v0.4 interactive QA checkpoint unless a startup/data-loss/destructive blocker requires immediate human verification.
+1. finish #83 on `ui/v0.4-main-dataset-review-shell`;
+2. require the dedicated Fluent shell smoke on Python 3.9 / 3.12, native fallback regression, architecture/UI checks, and full Windows Portable build;
+3. merge #83 only after the evidence is green;
+4. keep #83 in #72's accumulated v0.4 interactive QA checkpoint;
+5. after merge, choose the next bounded UI surface under #75 instead of broadening #83.
 
 ## Do not repeat
 
@@ -129,6 +133,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Authoritative trackers
 
 Current:
+- #83 — active bounded v0.4 UI slice: main Dataset Review shell
 - #60 — v0.4 umbrella / accepted scope
 - #75 — whole-product UI/UX modernization
 - #59 — UX/quality backlog from accepted v0.3 QA

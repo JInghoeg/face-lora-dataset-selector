@@ -51,6 +51,15 @@ view.setCurrentIndex(index)
 assert view.currentIndex().isValid()
 
 window = app.Window()
+assert hasattr(window, "review_pane")
+assert window.grid is window.review_pane.grid
+assert window.dataset_model is window.review_pane.dataset_model
+# This workflow installs the base runtime only; the shell must gracefully use
+# its native Qt fallback when QFluentWidgets is absent.
+assert not window.review_pane.fluent_enabled
+assert window.review_pane.inspector_scroll.widgetResizable()
+assert window.dataset_splitter.handleWidth() >= 8
+assert not window.dataset_splitter.childrenCollapsible()
 a = Photo(Path("a.jpg"), sample_id="sample-a", auto_status="推荐", eligibility="PASS")
 b = Photo(Path("b.jpg"), sample_id="sample-b", auto_status="备选", eligibility="REVIEW")
 window.records = [a, b]
