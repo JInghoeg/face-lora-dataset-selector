@@ -7,6 +7,7 @@ features without a dynamic-plugin system.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,6 +18,53 @@ from infrastructure.cache_store import DatasetCache
 from .dataset_refresh import DatasetRefreshService
 
 from .feature_registry import default_registry
+
+
+def _copy_missing_tree(source: Path, destination: Path) -> None:
+    """Copy legacy user data without deleting or overwriting either side."""
+    source = Path(source)
+    destination = Path(destination)
+    if not source.exists():
+        return
+    try:
+        if source.resolve() == destination.resolve():
+            return
+    except OSError:
+        pass
+
+    for src in source.rglob("*"):
+        if not src.is_file():
+            continue
+        try:
+            relative = src.relative_to(source)
+            dst = destination / relative
+            if dst.exists():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        except OSError:
+            continue
+
+
+def _migrate_legacy_user_data(destination: Path) -> None:
+    """One-way, non-destructive migration from the pre-v0.3.1 AppData root."""
+    destination = Path(destination)
+    marker = destination / ".legacy_appdata_migrated_v031"
+    if marker.exists():
+        return
+
+    legacy_base = os.environ.get("LOCALAPPDATA")
+    if legacy_base:
+        _copy_missing_tree(
+            Path(legacy_base) / "Face LoRA Dataset Selector",
+            destination,
+        )
+
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        marker.write_text("v0.3.1+\n", encoding="utf-8")
+    except OSError:
+        pass
 
 class SourceOrganizerBlocked(RuntimeError):
     """Stable application-level reason why Source Organizer cannot run yet."""
@@ -67,22 +115,20 @@ class SelectorApplication:
             project_root = repo_root
             resource_root = repo_root / "resources"
 
-        if os.environ.get("FACE_LORA_MODEL_CACHE_ROOT"):
-            self.model_cache_root = Path(
-                os.environ["FACE_LORA_MODEL_CACHE_ROOT"]
-            ).resolve()
-        elif getattr(sys, "frozen", False):
-            self.model_cache_root = (
-                Path(sys.executable).resolve().parent.parent
-                / "_FaceLoRA_ModelCache"
-            )
-        else:
-            self.model_cache_root = repo_root.parent / "_FaceLoRA_ModelCache"
+        app_root = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else repo_root
+        )
+        self.app_root = app_root
+        self.bundled_models_root = resource_root / "models"
 
-        user_data_root = Path(
-            os.environ.get("LOCALAPPDATA")
-            or (Path.home() / "AppData" / "Local")
-        ) / "Face LoRA Dataset Selector"
+        # Portable contract: application-controlled persistent writes stay
+        # inside the application/source root. External cache overrides are not
+        # honored because they would violate that contract.
+        self.model_cache_root = app_root / "_FaceLoRA_ModelCache"
+        user_data_root = app_root / "_userdata"
+        _migrate_legacy_user_data(user_data_root)
         self.cache = DatasetCache(
             cache_root=user_data_root / "cache",
             legacy_cache_root=repo_root / "cache",
@@ -108,13 +154,8 @@ class SelectorApplication:
                 / "ppocrv5_mobile_det"
                 / "inference.onnx",
                 state_path=self.cache.cache_root / "subtitle_cleaner.json",
-                model_cache=self.model_cache_root / "text_cleanup",
-                model_reuse_roots=(
-                    resource_root / "models",
-                    self.model_cache_root.parent
-                    / "_shared_cache"
-                    / "face-lora-dataset-selector",
-                ),
+                model_cache=self.bundled_models_root / "text_cleanup",
+                model_reuse_roots=(self.bundled_models_root,),
             )
             if _TextCleanupService is not None
             else None
@@ -349,7 +390,7 @@ class SelectorApplication:
 
     @property
     def auto_crop_model_cache(self):
-        return self.model_cache_root / "auto_crop"
+        return self.bundled_models_root / "auto_crop"
 
     def scan_auto_crop(
         self,

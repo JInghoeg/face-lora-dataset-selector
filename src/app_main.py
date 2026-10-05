@@ -15,7 +15,7 @@ from infrastructure.runtime_log import (
 try:
     import cv2, numpy as np
     from PIL import Image, ImageOps
-    from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, QSize, QTimer, QRectF
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, Qt, Signal, Slot, QSize, QTimer, QRectF
     from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
@@ -715,6 +715,64 @@ class Window(QMainWindow):
                 self.progress.setText(self._tr_main('正在取消当前分析…'))
                 return
 
+    # QThread workers must never touch QWidget state directly; keep these
+    # receivers on the Window object so queued delivery returns to the GUI thread.
+    @Slot(str)
+    def dataset_status(self, message):
+        self.progress.setText(self._backend_status_display(message))
+
+    @Slot(int, int, str)
+    def dataset_progress(self, current, total, name):
+        self.analysis_progress('dataset', current, total, name)
+
+    @Slot(str)
+    def dataset_failed(self, error):
+        self.analysis_failed_common('分析失败', error)
+
+    @Slot()
+    def dataset_cancelled(self):
+        self.analysis_cancelled('dataset')
+
+    @Slot(int, int, str)
+    def organizer_progress(self, current, total, name):
+        self.progress.setText(
+            self._tr_main('整理源文件 {current}/{total}：{name}').format(
+                current=current,
+                total=total,
+                name=name,
+            )
+        )
+
+    @Slot(int, int, str)
+    def auto_crop_progress(self, current, total, name):
+        self.analysis_progress('auto_crop', current, total, name)
+
+    @Slot()
+    def auto_crop_cancelled(self):
+        self.analysis_cancelled('auto_crop')
+
+    @Slot(int, int, str)
+    def composite_progress(self, current, total, name):
+        self.analysis_progress('composite', current, total, name)
+
+    @Slot()
+    def composite_cancelled(self):
+        self.analysis_cancelled('composite')
+
+    @Slot(int, int, str)
+    def incremental_progress(self, current, total, name):
+        self.analysis_progress('incremental', current, total, name)
+
+    @Slot()
+    def incremental_cancelled(self):
+        self.analysis_cancelled('incremental')
+
+    @Slot()
+    def thumbnail_thread_finished(self):
+        thread = self.sender()
+        if thread is not None:
+            self.thumbnail_thread_done(thread)
+
     def analysis_progress(self,kind,current,total,name):
         labels={
             'dataset':'分析 {current}/{total}：{name}',
@@ -770,7 +828,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
-        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.begin_cancellable_analysis(self._tr_main('分析准备中…'));self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(lambda m:self.progress.setText(self._backend_status_display(m)));self.worker.progress.connect(lambda n,t,name:self.analysis_progress('dataset',n,t,name));self.worker.finished.connect(self.done);self.worker.failed.connect(lambda e:self.analysis_failed_common('分析失败',e));self.worker.cancelled.connect(lambda:self.analysis_cancelled('dataset'));self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.worker.cancelled.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start(QThread.Priority.LowPriority)
+        self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.begin_cancellable_analysis(self._tr_main('分析准备中…'));self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.dataset_status,Qt.ConnectionType.QueuedConnection);self.worker.progress.connect(self.dataset_progress,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.done,Qt.ConnectionType.QueuedConnection);self.worker.failed.connect(self.dataset_failed,Qt.ConnectionType.QueuedConnection);self.worker.cancelled.connect(self.dataset_cancelled,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.worker.cancelled.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start(QThread.Priority.LowPriority)
     def done(self,rs):
         self.records=rs
         if self.pending_composite_outputs:
@@ -889,7 +947,7 @@ class Window(QMainWindow):
     def start_thumbnails(self,indices):
         missing=[(i,self.records[i]) for i in indices if self.cached_thumbnail(self.records[i]) is None]
         if not missing:return
-        self.thumb_generation+=1;token=self.thumb_generation;thread=QThread(self);worker=ThumbnailWorker(token,missing,THUMB_CACHE);thread._thumbnail_worker=worker;worker.moveToThread(thread);thread.started.connect(worker.run);worker.ready.connect(self.thumbnail_ready);worker.finished.connect(thread.quit);thread.finished.connect(worker.deleteLater);thread.finished.connect(lambda t=thread:self.thumbnail_thread_done(t));self.thumb_threads.append(thread);thread.start()
+        self.thumb_generation+=1;token=self.thumb_generation;thread=QThread(self);worker=ThumbnailWorker(token,missing,THUMB_CACHE);thread._thumbnail_worker=worker;worker.moveToThread(thread);thread.started.connect(worker.run);worker.ready.connect(self.thumbnail_ready);worker.finished.connect(thread.quit);thread.finished.connect(worker.deleteLater);thread.finished.connect(self.thumbnail_thread_finished);self.thumb_threads.append(thread);thread.start()
     def thumbnail_thread_done(self,thread):
         if thread in self.thumb_threads:self.thumb_threads.remove(thread)
         thread.deleteLater()
@@ -1128,7 +1186,7 @@ class Window(QMainWindow):
         if box.exec()!=QMessageBox.Yes:return
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False)
         self.progress.setText(self._tr_main('整理源文件 0/{total}：准备事务').format(total=len(plan.moves)*2))
-        self.organizer_thread=QThread(self);self.organizer_worker=SourceOrganizerWorker(plan);self.organizer_worker.moveToThread(self.organizer_thread);self.organizer_thread.started.connect(self.organizer_worker.run);self.organizer_worker.progress.connect(lambda n,t,name:self.progress.setText(self._tr_main('整理源文件 {current}/{total}：{name}').format(current=n,total=t,name=name)));self.organizer_worker.finished.connect(self.source_organizer_done);self.organizer_worker.failed.connect(self.source_organizer_failed);self.organizer_worker.finished.connect(self.organizer_thread.quit);self.organizer_worker.failed.connect(self.organizer_thread.quit);self.organizer_thread.finished.connect(self.source_organizer_thread_done);self.organizer_thread.start()
+        self.organizer_thread=QThread(self);self.organizer_worker=SourceOrganizerWorker(plan);self.organizer_worker.moveToThread(self.organizer_thread);self.organizer_thread.started.connect(self.organizer_worker.run);self.organizer_worker.progress.connect(self.organizer_progress,Qt.ConnectionType.QueuedConnection);self.organizer_worker.finished.connect(self.source_organizer_done,Qt.ConnectionType.QueuedConnection);self.organizer_worker.failed.connect(self.source_organizer_failed,Qt.ConnectionType.QueuedConnection);self.organizer_worker.finished.connect(self.organizer_thread.quit);self.organizer_worker.failed.connect(self.organizer_thread.quit);self.organizer_thread.finished.connect(self.source_organizer_thread_done);self.organizer_thread.start()
     def source_organizer_done(self,result):
         self.thumb_generation+=1;self.thumb_memory.clear();self.save();self.refresh()
         self.pick.setEnabled(True);self.rescan.setEnabled(True);self.export.setEnabled(True);self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True)
@@ -1161,8 +1219,8 @@ class Window(QMainWindow):
             candidates=BACKEND.auto_crop_review_records(self.records)
             if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片没有需要自动裁剪复核的候选。'));return
             AutoCropReviewDialog(BACKEND,self.records,self.auto_crop_review_changed,THUMB_CACHE,self,event_logger=runtime_event).exec();self.update_auto_crop_button();return
-        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('自动裁剪扫描准备中：{todo} 张；首次使用如未缓存会下载 ISNetIS 模型').format(todo=todo))
-        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(lambda n,t,name:self.analysis_progress('auto_crop',n,t,name));self.auto_crop_worker.finished.connect(self.auto_crop_scan_done);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed);self.auto_crop_worker.cancelled.connect(lambda:self.analysis_cancelled('auto_crop'));self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_worker.cancelled.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start(QThread.Priority.LowPriority)
+        self.auto_crop_btn.setEnabled(False);self.composite_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.export.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('自动裁剪扫描准备中：{todo} 张').format(todo=todo))
+        self.auto_crop_thread=QThread(self);self.auto_crop_worker=AutoCropScanWorker(self.records);self.auto_crop_worker.moveToThread(self.auto_crop_thread);self.auto_crop_thread.started.connect(self.auto_crop_worker.run);self.auto_crop_worker.progress.connect(self.auto_crop_progress,Qt.ConnectionType.QueuedConnection);self.auto_crop_worker.finished.connect(self.auto_crop_scan_done,Qt.ConnectionType.QueuedConnection);self.auto_crop_worker.failed.connect(self.auto_crop_scan_failed,Qt.ConnectionType.QueuedConnection);self.auto_crop_worker.cancelled.connect(self.auto_crop_cancelled,Qt.ConnectionType.QueuedConnection);self.auto_crop_worker.finished.connect(self.auto_crop_thread.quit);self.auto_crop_worker.failed.connect(self.auto_crop_thread.quit);self.auto_crop_worker.cancelled.connect(self.auto_crop_thread.quit);self.auto_crop_thread.finished.connect(self.auto_crop_thread_done);self.auto_crop_thread.start(QThread.Priority.LowPriority)
     def auto_crop_scan_done(self,result):
         self.progress.setText(self._tr_main('自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}').format(scanned=result.scanned,candidates=result.candidates,no_candidate=result.no_candidate,cached=result.skipped_existing))
         self.finish_operation_ui();self.auto_crop_btn.setEnabled(True);self.composite_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.export.setEnabled(True);self.update_auto_crop_button();self.save()
@@ -1193,7 +1251,7 @@ class Window(QMainWindow):
             if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'));return
             CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review();return
         self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('组合图拆分扫描准备中：{todo} 张待检查').format(todo=todo))
-        self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(lambda n,t,name:self.analysis_progress('composite',n,t,name));self.composite_worker.finished.connect(self.composite_scan_done);self.composite_worker.failed.connect(self.composite_scan_failed);self.composite_worker.cancelled.connect(lambda:self.analysis_cancelled('composite'));self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_worker.cancelled.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start(QThread.Priority.LowPriority)
+        self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(self.composite_progress,Qt.ConnectionType.QueuedConnection);self.composite_worker.finished.connect(self.composite_scan_done,Qt.ConnectionType.QueuedConnection);self.composite_worker.failed.connect(self.composite_scan_failed,Qt.ConnectionType.QueuedConnection);self.composite_worker.cancelled.connect(self.composite_cancelled,Qt.ConnectionType.QueuedConnection);self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_worker.cancelled.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start(QThread.Priority.LowPriority)
     def composite_scan_done(self,records):
         self.records=records;count=sum(r.status=='推荐' and r.composite_proposal is not None for r in records);self.progress.setText(self._tr_main('组合图拆分扫描完成：{count} 张推荐候选').format(count=count));self.finish_operation_ui();self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.save()
         if count:CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review()
@@ -1221,7 +1279,7 @@ class Window(QMainWindow):
             path=Path(item['path'])
             if path.exists():items.append((path,item['status']))
         if not items:self.refresh();self.save();return
-        self.refresh();self.save();self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('分析组合图拆分新生成图片：0/{count}').format(count=len(items)));self.incremental_thread=QThread(self);self.incremental_worker=IncrementalAnalysisWorker(items);self.incremental_worker.moveToThread(self.incremental_thread);self.incremental_thread.started.connect(self.incremental_worker.run);self.incremental_worker.progress.connect(lambda n,t,name:self.analysis_progress('incremental',n,t,name));self.incremental_worker.finished.connect(self.incremental_composite_done);self.incremental_worker.failed.connect(self.incremental_composite_failed);self.incremental_worker.cancelled.connect(lambda:self.analysis_cancelled('incremental'));self.incremental_worker.finished.connect(self.incremental_thread.quit);self.incremental_worker.failed.connect(self.incremental_thread.quit);self.incremental_worker.cancelled.connect(self.incremental_thread.quit);self.incremental_thread.finished.connect(self.incremental_composite_thread_done);self.incremental_thread.start(QThread.Priority.LowPriority)
+        self.refresh();self.save();self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('分析组合图拆分新生成图片：0/{count}').format(count=len(items)));self.incremental_thread=QThread(self);self.incremental_worker=IncrementalAnalysisWorker(items);self.incremental_worker.moveToThread(self.incremental_thread);self.incremental_thread.started.connect(self.incremental_worker.run);self.incremental_worker.progress.connect(self.incremental_progress,Qt.ConnectionType.QueuedConnection);self.incremental_worker.finished.connect(self.incremental_composite_done,Qt.ConnectionType.QueuedConnection);self.incremental_worker.failed.connect(self.incremental_composite_failed,Qt.ConnectionType.QueuedConnection);self.incremental_worker.cancelled.connect(self.incremental_cancelled,Qt.ConnectionType.QueuedConnection);self.incremental_worker.finished.connect(self.incremental_thread.quit);self.incremental_worker.failed.connect(self.incremental_thread.quit);self.incremental_worker.cancelled.connect(self.incremental_thread.quit);self.incremental_thread.finished.connect(self.incremental_composite_thread_done);self.incremental_thread.start(QThread.Priority.LowPriority)
     def incremental_composite_done(self,new_records):
         existing={key(r.path) for r in self.records};added=[]
         for r in new_records:
@@ -1342,9 +1400,9 @@ class Window(QMainWindow):
         runtime_event('export_begin',count=total,destination=dst)
         self.export_thread=QThread(self);self.export_worker=ExportWorker(self.records,dst);self.export_worker.moveToThread(self.export_thread)
         self.export_thread.started.connect(self.export_worker.run)
-        self.export_worker.progress.connect(self.export_progress)
-        self.export_worker.finished.connect(self.export_done)
-        self.export_worker.failed.connect(self.export_failed)
+        self.export_worker.progress.connect(self.export_progress, Qt.ConnectionType.QueuedConnection)
+        self.export_worker.finished.connect(self.export_done, Qt.ConnectionType.QueuedConnection)
+        self.export_worker.failed.connect(self.export_failed, Qt.ConnectionType.QueuedConnection)
         self.export_worker.finished.connect(self.export_thread.quit)
         self.export_worker.failed.connect(self.export_thread.quit)
         self.export_thread.finished.connect(self.export_thread_done)

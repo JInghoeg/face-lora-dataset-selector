@@ -64,25 +64,34 @@ Only the detection-side preprocessing / DB post-processing needed by this applic
 - License: MIT License
 - Source: https://github.com/deepghs/imgutils
 
-Composite Split detector weights are not committed to this repository and are not bundled into the Portable ZIP by the build specification. They are downloaded on first use into the application's local `models/composite_split_cache` directory from the upstream model repositories used by `dghs-imgutils`, and remain subject to their upstream terms.
+The Windows Portable build redistributes the fixed `person_detect_v1.3_s` and `head_detect_v2.0_s` ONNX weights under the upstream MIT license. Build-time downloads are SHA-256 pinned and verified.
 
-## Optional model not redistributed in the public release
+### ISNetIS / skytnt anime-seg
+
+- Portable file: `models/auto_crop/skytnt_anime_seg_isnetis/isnetis.onnx`
+- Purpose: General Auto Crop subject segmentation
+- License: Apache License 2.0
+- Source: https://huggingface.co/skytnt/anime-seg
+- SHA-256: `f15622d853e8260172812b657053460e20806f04b9e05147d49af7bed31a6e99`
+
+The model owner explicitly confirmed that the `isnetis.onnx` weights are licensed under Apache-2.0. The Windows Portable build redistributes this exact SHA-256-pinned file.
 
 ### MI-GAN
 
-- Expected local file: `models/migan_pipeline_v2.onnx`
+- Portable file: `models/text_cleanup/migan/migan_pipeline_v2.onnx`
 - Upstream project: MI-GAN
 - Upstream code repository license: MIT License
 - Repository: https://github.com/Picsart-AI-Research/MI-GAN
 - ONNX mirror used during development: https://huggingface.co/andraniksargsyan/migan
+- SHA-256: `6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b`
 
-The public repository intentionally does **not** redistribute the MI-GAN ONNX weight. When the optional MI-GAN repair path is used and the file is missing, the application can download the model directly from the upstream Hugging Face location and verify the expected file size and SHA-256 before loading it.
+The Windows Portable build redistributes the pinned `migan_pipeline_v2.onnx` weight under the upstream MIT license so AI repair does not depend on a first-use network download.
 
-Users may also place the same upstream model manually at `models/migan_pipeline_v2.onnx`.
+The full MIT and Apache-2.0 license texts accompanying redistributed weights are included in `THIRD_PARTY_MODEL_LICENSES.md`.
 
 ## Python dependencies
 
-Python packages installed through `requirements.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
+Python packages installed through `requirements/runtime.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
 
 ### PySide6-Fluent-Widgets
 

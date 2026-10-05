@@ -13,9 +13,9 @@ Repository artifacts describe reality; they do **not** by themselves authorize e
 - Force pushes/deletion on `main`: **blocked**
 - PR requirement: **enabled**
 - Automatic head-branch deletion after merge: **enabled and verified**
-- Stable release: **v0.3.0**
-- Release target: `432321dacda585371b4728b0b2aee37909341f18`
-- Windows Portable SHA-256: `43d7f8404c4311ba397118d174a8531f4a35d5717b1214708acd649b149f7742`
+- Stable release: **v0.3.1**
+- Release target: `9c6195856ae373128092a4dda4a0a945468f6102`
+- Windows Portable SHA-256: `ca8bb94cc5970d296b6a49d0bd1619c2832bdea59b1452a61c96512ad4626413`
 - v0.3 human QA: **PASS — explicitly accepted 2026-09-25**
 - Current release line: **v0.4**
 - v0.4 umbrella: **Issue #60**
@@ -28,6 +28,8 @@ Historical repository note:
 ## Verified complete
 
 - v0.3.0 recovery PR #54 merged and stable v0.3.0 published.
+- Emergency v0.3.1 was published on 2026-10-04 after a reproduced Windows native access violation during initial Dataset Analysis. It carries the queued worker→GUI delivery fix, application-folder-only persistent state/logging, and bundled redistributable Composite / ISNetIS / MI-GAN weights. The official Portable SHA is recorded above.
+- v0.3.1 was deployed on the target Windows workstation and the user confirmed normal operation after the corrected packaged-EXE self-test and real application launch. This is real-use verification; do not rewrite it as a generic future HUMAN PASS for unrelated v0.4 behavior.
 - Final v0.3 pre-release CI: 10 / 10 PASS.
 - v0.3 feature trackers closed after accepted human QA.
 - Internal project docs moved under `.project/` by PR #61.
@@ -49,24 +51,26 @@ Historical repository note:
 - Old v0.3 research items for Valby benchmark, dataset-level recommendation, conditional semantic similarity and model upgrades were carried into v0.4 Issue #60; the 2026-09-25 audit restored two details that had been omitted during migration: disentanglement value where justified, and the quality-first rule for bundling required redistributable default models.
 - Carry-forward audit on 2026-09-25 found one missing high-confidence product mainline: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
 - Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
-- PR #78 includes a follow-up continuity-gate bug fix: State impact matching is scoped to the full Yes/No state-choice text so the separate checked `No accepted-plan change` option cannot be misread as State impact = No.
+- PR #78 merged at `016ff44a799e6ab95046a15a7cbd2f3dce55f631`: the research-only GPU benchmark harness and cost note are now on main. It also includes a continuity-gate bug fix that scopes State impact matching to the full Yes/No state-choice text. No production GPU provider decision was made.
 
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
-- **Current authorized research slice: #55 — GPU performance / necessity evaluation.** Authorization: user explicitly selected GPU performance research and asked to evaluate cost and necessity on 2026-09-26. This does not authorize production GPU integration or runtime-dependency replacement.
-- Research branch: `research/gpu-performance-benchmark`; goal is a research-only benchmark harness that reuses current feature runtimes without changing production provider selection.
+- **Current authorized implementation slice: #80 — carry the released v0.3.1 stability baseline into current v0.4/main.** Authorization: user explicitly said “ok。可以开始开发0.4了” on 2026-10-05. Repository inspection then proved current `main` still predated release-critical v0.3.1 fixes, so stabilizing the v0.4 baseline is the first bounded implementation slice before new features.
+- Active branch: `fix/v0.4-carry-v0.3.1-stability`.
+- #80 scope is limited to queued worker→GUI delivery, app-folder-only state/logging, redistributable model bundling/verification, regression coverage and current-state/public-doc truth. It does **not** authorize unrelated v0.4 UI/algorithm/GPU work.
+- GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. execute the explicitly authorized GPU performance research under #55;
-2. measure whether GPU acceleration materially improves real model-heavy workflows before any production provider/runtime change;
-3. compare lifecycle/deployment cost as well as inference speed, preserving CPU fallback and the current release runtime until evidence justifies a product decision;
-4. keep all other v0.4 product directions inactive unless separately authorized.
+1. finish #80 and restore all released v0.3.1 stability guarantees on the current `src/` architecture;
+2. prove the carry-forward with source regression checks, architecture/continuity gates, a full Windows Portable build, packaged EXE self-test, and packaged-model SHA verification;
+3. merge #80 only after required checks pass;
+4. keep unrelated v0.4 product directions inactive until a subsequent current user instruction selects the next bounded slice.
 
-Current authorization is **research/evaluation only**. It does not authorize replacing `onnxruntime`, bundling CUDA/cuDNN, raising the Python floor, or changing production provider defaults.
+This bootstrap is a **stability-baseline carry-forward**, not a new feature redesign. It does not authorize production GPU integration, PR #74, whole-product UI rewrite, recommendation/model changes, or manual Auto Crop entry-point implementation.
 
 ## Accepted future directions
 
@@ -93,17 +97,18 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
+- #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. land the research-only benchmark harness for #55 without changing production runtime dependencies;
-2. run CPU and GPU candidates on the same representative real dataset on the target workstation;
-3. compare end-to-end wall time, per-feature model-heavy paths, responsiveness, GPU/CPU load, VRAM, cold-start, output parity, deployment size/prerequisites and CPU fallback;
-4. decide among **keep CPU / optional accelerator / production GPU path** only from measured evidence;
-5. carry Issue #72 into the next v0.4 human-QA checkpoint rather than interrupting this research.
+1. complete #80 on `fix/v0.4-carry-v0.3.1-stability`;
+2. run all triggered CI, including full Windows Portable build, packaged EXE self-test and bundled-model SHA verification;
+3. fix only evidence-backed failures, then merge #80 to `main`;
+4. keep Issue #72 and #80 runtime behavior in the next coherent v0.4 human-QA checkpoint;
+5. after the baseline is green on `main`, select the next bounded v0.4 implementation/research slice from the accepted directions instead of inferring execution order from the backlog.
 
 ## Do not repeat
 
@@ -126,6 +131,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Authoritative trackers
 
 Current:
+- #80 — active v0.4 bootstrap: carry released v0.3.1 stability baseline into main
 - #60 — v0.4 umbrella / accepted scope
 - #75 — whole-product UI/UX modernization
 - #59 — UX/quality backlog from accepted v0.3 QA

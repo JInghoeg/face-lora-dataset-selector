@@ -11,6 +11,9 @@ on:
       - "app.py"
       - "src/app_main.py"
       - "tests/duplicate_backend_smoke.py"
+      - "tests/v031_carryforward_contract.py"
+      - "packaging/portable.spec"
+      - "tools/build_portable.ps1"
       - ".importlinter"
       - "requirements/dev.txt"
       - ".github/workflows/architecture.yml"
@@ -74,3 +77,8 @@ jobs:
         shell: pwsh
         run: |
           python tests/duplicate_backend_smoke.py
+
+      - name: v0.3.1 stability carry-forward contract
+        shell: pwsh
+        run: |
+          python tests/v031_carryforward_contract.py
