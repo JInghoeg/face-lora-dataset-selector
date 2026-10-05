@@ -57,26 +57,26 @@ Historical repository note:
 
 - v0.4 scope is tracked under Issue #60.
 - v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
-- #83 / PR #84 — main Dataset Review shell modernization is **COMPLETE** on `main` at `d26efcb8c8203cb35a02ee251b8837b395975cbd`.
-- There is currently **no subsequent bounded v0.4 UI surface selected**. Continue #75 only after a current user instruction selects/confirms the next surface.
+- #83 / PR #84 — the merged Dataset Review UI candidate was explicitly rejected by the user on 2026-10-05 because it violated the previously established UI process and visual direction.
+- **Active corrective slice: rollback PR for #84.** No new UI implementation is authorized until the rejected candidate is removed from `main` and the prior UI process/design constraints are recovered from authoritative records.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. preserve the merged #83 Dataset Review presentation baseline and its Fluent/native-fallback regression coverage;
-2. keep #72 as the accumulated v0.4 HUMAN UNVERIFIED checkpoint, including #80 and #83;
-3. select/confirm the next bounded surface under #75 with a current user instruction before implementation;
-4. continue modernizing surface-by-surface without turning #75 into a whole-application rewrite.
+1. remove the rejected #83 / PR #84 UI implementation from `main` and restore the pre-#84 Dataset Review presentation code exactly;
+2. keep the v0.3.1 stability carry-forward and all unrelated v0.4 work intact;
+3. freeze new UI implementation after rollback;
+4. recover the previously established UI process, mature-reference requirement, and accepted visual/interaction constraints from authoritative project records before proposing any replacement UI.
 
-No production GPU integration, PR #74 adoption, recommendation/model change, global dark-mode rollout, or manual Auto Crop entry-point implementation is active.
+No new UI surface, production GPU integration, PR #74 adoption, recommendation/model change, or manual Auto Crop entry-point implementation is authorized during this corrective rollback.
 
 ## Accepted future directions
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACCEPTED — NEXT SURFACE NOT SELECTED:** whole-product UI/UX modernization (#75) continues after completed Auto Crop Fluent/Filmstrip and #83 main Dataset Review shell. Duplicate Review, Composite Split, Text Cleanup and Source Organizer remain future bounded surfaces until separately selected.
+- **PAUSED FOR CORRECTION:** whole-product UI/UX modernization (#75). The #83 implementation was rejected and is being rolled back. No further UI surface may start until the prior process/design rules are recovered and the user explicitly approves a new visual direction.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -104,10 +104,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. select/confirm the next bounded UI surface under #75 with current-user authorization;
-2. **recommended next candidate: Duplicate Review**, because it is already presentation-isolated under `src/ui/qt/duplicate_review.py` and can be modernized without touching ranking/recommendation policy;
-3. keep #72 as the accumulated interactive checkpoint rather than stopping for immediate human QA on this non-destructive UI slice;
-4. keep PR #74 frozen unless the user explicitly adopts its Text Cleanup scope.
+1. merge the evidence-backed rollback that restores the pre-#84 Dataset Review code;
+2. verify regression CI / Portable on the rollback;
+3. after rollback, perform a rules-and-history recovery pass for the established UI workflow and accepted visual form before any new UI code is written;
+4. do not infer or begin a next UI surface merely from #75 backlog order.
 
 ## Do not repeat
 
@@ -141,8 +141,10 @@ Current:
 Non-canonical existing work:
 - Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
 
+Rejected / corrective history:
+- #83 / PR #84 — rejected Dataset Review UI candidate; rollback in progress
+
 Completed baseline:
-- #83 / PR #84 — main Dataset Review Fluent/native-fallback shell; merged at `d26efcb8c8203cb35a02ee251b8837b395975cbd`
 - #80 / PR #81 — v0.3.1 stability baseline carried into v0.4/main; merged at `89be1d8aa6f24e87131ce81343297309ba748ed8`
 - PR #54 — v0.3 recovery implementation
 - Issue #17 — v0.3 consolidated human QA
