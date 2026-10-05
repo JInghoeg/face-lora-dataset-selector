@@ -10,9 +10,10 @@ Thumbs.db
 .DS_Store
 cache/
 
-# Optional third-party model downloaded by the user.
-# It is intentionally not redistributed in the public release.
-resources/models/migan_pipeline_v2.onnx
+# Build-time / source-run copies of redistributable runtime weights.
+# The release build downloads fixed SHA-pinned files and packages them.
+resources/models/auto_crop/
+resources/models/text_cleanup/
 .venv/
 build/
 dist/
@@ -28,3 +29,6 @@ resources/translations/*.qm
 
 # Editable src-layout package metadata
 *.egg-info/
+_userdata/
+_FaceLoRA_ModelCache/
+logs/
