@@ -59,6 +59,7 @@ Historical repository note:
 - v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
 - #83 / PR #84 — the merged Dataset Review UI candidate was explicitly rejected by the user on 2026-10-05 because it violated the previously established UI process and visual direction.
 - **Active corrective slice: PR #87 rolls back #84.** No new UI implementation is authorized until the rejected candidate is removed from `main` and the prior UI process/design constraints are recovered from authoritative records.
+- Rollback authorization is the user's explicit rejection of the merged candidate on 2026-10-05; this corrective step does not authorize any replacement UI design.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
