@@ -69,9 +69,9 @@ class ReviewCard(QWidget):
             self.surface.setFrameShape(QFrame.Shape.StyledPanel)
         outer.addWidget(self.surface)
 
-        self.layout = QVBoxLayout(self.surface)
-        self.layout.setContentsMargins(12, 10, 12, 12)
-        self.layout.setSpacing(8)
+        self.content_layout = QVBoxLayout(self.surface)
+        self.content_layout.setContentsMargins(12, 10, 12, 12)
+        self.content_layout.setSpacing(8)
 
         self.title_label = (
             fluent["StrongBodyLabel"]("")
@@ -82,7 +82,7 @@ class ReviewCard(QWidget):
             font = self.title_label.font()
             font.setBold(True)
             self.title_label.setFont(font)
-        self.layout.addWidget(self.title_label)
+        self.content_layout.addWidget(self.title_label)
 
     def setTitle(self, text):
         self.title_label.setText(text)
@@ -216,7 +216,7 @@ class DatasetReviewPane(QWidget):
         self.summary_card.title_label.hide()
         self.stats = self._body_label()
         self.stats.setWordWrap(True)
-        self.summary_card.layout.addWidget(self.stats)
+        self.summary_card.content_layout.addWidget(self.stats)
         inspector_layout.addWidget(self.summary_card)
 
         self.stat_box = ReviewCard(
@@ -228,7 +228,7 @@ class DatasetReviewPane(QWidget):
         self.stat_layout.setContentsMargins(0, 0, 0, 0)
         self.stat_layout.setHorizontalSpacing(6)
         self.stat_layout.setVerticalSpacing(4)
-        self.stat_box.layout.addWidget(self.stat_content)
+        self.stat_box.content_layout.addWidget(self.stat_content)
         inspector_layout.addWidget(self.stat_box)
 
         self.analysis_box = ReviewCard(
@@ -237,7 +237,7 @@ class DatasetReviewPane(QWidget):
         )
         self.detail = self._body_label()
         self.detail.setWordWrap(True)
-        self.analysis_box.layout.addWidget(self.detail)
+        self.analysis_box.content_layout.addWidget(self.detail)
         inspector_layout.addWidget(self.analysis_box)
 
         self.manual_box = ReviewCard(
@@ -262,7 +262,7 @@ class DatasetReviewPane(QWidget):
         if restore_callback is not None:
             self.restore_btn.clicked.connect(restore_callback)
         manual_layout.addWidget(self.restore_btn, 1, 0, 1, 3)
-        self.manual_box.layout.addWidget(manual_content)
+        self.manual_box.content_layout.addWidget(manual_content)
         inspector_layout.addWidget(self.manual_box)
 
         self.ai_box = ReviewCard(
@@ -271,7 +271,7 @@ class DatasetReviewPane(QWidget):
         )
         self.ai_label = self._body_label()
         self.ai_label.setWordWrap(True)
-        self.ai_box.layout.addWidget(self.ai_label)
+        self.ai_box.content_layout.addWidget(self.ai_label)
         ai_actions = QHBoxLayout()
         ai_actions.setContentsMargins(0, 0, 0, 0)
         ai_actions.setSpacing(6)
@@ -288,7 +288,7 @@ class DatasetReviewPane(QWidget):
         ai_actions.addWidget(self.reject_ai_btn)
         ai_actions.addWidget(self.clear_ai_btn)
         ai_actions.addStretch(1)
-        self.ai_box.layout.addLayout(ai_actions)
+        self.ai_box.content_layout.addLayout(ai_actions)
         inspector_layout.addWidget(self.ai_box)
 
         inspector_layout.addStretch(1)
