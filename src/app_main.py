@@ -22,7 +22,7 @@ try:
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DatasetReviewPane, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -665,33 +665,25 @@ class Window(QMainWindow):
         self.import_ai_btn=QPushButton();self.import_ai_btn.clicked.connect(self.import_ai_patch)
         tools.addWidget(self.export_view_ai_btn);tools.addWidget(self.export_all_ai_btn);tools.addWidget(self.import_ai_btn);l.addLayout(tools)
 
-        self.review_pane=DatasetReviewPane(
-            parent=w,
-            previous_callback=lambda:self.change(-1),
-            next_callback=lambda:self.change(1),
-            manual_callback=self.manual,
-            restore_callback=self.restore,
-            accept_ai_callback=self.accept_ai_suggestion,
-            reject_ai_callback=self.reject_ai_suggestion,
-            clear_ai_callback=self.clear_ai_suggestion,
-        )
-        # Keep the Window-level names as a compatibility seam for existing
-        # behavior/tests while presentation ownership moves under ui/qt.
-        self.current_view_label=self.review_pane.current_view_label
-        self.shortcut_hint=self.review_pane.shortcut_hint
-        self.prev=self.review_pane.prev;self.page_label=self.review_pane.page_label;self.next=self.review_pane.next
-        self.dataset_splitter=self.review_pane.dataset_splitter
-        self.dataset_model=self.review_pane.dataset_model;self.grid=self.review_pane.grid
-        self.stats=self.review_pane.stats
-        self.stat_box=self.review_pane.stat_box;self.stat_layout=self.review_pane.stat_layout
-        self.analysis_box=self.review_pane.analysis_box;self.detail=self.review_pane.detail
-        self.manual_box=self.review_pane.manual_box;self.manual_status_buttons=self.review_pane.manual_status_buttons
-        self.restore_btn=self.review_pane.restore_btn
-        self.ai_box=self.review_pane.ai_box;self.ai_label=self.review_pane.ai_label
-        self.accept_ai_btn=self.review_pane.accept_ai_btn;self.reject_ai_btn=self.review_pane.reject_ai_btn;self.clear_ai_btn=self.review_pane.clear_ai_btn
+        view_head=QHBoxLayout();self.current_view_label=QLabel();self.current_view_label.setStyleSheet('font-weight:600; padding:7px; color:#1f2937; background:#eef3f8; border:1px solid #cbd5e1; border-radius:4px;');view_head.addWidget(self.current_view_label,1)
+        self.shortcut_hint=QLabel();self.shortcut_hint.setStyleSheet('padding:5px 8px;color:#1f2937;background:#ffffff;border:1px solid #d1d5db;');view_head.addWidget(self.shortcut_hint)
+        self.prev=QPushButton();self.prev.clicked.connect(lambda:self.change(-1));self.page_label=QLabel();self.next=QPushButton();self.next.clicked.connect(lambda:self.change(1))
+        view_head.addWidget(self.prev);view_head.addWidget(self.page_label);view_head.addWidget(self.next);l.addLayout(view_head)
 
-        self.grid.clicked.connect(self.details);self.grid.doubleClicked.connect(self.open);self.grid.middleIndexClicked.connect(self.quick_toggle_item);self.grid.rightIndexDoubleClicked.connect(self.quick_reject_item)
-        l.addWidget(self.review_pane,1)
+        self.dataset_splitter=QSplitter(Qt.Horizontal);self.dataset_model=DatasetListModel(self);self.grid=DatasetListView();self.grid.setModel(self.dataset_model);self.grid.clicked.connect(self.details);self.grid.doubleClicked.connect(self.open);self.grid.middleIndexClicked.connect(self.quick_toggle_item);self.grid.rightIndexDoubleClicked.connect(self.quick_reject_item);self.dataset_splitter.addWidget(self.grid)
+        side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel();self.stats.setWordWrap(True);sl.addWidget(self.stats)
+        self.stat_box=QGroupBox();self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box)
+        self.analysis_box=QGroupBox();bl=QVBoxLayout(self.analysis_box);self.detail=QLabel();self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(self.analysis_box)
+        self.manual_box=QGroupBox();ml=QGridLayout(self.manual_box);self.manual_status_buttons=[]
+        for i,value in enumerate(('推荐','备选','淘汰')):
+            b=QPushButton();b.clicked.connect(lambda _,v=value:self.manual(v));ml.addWidget(b,0,i);self.manual_status_buttons.append(b)
+        self.restore_btn=QPushButton();self.restore_btn.clicked.connect(self.restore);ml.addWidget(self.restore_btn,1,0,1,3);sl.addWidget(self.manual_box)
+        self.ai_box=QGroupBox();ail=QVBoxLayout(self.ai_box);self.ai_label=QLabel();self.ai_label.setWordWrap(True);ail.addWidget(self.ai_label);aib=QHBoxLayout()
+        self.accept_ai_btn=QPushButton();self.accept_ai_btn.clicked.connect(self.accept_ai_suggestion)
+        self.reject_ai_btn=QPushButton();self.reject_ai_btn.clicked.connect(self.reject_ai_suggestion)
+        self.clear_ai_btn=QPushButton();self.clear_ai_btn.clicked.connect(self.clear_ai_suggestion)
+        aib.addWidget(self.accept_ai_btn);aib.addWidget(self.reject_ai_btn);aib.addWidget(self.clear_ai_btn);ail.addLayout(aib);sl.addWidget(self.ai_box);sl.addStretch(1)
+        self.dataset_splitter.addWidget(side);self.dataset_splitter.setSizes([1030,370]);l.addWidget(self.dataset_splitter,1)
     def set_operation_progress(self,current,total,text):
         self.progress.setText(text)
         self.operation_bar.show()
@@ -966,7 +958,7 @@ class Window(QMainWindow):
         photo=self.records[index]
         self.dataset_model.update_icon(photo.sample_id,index,QIcon(self.decorated_thumbnail(photo,pix)))
     def stat_button(self,text,kind,value,row,column):
-        button=self.review_pane.make_filter_button(text);button.clicked.connect(lambda _=False,k=kind,v=value:self.set_category_filter(k,v));self.stat_layout.addWidget(button,row,column)
+        button=QPushButton(text);button.setFlat(True);button.setStyleSheet('text-align:left; color:#175ea8;');button.clicked.connect(lambda _=False,k=kind,v=value:self.set_category_filter(k,v));self.stat_layout.addWidget(button,row,column)
     def refresh_stats(self):
         while self.stat_layout.count():
             child=self.stat_layout.takeAt(0)
