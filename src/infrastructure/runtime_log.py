@@ -17,8 +17,12 @@ _LOCK = threading.Lock()
 
 
 def _root() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
-    return base / "Face LoRA Dataset Selector" / "logs"
+    base = (
+        Path(sys.executable).resolve().parent
+        if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parents[2]
+    )
+    return base / "logs"
 
 
 def setup_runtime_logging() -> Path:
