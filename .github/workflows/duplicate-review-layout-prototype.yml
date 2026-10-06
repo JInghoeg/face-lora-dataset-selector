@@ -1,0 +1,63 @@
+name: Duplicate Review Layout Prototype
+
+on:
+  push:
+    branches:
+      - ui/v0.4-duplicate-review-layout-v1
+    paths:
+      - "tools/prototypes/duplicate_review_layout_v1.py"
+      - ".github/workflows/duplicate-review-layout-prototype.yml"
+  pull_request:
+    paths:
+      - "tools/prototypes/duplicate_review_layout_v1.py"
+      - ".github/workflows/duplicate-review-layout-prototype.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  render:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install prototype UI runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir "PySide6-Essentials>=6.6,<6.9" "Pillow>=10,<12"
+          python tools/install_ui_dependencies.py
+
+      - name: Download CJK font for screenshots
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "DUPLICATE_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Render real Qt prototype
+        shell: pwsh
+        run: |
+          python tools/prototypes/duplicate_review_layout_v1.py --out prototype-render
+
+      - name: Upload prototype screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: duplicate-review-layout-v1
+          path: prototype-render/*.png
+          if-no-files-found: error
+          retention-days: 7
