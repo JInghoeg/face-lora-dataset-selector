@@ -237,10 +237,7 @@ class DuplicateReviewPrototype(QDialog):
 
         actions.addStretch(1)
 
-        self.finish_group = PrimaryPushButton(
-            FluentIcon.ACCEPT,
-            "完成本组：勾选推荐 / 未勾淘汰",
-        )
+        self.finish_group = PrimaryPushButton("完成本组：勾选推荐 / 未勾淘汰")
         self.finish_group.setMinimumHeight(42)
         self.finish_group.setMinimumWidth(290)
         actions.addWidget(self.finish_group)
