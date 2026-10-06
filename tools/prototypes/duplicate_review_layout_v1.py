@@ -570,6 +570,34 @@ def render_case(out_dir: Path, count: int):
         return path
 
 
+def assert_auto_advance_behavior():
+    """Exercise the accepted navigation rule in the real Qt prototype."""
+    with tempfile.TemporaryDirectory() as td:
+        dialog = DuplicateReviewPrototype(Path(td), 4)
+        app = QApplication.instance()
+        dialog.show()
+        app.processEvents()
+
+        # Initial demo selection is group 03. Completing it must advance
+        # forward to group 04, the next unfinished group.
+        assert dialog.group_list.currentRow() == 2
+        dialog._finish_current_group_and_advance()
+        app.processEvents()
+        assert dialog.group_list.currentRow() == 3
+        assert bool(dialog.group_list.item(2).data(Qt.UserRole + 2))
+
+        # Completing the final group must not wrap around automatically.
+        last = dialog.group_list.count() - 1
+        dialog.group_list.setCurrentRow(last)
+        dialog._finish_current_group_and_advance()
+        app.processEvents()
+        assert dialog.group_list.currentRow() == last
+        assert bool(dialog.group_list.item(last).data(Qt.UserRole + 2))
+
+        dialog.close()
+        app.processEvents()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
@@ -591,6 +619,8 @@ def main():
         render_case(args.out, 6),
         render_case(args.out, 10),
     ]
+    assert_auto_advance_behavior()
+    print("auto-advance behavior: PASS")
     for path in outputs:
         print(path)
     return 0
