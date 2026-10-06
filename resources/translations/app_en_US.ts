@@ -86,6 +86,8 @@
     <message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
     <message><source>未完成</source><translation>Incomplete</translation></message>
     <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
+    <message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
+    <message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
   </context>
   <context>
     <name>CompositeSplitReviewDialog</name>
