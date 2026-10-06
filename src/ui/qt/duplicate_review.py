@@ -85,7 +85,7 @@ class DuplicateGroupList(QListWidget):
         self.setMovement(QListView.Static)
         self.setResizeMode(QListView.Adjust)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setIconSize(QSize(72, 58))
+        self.setIconSize(QSize(72, 48))
         self.setGridSize(QSize(148, 104))
         self.setSpacing(4)
         self.setUniformItemSizes(True)
@@ -676,7 +676,7 @@ class DuplicateReviewDialog(QDialog):
             )
 
         if self._fluent and members:
-            icon = QIcon(self.thumb(members[0].path, 72, 58))
+            icon = QIcon(self.thumb(members[0].path, 72, 48))
             item = QListWidgetItem(icon, text)
             item.setSizeHint(QSize(142, 100))
             item.setTextAlignment(Qt.AlignHCenter | Qt.AlignTop)
