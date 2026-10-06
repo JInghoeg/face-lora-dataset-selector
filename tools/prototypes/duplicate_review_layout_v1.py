@@ -195,7 +195,7 @@ class DuplicateReviewPrototype(QDialog):
         self.group_list.setMinimumWidth(190)
         left_layout.addWidget(self.group_list, 1)
 
-        self.complete_all = PushButton(FluentIcon.COMPLETED, "完成全部组")
+        self.complete_all = PushButton("完成全部组")\n        self.complete_all.setIcon(FluentIcon.COMPLETED)
         self.complete_all.setMinimumHeight(40)
         self.complete_all.setToolTip("将各组当前暂存的勾选结果一次性写入")
         left_layout.addWidget(self.complete_all)
@@ -227,9 +227,9 @@ class DuplicateReviewPrototype(QDialog):
         actions = QHBoxLayout()
         actions.setSpacing(8)
 
-        self.keep_best = PushButton(FluentIcon.FAVORITE, "保留组内最佳")
+        self.keep_best = PushButton("★ 保留组内最佳")
         self.keep_all = PushButton("全部保留")
-        self.restore = PushButton(FluentIcon.SYNC, "恢复组内自动状态")
+        self.restore = PushButton("恢复组内自动状态")\n        self.restore.setIcon(FluentIcon.SYNC)
         self.move_out = PushButton("勾选项移出重复组")
         for button in (self.keep_best, self.keep_all, self.restore, self.move_out):
             button.setMinimumHeight(40)
