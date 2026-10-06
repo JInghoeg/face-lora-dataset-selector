@@ -110,7 +110,9 @@ class CompareGrid(QListWidget):
         if count <= 2:
             cols = count
         elif count <= 4:
-            cols = min(4, count)
+            # Four-way duplicate review is easier to judge as a 2×2 compare
+            # than as a shallow contact-sheet row.
+            cols = 2
         elif count <= 8:
             cols = 3
         else:
@@ -118,7 +120,8 @@ class CompareGrid(QListWidget):
 
         rows = max(1, (count + cols - 1) // cols)
         gutter = 10
-        cell_w = max(250, min(520, int((width - gutter * (cols + 1)) / cols)))
+        max_cell_w = 620 if count <= 4 else 520
+        cell_w = max(250, min(max_cell_w, int((width - gutter * (cols + 1)) / cols)))
 
         if rows == 1:
             # A single comparison row should occupy the canvas instead of
@@ -135,6 +138,13 @@ class CompareGrid(QListWidget):
         image_h = max(180, cell_h - metadata_h)
         self.setIconSize(QSize(cell_w - 24, image_h))
         self.setGridSize(QSize(cell_w, cell_h))
+
+        # QListView IconMode otherwise lets portrait images shrink the visual
+        # item width to their natural pixmap width. Force every comparison card
+        # to use the designed cell so metadata never collapses into ellipsis.
+        item_size = QSize(max(1, cell_w - 8), max(1, cell_h - 8))
+        for row in range(self.count()):
+            self.item(row).setSizeHint(item_size)
 
 
 class DuplicateReviewPrototype(QDialog):
