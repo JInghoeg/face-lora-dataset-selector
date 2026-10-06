@@ -65,7 +65,7 @@ class DemoMember:
 class GroupList(QListWidget):
     """Bottom visual group navigator: thumbnail grid + vertical scrolling."""
 
-    DEFAULT_HEIGHT = 116
+    DEFAULT_HEIGHT = 108
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -81,7 +81,7 @@ class GroupList(QListWidget):
         self.setSpacing(4)
         self.setUniformItemSizes(True)
         self.setWordWrap(True)
-        self.setMinimumHeight(116)
+        self.setMinimumHeight(106)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -94,7 +94,7 @@ class GroupList(QListWidget):
 
     def minimumSizeHint(self):
         hint = super().minimumSizeHint()
-        hint.setHeight(116)
+        hint.setHeight(106)
         return hint
 
 
@@ -317,7 +317,7 @@ class DuplicateReviewPrototype(QDialog):
         total = sum(sizes)
         if total <= 0:
             return
-        target = 164
+        target = 156
         self.findChild(QSplitter, "DuplicateMainSplitter").setSizes(
             [max(1, total - target), target]
         )
