@@ -65,7 +65,7 @@ class DemoMember:
 class GroupList(QListWidget):
     """Bottom visual group navigator: thumbnail grid + vertical scrolling."""
 
-    DEFAULT_HEIGHT = 228
+    DEFAULT_HEIGHT = 116
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -317,7 +317,7 @@ class DuplicateReviewPrototype(QDialog):
         total = sum(sizes)
         if total <= 0:
             return
-        target = 272
+        target = 164
         self.findChild(QSplitter, "DuplicateMainSplitter").setSizes(
             [max(1, total - target), target]
         )
