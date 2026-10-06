@@ -63,38 +63,29 @@ class DemoMember:
 
 
 class GroupList(QListWidget):
-    """Bottom group Filmstrip, following the accepted Auto Crop pattern."""
+    """Bottom visual group navigator: thumbnail grid + vertical scrolling."""
 
-    DEFAULT_HEIGHT = 54
+    DEFAULT_HEIGHT = 228
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DuplicateGroupList")
         self.setViewMode(QListView.IconMode)
         self.setFlow(QListView.LeftToRight)
-        self.setWrapping(False)
+        self.setWrapping(True)
         self.setMovement(QListView.Static)
         self.setResizeMode(QListView.Adjust)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setGridSize(QSize(132, 48))
-        self.setSpacing(2)
+        self.setIconSize(QSize(72, 58))
+        self.setGridSize(QSize(148, 104))
+        self.setSpacing(4)
         self.setUniformItemSizes(True)
-        self.setMinimumHeight(self.DEFAULT_HEIGHT)
+        self.setWordWrap(True)
+        self.setMinimumHeight(116)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-    def wheelEvent(self, event):
-        bar = self.horizontalScrollBar()
-        delta = event.angleDelta().y() or event.angleDelta().x()
-        if delta and bar.maximum() > 0:
-            step = max(40, bar.pageStep() // 5)
-            bar.setValue(bar.value() - (step if delta > 0 else -step))
-            event.accept()
-            return
-        super().wheelEvent(event)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
     def sizeHint(self):
         hint = super().sizeHint()
@@ -103,7 +94,7 @@ class GroupList(QListWidget):
 
     def minimumSizeHint(self):
         hint = super().minimumSizeHint()
-        hint.setHeight(self.DEFAULT_HEIGHT)
+        hint.setHeight(116)
         return hint
 
 
@@ -276,6 +267,8 @@ class DuplicateReviewPrototype(QDialog):
         self.finish_group = PrimaryPushButton("完成本组：勾选推荐 / 未勾淘汰")
         self.finish_group.setMinimumHeight(42)
         self.finish_group.setMinimumWidth(290)
+        self.finish_group.setToolTip("保存本组结果后自动切换到下一未完成组")
+        self.finish_group.clicked.connect(self._finish_current_group_and_advance)
         actions.addWidget(self.finish_group)
         work_layout.addLayout(actions)
         main.addWidget(work)
@@ -289,10 +282,12 @@ class DuplicateReviewPrototype(QDialog):
 
         group_head = QHBoxLayout()
         group_head.setSpacing(8)
-        group_title = StrongBodyLabel("重复组")
+        group_title = StrongBodyLabel("重复组导航")
         group_head.addWidget(group_title)
         self.group_counts = CaptionLabel("未完成 15 · 已完成 3")
         group_head.addWidget(self.group_counts)
+        group_hint = CaptionLabel("缩略图定位 · 组多时纵向滚动")
+        group_head.addWidget(group_hint)
         group_head.addStretch(1)
 
         self.complete_all = PushButton("完成全部组")
@@ -303,6 +298,7 @@ class DuplicateReviewPrototype(QDialog):
         group_layout.addLayout(group_head)
 
         self.group_list = GroupList()
+        self.group_list.currentRowChanged.connect(self._show_group_row)
         group_layout.addWidget(self.group_list)
         main.addWidget(group_card)
 
@@ -321,7 +317,7 @@ class DuplicateReviewPrototype(QDialog):
         total = sum(sizes)
         if total <= 0:
             return
-        target = 104
+        target = 272
         self.findChild(QSplitter, "DuplicateMainSplitter").setSizes(
             [max(1, total - target), target]
         )
@@ -347,15 +343,85 @@ class DuplicateReviewPrototype(QDialog):
             (17, 3, False),
             (18, 5, False),
         ]
+        self.group_list.blockSignals(True)
         for group_id, count, done in groups:
-            mark = "✓" if done else "•"
-            text = f"{mark}  组 {group_id:02d}  ·  {count} 张"
-            item = QListWidgetItem(text)
-            item.setSizeHint(QSize(126, 44))
-            item.setTextAlignment(Qt.AlignCenter)
+            thumb_path = self.root / f"group_{group_id:02d}.png"
+            make_demo_image(thumb_path, (360, 240), group_id % 10)
+            pix = load_fitted_pixmap(thumb_path, self.group_list.iconSize())
+            item = QListWidgetItem(QIcon(pix), "")
+            item.setSizeHint(QSize(142, 100))
+            item.setTextAlignment(Qt.AlignHCenter | Qt.AlignTop)
             item.setData(Qt.UserRole, group_id)
+            item.setData(Qt.UserRole + 1, count)
+            item.setData(Qt.UserRole + 2, done)
+            self._refresh_group_item(item)
             self.group_list.addItem(item)
+        self.group_list.blockSignals(False)
         self.group_list.setCurrentRow(2)
+        self._update_group_counts()
+
+    @staticmethod
+    def _refresh_group_item(item):
+        group_id = int(item.data(Qt.UserRole))
+        count = int(item.data(Qt.UserRole + 1))
+        done = bool(item.data(Qt.UserRole + 2))
+        state = "✓ 已完成" if done else "• 未完成"
+        item.setText(f"组 {group_id:02d} · {count} 张\n{state}")
+        item.setToolTip(f"重复组 {group_id:02d} · {count} 张 · {'已完成' if done else '未完成'}")
+
+    def _update_group_counts(self):
+        done = sum(
+            1
+            for row in range(self.group_list.count())
+            if bool(self.group_list.item(row).data(Qt.UserRole + 2))
+        )
+        total = self.group_list.count()
+        self.group_counts.setText(f"未完成 {total - done} · 已完成 {done}")
+
+    def _show_group_row(self, row):
+        if row < 0 or row >= self.group_list.count():
+            return
+        item = self.group_list.item(row)
+        group_id = int(item.data(Qt.UserRole))
+        count = int(item.data(Qt.UserRole + 1))
+        done = bool(item.data(Qt.UserRole + 2))
+        self.member_count = count
+        self.members_data = build_members(self.root, count)
+        self._populate_members()
+        self.group_title.setText(f"重复组 {group_id:02d} · {count} 张")
+        self.header_state.setText(
+            f"组 {group_id:02d} / {self.group_list.count()} · {count} 张 · "
+            + ("已完成" if done else "未完成")
+        )
+        self.group_status.setText("✓ 已完成" if done else "● 未完成")
+        self.group_status.setStyleSheet(
+            "color:#4c8b4c;" if done else "color:#c77700;"
+        )
+
+    def _finish_current_group_and_advance(self):
+        row = self.group_list.currentRow()
+        if row < 0:
+            return
+        current = self.group_list.item(row)
+        current.setData(Qt.UserRole + 2, True)
+        self._refresh_group_item(current)
+        self._update_group_counts()
+
+        # Workflow rule: after committing this group, move forward to the next
+        # unfinished group. Never wrap back to earlier groups automatically.
+        next_row = None
+        for candidate in range(row + 1, self.group_list.count()):
+            if not bool(self.group_list.item(candidate).data(Qt.UserRole + 2)):
+                next_row = candidate
+                break
+        if next_row is not None:
+            self.group_list.setCurrentRow(next_row)
+            self.group_list.scrollToItem(
+                self.group_list.item(next_row),
+                QAbstractItemView.PositionAtCenter,
+            )
+        else:
+            self._show_group_row(row)
 
     def _populate_members(self):
         self.members.blockSignals(True)
@@ -394,9 +460,9 @@ class DuplicateReviewPrototype(QDialog):
         self.setStyleSheet(
             "QDialog#DuplicateReviewPrototype { background:#f5f7fa; color:#1f2328; }"
             "QListWidget#DuplicateGroupList { background:transparent; border:none; outline:none; }"
-            "QListWidget#DuplicateGroupList::item { border:1px solid #e1e5ea; border-radius:7px; padding:5px 7px; margin:1px; background:#ffffff; }"
+            "QListWidget#DuplicateGroupList::item { border:1px solid #e1e5ea; border-radius:8px; padding:5px; margin:2px; background:#ffffff; }"
             "QListWidget#DuplicateGroupList::item:hover { border:1px solid #a8c7ef; background:#fbfdff; }"
-            "QListWidget#DuplicateGroupList::item:selected { background:#e8f1ff; color:#0f6cbd; }"
+            "QListWidget#DuplicateGroupList::item:selected { border:2px solid #6aa7e8; background:#e8f1ff; color:#0f6cbd; }"
             "QListWidget#DuplicateCompareGrid { background:transparent; border:none; outline:none; }"
             "QListWidget#DuplicateCompareGrid::item { border:1px solid #e1e5ea; border-radius:8px; padding:7px; background:#ffffff; }"
             "QListWidget#DuplicateCompareGrid::item:hover { border:1px solid #a8c7ef; background:#fbfdff; }"
