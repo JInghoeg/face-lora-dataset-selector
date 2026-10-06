@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from typing import Optional
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -42,7 +43,7 @@ class FakeRecord:
     angle_class: str
     eligibility: str = "PASS"
     duplicate_ignore: bool = False
-    manual_status: str | None = None
+    manual_status: Optional[str] = None
 
 
 class FakeBackend:
