@@ -16,7 +16,7 @@ import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import Qt, QSize, QEvent
+from PySide6.QtCore import Qt, QSize, QEvent, QTimer
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -63,12 +63,37 @@ class DemoMember:
 
 
 class GroupList(QListWidget):
+    """Bottom group Filmstrip, following the accepted Auto Crop pattern."""
+
+    DEFAULT_HEIGHT = 54
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DuplicateGroupList")
+        self.setViewMode(QListView.IconMode)
+        self.setFlow(QListView.LeftToRight)
+        self.setWrapping(True)
+        self.setMovement(QListView.Static)
+        self.setResizeMode(QListView.Adjust)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setGridSize(QSize(132, 48))
+        self.setSpacing(2)
+        self.setUniformItemSizes(True)
+        self.setMinimumHeight(self.DEFAULT_HEIGHT)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setHeight(self.DEFAULT_HEIGHT)
+        return hint
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setHeight(self.DEFAULT_HEIGHT)
+        return hint
 
 
 class CompareGrid(QListWidget):
@@ -192,39 +217,15 @@ class DuplicateReviewPrototype(QDialog):
         header.addWidget(self.close_btn)
         root.addLayout(header)
 
-        main = QSplitter(Qt.Horizontal)
+        # Match the accepted Auto Crop structure: the review canvas gets the
+        # full width, while navigation lives in a bottom Filmstrip that can be
+        # expanded upward with a vertical splitter when more groups are needed.
+        main = QSplitter(Qt.Vertical)
         main.setObjectName("DuplicateMainSplitter")
         main.setChildrenCollapsible(False)
-        main.setHandleWidth(7)
+        main.setHandleWidth(8)
+        main.setOpaqueResize(True)
 
-        # LEFT: navigation only. Global-scope action stays with the group list.
-        left = SimpleCardWidget()
-        left.setMinimumWidth(210)
-        left.setMaximumWidth(260)
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-        left_layout.setSpacing(8)
-
-        nav_head = QHBoxLayout()
-        nav_title = StrongBodyLabel("重复组")
-        nav_head.addWidget(nav_title)
-        nav_head.addStretch(1)
-        self.group_counts = CaptionLabel("未完成 15 · 已完成 3")
-        nav_head.addWidget(self.group_counts)
-        left_layout.addLayout(nav_head)
-
-        self.group_list = GroupList()
-        self.group_list.setMinimumWidth(190)
-        left_layout.addWidget(self.group_list, 1)
-
-        self.complete_all = PushButton("完成全部组")
-        self.complete_all.setIcon(FluentIcon.COMPLETED)
-        self.complete_all.setMinimumHeight(40)
-        self.complete_all.setToolTip("将各组当前暂存的勾选结果一次性写入")
-        left_layout.addWidget(self.complete_all)
-        main.addWidget(left)
-
-        # RIGHT: one visual hierarchy. No duplicate inspector sidebar.
         work = SimpleCardWidget()
         work_layout = QVBoxLayout(work)
         work_layout.setContentsMargins(10, 10, 10, 10)
@@ -268,15 +269,51 @@ class DuplicateReviewPrototype(QDialog):
         work_layout.addLayout(actions)
         main.addWidget(work)
 
-        main.setStretchFactor(0, 0)
-        main.setStretchFactor(1, 1)
-        main.setSizes([230, 1330])
+        # Bottom group Filmstrip. Global-scope action stays with global
+        # navigation, while current-group actions remain in the work card.
+        group_card = SimpleCardWidget()
+        group_layout = QVBoxLayout(group_card)
+        group_layout.setContentsMargins(8, 6, 8, 8)
+        group_layout.setSpacing(4)
+
+        group_head = QHBoxLayout()
+        group_head.setSpacing(8)
+        group_title = StrongBodyLabel("重复组")
+        group_head.addWidget(group_title)
+        self.group_counts = CaptionLabel("未完成 15 · 已完成 3")
+        group_head.addWidget(self.group_counts)
+        group_head.addStretch(1)
+
+        self.complete_all = PushButton("完成全部组")
+        self.complete_all.setIcon(FluentIcon.COMPLETED)
+        self.complete_all.setMinimumHeight(34)
+        self.complete_all.setToolTip("将各组当前暂存的勾选结果一次性写入")
+        group_head.addWidget(self.complete_all)
+        group_layout.addLayout(group_head)
+
+        self.group_list = GroupList()
+        group_layout.addWidget(self.group_list)
+        main.addWidget(group_card)
+
+        main.setStretchFactor(0, 1)
+        main.setStretchFactor(1, 0)
         root.addWidget(main, 1)
+        QTimer.singleShot(0, self._apply_initial_group_strip_size)
 
         grip_row = QHBoxLayout()
         grip_row.addStretch(1)
         grip_row.addWidget(QSizeGrip(self))
         root.addLayout(grip_row)
+
+    def _apply_initial_group_strip_size(self):
+        sizes = self.findChild(QSplitter, "DuplicateMainSplitter").sizes()
+        total = sum(sizes)
+        if total <= 0:
+            return
+        target = 104
+        self.findChild(QSplitter, "DuplicateMainSplitter").setSizes(
+            [max(1, total - target), target]
+        )
 
     def _populate_groups(self):
         groups = [
@@ -303,7 +340,8 @@ class DuplicateReviewPrototype(QDialog):
             mark = "✓" if done else "•"
             text = f"{mark}  组 {group_id:02d}  ·  {count} 张"
             item = QListWidgetItem(text)
-            item.setSizeHint(QSize(196, 42))
+            item.setSizeHint(QSize(126, 44))
+            item.setTextAlignment(Qt.AlignCenter)
             item.setData(Qt.UserRole, group_id)
             self.group_list.addItem(item)
         self.group_list.setCurrentRow(2)
@@ -345,8 +383,8 @@ class DuplicateReviewPrototype(QDialog):
         self.setStyleSheet(
             "QDialog#DuplicateReviewPrototype { background:#f5f7fa; color:#1f2328; }"
             "QListWidget#DuplicateGroupList { background:transparent; border:none; outline:none; }"
-            "QListWidget#DuplicateGroupList::item { border-radius:6px; padding:6px 7px; margin:1px 0; }"
-            "QListWidget#DuplicateGroupList::item:hover { background:rgba(0,0,0,0.035); }"
+            "QListWidget#DuplicateGroupList::item { border:1px solid #e1e5ea; border-radius:7px; padding:5px 7px; margin:1px; background:#ffffff; }"
+            "QListWidget#DuplicateGroupList::item:hover { border:1px solid #a8c7ef; background:#fbfdff; }"
             "QListWidget#DuplicateGroupList::item:selected { background:#e8f1ff; color:#0f6cbd; }"
             "QListWidget#DuplicateCompareGrid { background:transparent; border:none; outline:none; }"
             "QListWidget#DuplicateCompareGrid::item { border:1px solid #e1e5ea; border-radius:8px; padding:7px; background:#ffffff; }"
