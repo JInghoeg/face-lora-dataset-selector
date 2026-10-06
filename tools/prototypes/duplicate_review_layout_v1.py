@@ -214,6 +214,11 @@ class DuplicateReviewPrototype(QDialog):
         self.theme_btn.setFixedSize(34, 30)
         header.addWidget(self.theme_btn)
 
+        self.close_btn = TransparentToolButton(FluentIcon.CLOSE)
+        self.close_btn.setFixedSize(34, 30)
+        self.close_btn.clicked.connect(self.reject)
+        header.addWidget(self.close_btn)
+
         root.addLayout(header)
 
         # Match the accepted Auto Crop structure: the review canvas gets the
