@@ -72,7 +72,7 @@ class GroupList(QListWidget):
         self.setObjectName("DuplicateGroupList")
         self.setViewMode(QListView.IconMode)
         self.setFlow(QListView.LeftToRight)
-        self.setWrapping(True)
+        self.setWrapping(False)
         self.setMovement(QListView.Static)
         self.setResizeMode(QListView.Adjust)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -81,9 +81,20 @@ class GroupList(QListWidget):
         self.setUniformItemSizes(True)
         self.setMinimumHeight(self.DEFAULT_HEIGHT)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def wheelEvent(self, event):
+        bar = self.horizontalScrollBar()
+        delta = event.angleDelta().y() or event.angleDelta().x()
+        if delta and bar.maximum() > 0:
+            step = max(40, bar.pageStep() // 5)
+            bar.setValue(bar.value() - (step if delta > 0 else -step))
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def sizeHint(self):
         hint = super().sizeHint()
