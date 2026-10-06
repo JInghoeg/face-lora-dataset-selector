@@ -651,6 +651,13 @@ class DuplicateReviewDialog(QDialog):
     def grouped(self, group_id):
         return self.backend.duplicate_group_members(self.records, group_id)
 
+    @staticmethod
+    def _display_group_id(group_id):
+        try:
+            return f"{int(group_id):02d}"
+        except (TypeError, ValueError):
+            return str(group_id)
+
     def _group_item(self, group_id, members, done, ignored=False):
         if ignored:
             text = (
@@ -660,8 +667,8 @@ class DuplicateReviewDialog(QDialog):
             )
         else:
             text = (
-                self._tr("重复组 {group_id} · {count} 张").format(
-                    group_id=group_id,
+                self._tr("组 {group_id} · {count} 张").format(
+                    group_id=self._display_group_id(group_id),
                     count=len(members),
                 )
                 + "\n"
@@ -760,7 +767,9 @@ class DuplicateReviewDialog(QDialog):
         title = (
             self._tr("已人工移出自动重复分组")
             if ignored
-            else self._tr("重复组 {group_id}").format(group_id=group_id)
+            else self._tr("重复组 {group_id}").format(
+                group_id=self._display_group_id(group_id)
+            )
         )
         status = (
             self._tr("已人工移出自动重复分组")
@@ -776,12 +785,25 @@ class DuplicateReviewDialog(QDialog):
                 "color:#4c8b4c;" if done else "color:#c77700;"
             )
         if self.header_state is not None:
-            self.header_state.setText(
-                title
-                + self._tr(" · {count} 张").format(count=len(members))
-                + " · "
-                + status
-            )
+            if ignored:
+                self.header_state.setText(
+                    title
+                    + self._tr(" · {count} 张").format(count=len(members))
+                )
+            else:
+                total_groups = len(
+                    list(self.backend.duplicate_group_ids(self.records))
+                )
+                self.header_state.setText(
+                    self._tr(
+                        "组 {group_id} / {total} · {count} 张 · {state}"
+                    ).format(
+                        group_id=self._display_group_id(group_id),
+                        total=total_groups,
+                        count=len(members),
+                        state=status,
+                    )
+                )
 
         self.toggle_grouping.setText(
             self._tr("勾选项恢复自动分组")
