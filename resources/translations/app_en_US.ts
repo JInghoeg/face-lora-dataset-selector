@@ -76,6 +76,16 @@
     <message><source>状态：{status} · 判定：{eligibility}</source><translation>Status: {status} · Eligibility: {eligibility}</translation></message>
     <message><source>未勾选图片</source><translation>No Images Checked</translation></message>
     <message><source>请先勾选需要调整重复分组的图片。</source><translation>Check the images whose duplicate grouping you want to change first.</translation></message>
+    <message><source>同组多图直接比较 · 勾选保留项 · 完成本组</source><translation>Compare Group · Check Items to Keep · Finish Group</translation></message>
+    <message><source>双击图片打开原图 · 勾选状态切组后保留</source><translation>Double-click to open original · Checks persist when switching groups</translation></message>
+    <message><source>重复组导航</source><translation>Duplicate Group Navigator</translation></message>
+    <message><source>缩略图定位 · 上拖展开更多组</source><translation>Locate by thumbnail · Drag upward to reveal more groups</translation></message>
+    <message><source>完成本组后自动切到下一未完成组</source><translation>After finishing this group, advance to the next unfinished group</translation></message>
+    <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
+    <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
+    <message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
+    <message><source>未完成</source><translation>Incomplete</translation></message>
+    <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
   </context>
   <context>
     <name>CompositeSplitReviewDialog</name>
