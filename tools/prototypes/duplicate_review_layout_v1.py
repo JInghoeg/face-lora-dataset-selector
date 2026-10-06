@@ -42,6 +42,7 @@ from qfluentwidgets import (
     SimpleCardWidget,
     StrongBodyLabel,
     Theme,
+    TransparentPushButton,
     TransparentToolButton,
     setTheme,
 )
@@ -213,10 +214,6 @@ class DuplicateReviewPrototype(QDialog):
         self.theme_btn.setFixedSize(34, 30)
         header.addWidget(self.theme_btn)
 
-        self.close_btn = TransparentToolButton(FluentIcon.CLOSE)
-        self.close_btn.setFixedSize(34, 30)
-        self.close_btn.clicked.connect(self.reject)
-        header.addWidget(self.close_btn)
         root.addLayout(header)
 
         # Match the accepted Auto Crop structure: the review canvas gets the
@@ -309,6 +306,9 @@ class DuplicateReviewPrototype(QDialog):
 
         grip_row = QHBoxLayout()
         grip_row.addStretch(1)
+        self.close_button = TransparentPushButton("关闭")
+        self.close_button.clicked.connect(self.reject)
+        grip_row.addWidget(self.close_button)
         grip_row.addWidget(QSizeGrip(self))
         root.addLayout(grip_row)
 
