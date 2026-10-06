@@ -101,13 +101,12 @@ class CompareGrid(QListWidget):
 
     def reflow(self):
         width = max(1, self.viewport().width())
+        height = max(1, self.viewport().height())
         count = self._member_count
 
-        # The comparison task determines density:
-        # 2 members -> large side-by-side;
-        # 3-4 -> one comparison row when space permits;
-        # 5-8 -> 3 columns, prioritizing readable images over "show all at once";
-        # 9+ -> 4 columns and scroll.
+        # Density follows the comparison task rather than a fixed thumbnail size.
+        # Small groups should use the available review canvas; large groups keep
+        # readable cards and scroll instead of shrinking into a contact sheet.
         if count <= 2:
             cols = count
         elif count <= 4:
@@ -117,10 +116,23 @@ class CompareGrid(QListWidget):
         else:
             cols = 4
 
+        rows = max(1, (count + cols - 1) // cols)
         gutter = 10
         cell_w = max(250, min(520, int((width - gutter * (cols + 1)) / cols)))
-        image_h = max(180, min(330, int(cell_w * 0.66)))
-        cell_h = image_h + 126
+
+        if rows == 1:
+            # A single comparison row should occupy the canvas instead of
+            # leaving a large dead zone below four-member groups.
+            cell_h = max(430, min(600, height - 16))
+        elif rows == 2:
+            # Two rows should fit comfortably in the normal review viewport.
+            cell_h = max(310, min(380, int((height - gutter * 3) / 2)))
+        else:
+            # 9+ members deliberately scroll; do not sacrifice readability.
+            cell_h = max(310, min(350, int(cell_w * 0.78) + 112))
+
+        metadata_h = 112
+        image_h = max(180, cell_h - metadata_h)
         self.setIconSize(QSize(cell_w - 24, image_h))
         self.setGridSize(QSize(cell_w, cell_h))
 
@@ -291,13 +303,13 @@ class DuplicateReviewPrototype(QDialog):
         self.members.clear()
         for index, record in enumerate(self.members_data, 1):
             pix = load_fitted_pixmap(record.path, self.members.iconSize())
-            prefix = "★ 推荐最佳\n" if record.best else ""
+            prefix = "★ 推荐最佳 · " if record.best else ""
             text = (
                 prefix
                 + f"{record.path.name}\n"
                 + f"{record.width}×{record.height} · {record.size_mb:.1f} MB\n"
-                + f"FIQA {record.fiqa:.3f} · BRISQUE {record.brisque:.1f} · 清晰度 {record.sharpness}\n"
-                + f"{record.scale} · {record.angle}"
+                + f"FIQA {record.fiqa:.3f} · BRISQUE {record.brisque:.1f}\n"
+                + f"清晰度 {record.sharpness} · {record.scale} · {record.angle}"
             )
             item = QListWidgetItem(QIcon(pix), text)
             item.setFlags(
