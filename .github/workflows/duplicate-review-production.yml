@@ -21,7 +21,7 @@ on:
       - ".github/workflows/duplicate-review-production.yml"
 
 concurrency:
-  group: \${{ github.workflow }}-\${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -46,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: \${{ matrix.python }}
+          python-version: ${{ matrix.python }}
 
       - name: Install Duplicate Review UI runtime
         shell: pwsh
@@ -66,7 +66,7 @@ jobs:
           python tests/i18n_catalog_contract.py
 
       - name: Download CJK font for production screenshots
-        if: \${{ matrix.python == '3.12' }}
+        if: ${{ matrix.python == '3.12' }}
         shell: pwsh
         run: |
           $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
@@ -76,14 +76,14 @@ jobs:
       - name: Exercise production Duplicate Review
         shell: pwsh
         run: |
-          if ("\${{ matrix.python }}" -eq "3.12") {
+          if ("${{ matrix.python }}" -eq "3.12") {
             python tests/duplicate_review_ui_smoke.py --out production-render
           } else {
             python tests/duplicate_review_ui_smoke.py
           }
 
       - name: Upload production screenshots
-        if: \${{ matrix.python == '3.12' }}
+        if: ${{ matrix.python == '3.12' }}
         uses: actions/upload-artifact@v4
         with:
           name: duplicate-review-production-screenshots
