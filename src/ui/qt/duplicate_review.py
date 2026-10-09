@@ -91,6 +91,7 @@ class DuplicateGroupList(QListWidget):
         self.setUniformItemSizes(True)
         self.setWordWrap(True)
         self.setMinimumHeight(106)
+        self.setMaximumHeight(106)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -280,6 +281,9 @@ class DuplicateReviewDialog(QDialog):
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.setHandleWidth(8)
         self.main_splitter.setOpaqueResize(True)
+        self.main_splitter.splitterMoved.connect(
+            lambda _pos, _index: self._sync_group_strip_expansion()
+        )
 
         self.work_card = api["SimpleCardWidget"]()
         work_layout = QVBoxLayout(self.work_card)
@@ -467,6 +471,24 @@ class DuplicateReviewDialog(QDialog):
         actions.addWidget(self.size_grip)
         root.addLayout(actions)
 
+    def _sync_group_strip_expansion(self):
+        if self.main_splitter is None or not hasattr(self, "group_list"):
+            return
+        sizes = self.main_splitter.sizes()
+        if len(sizes) < 2:
+            return
+
+        default_height = getattr(
+            self,
+            "_group_strip_default_pane_height",
+            sizes[1],
+        )
+        expanded = sizes[1] > default_height + 8
+        self.group_list.setMaximumHeight(
+            16777215 if expanded else DuplicateGroupList.DEFAULT_HEIGHT - 2
+        )
+        self.group_list.updateGeometry()
+
     def _apply_initial_group_strip_size(self):
         if self.main_splitter is None:
             return
@@ -476,6 +498,9 @@ class DuplicateReviewDialog(QDialog):
             return
         target = 206
         self.main_splitter.setSizes([max(1, total - target), target])
+        self._group_strip_default_pane_height = self.main_splitter.sizes()[1]
+        self.group_list.setMaximumHeight(DuplicateGroupList.DEFAULT_HEIGHT - 2)
+        self.group_list.updateGeometry()
 
     @staticmethod
     def _tr(source):
