@@ -301,35 +301,6 @@ class DuplicateReviewDialog(QDialog):
         self.members.itemDoubleClicked.connect(self.open_member)
         work_layout.addWidget(self.members, 1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        self.best_button = api["PushButton"]("")
-        self.all_keep_button = api["PushButton"]("")
-        self.restore_button = api["PushButton"]("")
-        self.restore_button.setIcon(api["FluentIcon"].SYNC)
-        self.toggle_grouping = api["PushButton"]("")
-        for button in (
-            self.best_button,
-            self.all_keep_button,
-            self.restore_button,
-            self.toggle_grouping,
-        ):
-            button.setMinimumHeight(40)
-            actions.addWidget(button)
-        actions.addStretch(1)
-
-        self.selected_button = api["PrimaryPushButton"]("")
-        self.selected_button.setMinimumHeight(42)
-        self.selected_button.setMinimumWidth(290)
-        actions.addWidget(self.selected_button)
-        work_layout.addLayout(actions)
-
-        self.best_button.clicked.connect(self.keep_best)
-        self.all_keep_button.clicked.connect(self.keep_all)
-        self.restore_button.clicked.connect(self.restore_auto)
-        self.toggle_grouping.clicked.connect(self.toggle_ignore)
-        self.selected_button.clicked.connect(self.keep_checked)
-
         self.main_splitter.addWidget(self.work_card)
 
         self.group_card = api["SimpleCardWidget"]()
@@ -359,6 +330,44 @@ class DuplicateReviewDialog(QDialog):
             lambda current, _previous: self.show_group(current)
         )
         group_layout.addWidget(self.group_list)
+
+        # Match the accepted Auto Crop action hierarchy:
+        # primary local action first, then normal secondary actions, then weak/
+        # structural actions. Keep the entire current-group row directly below
+        # the group navigator so the review flow reads top -> group -> action.
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+
+        self.selected_button = api["PrimaryPushButton"]("")
+        self.selected_button.setMinimumHeight(42)
+        self.selected_button.setMinimumWidth(290)
+        actions.addWidget(self.selected_button)
+
+        self.best_button = api["PushButton"]("")
+        self.best_button.setMinimumHeight(40)
+        actions.addWidget(self.best_button)
+
+        self.all_keep_button = api["PushButton"]("")
+        self.all_keep_button.setMinimumHeight(40)
+        actions.addWidget(self.all_keep_button)
+
+        self.restore_button = api["TransparentPushButton"]("")
+        self.restore_button.setIcon(api["FluentIcon"].SYNC)
+        self.restore_button.setMinimumHeight(40)
+        actions.addWidget(self.restore_button)
+
+        self.toggle_grouping = api["TransparentPushButton"]("")
+        self.toggle_grouping.setMinimumHeight(40)
+        actions.addWidget(self.toggle_grouping)
+        actions.addStretch(1)
+        group_layout.addLayout(actions)
+
+        self.best_button.clicked.connect(self.keep_best)
+        self.all_keep_button.clicked.connect(self.keep_all)
+        self.restore_button.clicked.connect(self.restore_auto)
+        self.toggle_grouping.clicked.connect(self.toggle_ignore)
+        self.selected_button.clicked.connect(self.keep_checked)
+
         self.main_splitter.addWidget(self.group_card)
 
         self.main_splitter.setStretchFactor(0, 1)
@@ -465,7 +474,7 @@ class DuplicateReviewDialog(QDialog):
         total = sum(sizes)
         if total <= 0:
             return
-        target = 156
+        target = 214
         self.main_splitter.setSizes([max(1, total - target), target])
 
     @staticmethod
@@ -561,10 +570,35 @@ class DuplicateReviewDialog(QDialog):
         type(self)._preferred_theme = new_theme
         self.apply_theme(new_theme)
 
+    def _apply_group_state_colors(self, dark=None):
+        if not self._fluent or not hasattr(self, "group_list"):
+            return
+        if dark is None:
+            dark = self._preferred_theme == "dark"
+
+        palette = (
+            {
+                "done": QColor("#23382b"),
+                "pending": QColor("#3a3020"),
+                "ignored": QColor("#303238"),
+            }
+            if dark
+            else {
+                "done": QColor("#e5f3e8"),
+                "pending": QColor("#fff0d7"),
+                "ignored": QColor("#eef0f3"),
+            }
+        )
+        for row in range(self.group_list.count()):
+            item = self.group_list.item(row)
+            state = item.data(Qt.UserRole + 1) or "pending"
+            item.setData(Qt.BackgroundRole, palette.get(state, palette["pending"]))
+
     def apply_theme(self, theme):
         if not self._fluent:
             return
         dark = theme == "dark"
+        type(self)._preferred_theme = theme
         self._fluent["setTheme"](
             self._fluent["Theme"].DARK if dark else self._fluent["Theme"].LIGHT
         )
@@ -580,16 +614,21 @@ class DuplicateReviewDialog(QDialog):
             if hasattr(card, "setBackgroundColor"):
                 card.setBackgroundColor(card_color)
             card.update()
+        self._apply_group_state_colors(dark)
 
         if dark:
             self.setStyleSheet(
                 "QDialog#DuplicateReviewDialog { background:#202020; color:#f2f2f2; }"
                 "QListWidget#DuplicateGroupList, QListWidget#DuplicateCompareGrid {"
                 "background:transparent; border:none; outline:none; color:#f2f2f2; }"
-                "QListWidget#DuplicateGroupList::item, QListWidget#DuplicateCompareGrid::item {"
+                "QListWidget#DuplicateGroupList::item {"
+                "border:1px solid #3f4448; border-radius:8px; padding:5px; margin:2px; }"
+                "QListWidget#DuplicateGroupList::item:hover {"
+                "border:1px solid #7aa7c7; }"
+                "QListWidget#DuplicateCompareGrid::item {"
                 "border:1px solid #3a3a3a; border-radius:8px; padding:5px; margin:2px;"
                 "background:#252525; }"
-                "QListWidget#DuplicateGroupList::item:hover, QListWidget#DuplicateCompareGrid::item:hover {"
+                "QListWidget#DuplicateCompareGrid::item:hover {"
                 "border:1px solid #5f7f9f; background:#2b2b2b; }"
                 "QListWidget#DuplicateGroupList::item:selected {"
                 "border:2px solid #60cdff; background:rgba(96,205,255,28); color:#f2f2f2; }"
@@ -607,10 +646,14 @@ class DuplicateReviewDialog(QDialog):
                 "QDialog#DuplicateReviewDialog { background:#f5f7fa; color:#1f2328; }"
                 "QListWidget#DuplicateGroupList, QListWidget#DuplicateCompareGrid {"
                 "background:transparent; border:none; outline:none; color:#1f2328; }"
-                "QListWidget#DuplicateGroupList::item, QListWidget#DuplicateCompareGrid::item {"
+                "QListWidget#DuplicateGroupList::item {"
+                "border:1px solid #d6dbe1; border-radius:8px; padding:5px; margin:2px; }"
+                "QListWidget#DuplicateGroupList::item:hover {"
+                "border:1px solid #8bb8e8; }"
+                "QListWidget#DuplicateCompareGrid::item {"
                 "border:1px solid #e1e5ea; border-radius:8px; padding:5px; margin:2px;"
                 "background:#ffffff; }"
-                "QListWidget#DuplicateGroupList::item:hover, QListWidget#DuplicateCompareGrid::item:hover {"
+                "QListWidget#DuplicateCompareGrid::item:hover {"
                 "border:1px solid #a8c7ef; background:#fbfdff; }"
                 "QListWidget#DuplicateGroupList::item:selected {"
                 "border:2px solid #6aa7e8; background:#e8f1ff; color:#0f6cbd; }"
@@ -683,6 +726,10 @@ class DuplicateReviewDialog(QDialog):
         else:
             item = QListWidgetItem(text)
         item.setData(Qt.UserRole, group_id)
+        item.setData(
+            Qt.UserRole + 1,
+            "ignored" if ignored else ("done" if done else "pending"),
+        )
         return item
 
     def _update_group_counts(self):
@@ -748,6 +795,7 @@ class DuplicateReviewDialog(QDialog):
             self.group_list.blockSignals(False)
 
         self._update_group_counts()
+        self._apply_group_state_colors()
         self.show_group(item)
 
     def show_group(self, item):
