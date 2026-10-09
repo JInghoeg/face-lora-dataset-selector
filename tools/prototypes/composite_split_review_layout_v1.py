@@ -75,6 +75,7 @@ class DemoCandidate:
     decision: str = "pending"
     manual_triggered: bool = False
     redetect_boxes: list[tuple[int, int, int, int]] = field(default_factory=list)
+    baseline_boxes: list[tuple[int, int, int, int]] = field(default_factory=list)
 
 
 class SourceBoxPreview(QWidget):
@@ -395,11 +396,12 @@ class CompositeSplitPrototype(QDialog):
 
         self.reset_box = TransparentPushButton("重置当前框")
         self.reset_box.setIcon(FluentIcon.SYNC)
+        self.reset_box.clicked.connect(self._reset_current_box)
         source_head.addWidget(self.reset_box)
         source_layout.addLayout(source_head)
 
         self.source_hint = CaptionLabel(
-            "点击已有框切换编辑 · 当前蓝框可拖动 / 缩放 · 在原图空白处直接拖拽即可新建拆分框"
+            "自动 / 手动候选均可：点击已有框切换编辑 · 当前蓝框可拖动 / 缩放 · 原图空白处直接拖拽新建拆分框"
         )
         source_layout.addWidget(self.source_hint)
 
@@ -578,6 +580,7 @@ class CompositeSplitPrototype(QDialog):
         zero_boxes = not candidate.boxes
         self.redetect_button.setVisible(candidate.manual_triggered)
         self.reset_box.setVisible(not zero_boxes)
+        self.reset_box.setEnabled(not zero_boxes)
         self.accept_button.setEnabled(not zero_boxes)
         self.source_preview.setCursor(Qt.CrossCursor if zero_boxes else Qt.ArrowCursor)
 
@@ -651,9 +654,31 @@ class CompositeSplitPrototype(QDialog):
         else:
             self.output_count.setText("暂无输出 · 在原图拖拽创建拆分框后实时生成预览")
 
+    def _reset_current_box(self):
+        candidate = self.candidates[self.current]
+        index = self.selected_output
+        if not (0 <= index < len(candidate.boxes)):
+            return
+
+        baseline = candidate.baseline_boxes
+        if index < len(baseline):
+            candidate.boxes[index] = tuple(baseline[index])
+        else:
+            # A user-drawn box has no detector baseline. Its creation geometry
+            # becomes the reset baseline, so later move/resize can safely return
+            # to that starting rectangle instead of deleting the box.
+            while len(candidate.baseline_boxes) <= index:
+                candidate.baseline_boxes.append(tuple(candidate.boxes[len(candidate.baseline_boxes)]))
+            candidate.boxes[index] = tuple(candidate.baseline_boxes[index])
+
+        self._show_candidate(self.current)
+        self._select_output(index)
+
     def _append_manual_box(self, box):
         candidate = self.candidates[self.current]
-        candidate.boxes = [*candidate.boxes, tuple(map(int, box))]
+        new_box = tuple(map(int, box))
+        candidate.boxes = [*candidate.boxes, new_box]
+        candidate.baseline_boxes = [*candidate.baseline_boxes, new_box]
         self.output_keep[candidate.candidate_id] = [
             *self.output_keep.get(
                 candidate.candidate_id,
@@ -678,6 +703,7 @@ class CompositeSplitPrototype(QDialog):
                 (1080, 165, 1470, 940),
             ]
         )
+        candidate.baseline_boxes = list(candidate.boxes)
         self.output_keep[candidate.candidate_id] = [True] * len(candidate.boxes)
         self._show_candidate(self.current)
 
@@ -882,6 +908,7 @@ def build_candidates(root: Path):
                 decision=decision,
                 manual_triggered=(idx == 3),
                 redetect_boxes=list(boxes) if idx == 3 else [],
+                baseline_boxes=list(boxes),
             )
         )
     return rows
