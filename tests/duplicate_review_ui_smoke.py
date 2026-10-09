@@ -13,7 +13,7 @@ from typing import Optional
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
@@ -216,9 +216,11 @@ def build_dialog(root: Path, target_count: int):
     return dialog, backend, changed
 
 
-def render_case(out_dir: Path, target_count: int):
+def render_case(out_dir: Path, target_count: int, theme: str = "light"):
     with tempfile.TemporaryDirectory() as td:
         dialog, _backend, _changed = build_dialog(Path(td), target_count)
+        if dialog._fluent is not None:
+            dialog.apply_theme(theme)
         dialog.show()
         app = QApplication.instance()
         pump(app)
@@ -233,13 +235,29 @@ def render_case(out_dir: Path, target_count: int):
         assert dialog.close_button is not None
         assert dialog.main_splitter is not None
         bottom_height = dialog.main_splitter.sizes()[1]
-        assert 120 <= bottom_height <= 180, bottom_height
+        assert 190 <= bottom_height <= 240, bottom_height
         assert (
             dialog.group_list.viewport().height()
             < dialog.group_list.gridSize().height() * 2
         ), "default navigator must expose one thumbnail row only"
 
-        path = out_dir / f"duplicate_review_production_{target_count}_mixed.png"
+        # Current-group actions must sit below the navigator, with the local
+        # primary action at the far left, matching the Auto Crop action grammar.
+        nav_pos = dialog.group_list.mapTo(dialog, QPoint(0, 0))
+        primary_pos = dialog.selected_button.mapTo(dialog, QPoint(0, 0))
+        best_pos = dialog.best_button.mapTo(dialog, QPoint(0, 0))
+        assert primary_pos.y() > nav_pos.y(), (primary_pos, nav_pos)
+        assert primary_pos.x() < best_pos.x(), (primary_pos, best_pos)
+
+        # Completed and unfinished group tiles need different background roles
+        # so omissions are scannable without reading every status label.
+        done_bg = dialog.group_list.item(0).data(Qt.BackgroundRole)
+        pending_bg = dialog.group_list.item(2).data(Qt.BackgroundRole)
+        assert done_bg != pending_bg, (done_bg, pending_bg)
+
+        path = out_dir / (
+            f"duplicate_review_production_{target_count}_mixed_{theme}.png"
+        )
         assert dialog.grab().save(str(path)), path
         dialog.close()
         pump(app)
@@ -290,6 +308,8 @@ def assert_fallback_starts():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--render-count", type=int, default=6)
+    parser.add_argument("--theme", choices=("light", "dark"), default="light")
     args = parser.parse_args()
 
     app = QApplication.instance() or QApplication([])
@@ -309,8 +329,7 @@ def main():
 
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
-        for count in (4, 6, 10):
-            print(render_case(args.out, count))
+        print(render_case(args.out, args.render_count, args.theme))
     return 0
 
 
