@@ -329,6 +329,7 @@ class CompositeSplitPrototype(QDialog):
         source_head.addStretch(1)
         self.add_box = PushButton("+ 添加拆分框")
         self.add_box.setMinimumHeight(34)
+        self.add_box.clicked.connect(self._add_manual_box)
         self.add_box.hide()
         source_head.addWidget(self.add_box)
 
@@ -516,6 +517,7 @@ class CompositeSplitPrototype(QDialog):
         zero_boxes = not candidate.boxes
         self.add_box.setVisible(zero_boxes)
         self.reset_box.setVisible(not zero_boxes)
+        self.accept_button.setEnabled(not zero_boxes)
 
         mode_long = (
             "拆成独立人物 / 视角"
@@ -578,6 +580,16 @@ class CompositeSplitPrototype(QDialog):
             self._update_output_count()
         else:
             self.output_count.setText("暂无输出 · 添加拆分框后实时生成预览")
+
+    def _add_manual_box(self):
+        candidate = self.candidates[self.current]
+        if candidate.boxes:
+            return
+        # Recovery default: create one conservative centered ROI. Production
+        # will hand this box to the same bounded ROI editor used by Auto Crop.
+        candidate.boxes = [(360, 150, 1240, 940)]
+        self.output_keep[candidate.candidate_id] = [True]
+        self._show_candidate(self.current)
 
     def _select_output(self, index):
         if index < 0:
@@ -845,10 +857,21 @@ def render_zero_detection_recovery(out_dir: Path):
         assert dialog.add_box.isVisible()
         assert not dialog.reset_box.isVisible()
         assert dialog.outputs.count() == 0
-        assert not dialog.accept_button.isEnabled() or dialog.outputs.count() == 0
+        assert not dialog.accept_button.isEnabled()
 
         path = out_dir / "composite_split_zero_detection_recovery_v1.png"
         assert dialog.grab().save(str(path)), path
+
+        # The recovery action must create a usable first ROI in-place rather
+        # than opening a second editor/window.
+        dialog._add_manual_box()
+        for _ in range(3):
+            app.processEvents()
+        assert dialog.outputs.count() == 1
+        assert dialog.accept_button.isEnabled()
+        assert not dialog.add_box.isVisible()
+        assert dialog.reset_box.isVisible()
+
         dialog.close()
         app.processEvents()
         return path
