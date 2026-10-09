@@ -36,13 +36,17 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QDialog,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
+    QLabel,
     QListView,
     QListWidget,
     QListWidgetItem,
     QSizeGrip,
     QSizePolicy,
     QSplitter,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -323,6 +327,11 @@ class CompositeSplitPrototype(QDialog):
         self.mode_label = CaptionLabel("")
         source_head.addWidget(self.mode_label)
         source_head.addStretch(1)
+        self.add_box = PushButton("+ 添加拆分框")
+        self.add_box.setMinimumHeight(34)
+        self.add_box.hide()
+        source_head.addWidget(self.add_box)
+
         self.reset_box = TransparentPushButton("重置当前框")
         self.reset_box.setIcon(FluentIcon.SYNC)
         source_head.addWidget(self.reset_box)
@@ -504,15 +513,25 @@ class CompositeSplitPrototype(QDialog):
         self.selected_output = 0
         self.source_preview.set_data(candidate.path, candidate.boxes, 0)
 
+        zero_boxes = not candidate.boxes
+        self.add_box.setVisible(zero_boxes)
+        self.reset_box.setVisible(not zero_boxes)
+
         mode_long = (
             "拆成独立人物 / 视角"
             if candidate.mode == "split_people"
             else "重叠多人合并裁剪"
         )
-        self.mode_label.setText(f"{mode_long} · {len(candidate.boxes)} 个输出")
-        self.source_meta.setText(
-            f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)}"
-        )
+        if zero_boxes:
+            self.mode_label.setText("手动触发 · 自动分析未找到可用拆分框")
+            self.source_meta.setText(
+                f"{candidate.path.name} · 1600 × 1000 · 可手动添加第一个拆分框"
+            )
+        else:
+            self.mode_label.setText(f"{mode_long} · {len(candidate.boxes)} 个输出")
+            self.source_meta.setText(
+                f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)}"
+            )
         state_text = {
             "accepted": "已接受",
             "rejected": "已拒绝",
@@ -554,8 +573,11 @@ class CompositeSplitPrototype(QDialog):
             self.outputs.addItem(item)
         self.outputs.blockSignals(False)
         self.outputs.reflow()
-        self.outputs.setCurrentRow(0)
-        self._update_output_count()
+        if self.outputs.count():
+            self.outputs.setCurrentRow(0)
+            self._update_output_count()
+        else:
+            self.output_count.setText("暂无输出 · 添加拆分框后实时生成预览")
 
     def _select_output(self, index):
         if index < 0:
@@ -590,7 +612,7 @@ class CompositeSplitPrototype(QDialog):
 
     def _update_output_count(self):
         candidate = self.candidates[self.current]
-        keep = self.output_keep[candidate.candidate_id]
+        keep = self.output_keep.get(candidate.candidate_id, [])
         self.output_count.setText(
             f"勾选 {sum(keep)} / {len(keep)} · 当前编辑输出 {self.selected_output + 1}"
         )
@@ -619,6 +641,79 @@ class CompositeSplitPrototype(QDialog):
             "QSplitter#CompositeWorkSplitter::handle:horizontal:hover {"
             "background:rgba(0,120,212,105); }"
         )
+
+
+
+class ManualEntryContextPrototype(QDialog):
+    """Visualizes only the existing main-view right inspector placement.
+
+    The broad Dataset View redesign remains paused. This mock deliberately uses
+    the current native-QWidget grammar to answer one question only: where the
+    selected-image recovery action belongs.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("当前图片工具位置预览")
+        self.resize(620, 600)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        title = QLabel("主 Dataset View · 当前图片右侧区域")
+        title.setStyleSheet("font-size:18px;font-weight:700;")
+        root.addWidget(title)
+
+        stats = QGroupBox("统计（点击分类筛选）")
+        stats_layout = QVBoxLayout(stats)
+        stats_layout.addWidget(QLabel("推荐 126 · 备选 43 · 淘汰 18"))
+        root.addWidget(stats)
+
+        analysis = QGroupBox("图片分析数据")
+        analysis_layout = QVBoxLayout(analysis)
+        detail = QLabel(
+            "IMG_0241.png\n"
+            "1600 × 1000 · 推荐 · PASS\n"
+            "FIQA 0.712 · BRISQUE 29.6 · 清晰度 94\n"
+            "检测到 3 个独立人物，但自动 Composite Scan 未生成候选"
+        )
+        detail.setWordWrap(True)
+        analysis_layout.addWidget(detail)
+
+        tool_row = QHBoxLayout()
+        self.manual_composite = QPushButton("手动组合图拆分…")
+        self.manual_composite.setToolTip(
+            "仅对当前选中图片重新运行组合图拆分分析；不会重扫整个数据集"
+        )
+        tool_row.addWidget(self.manual_composite)
+        tool_row.addStretch(1)
+        analysis_layout.addLayout(tool_row)
+        root.addWidget(analysis)
+
+        manual = QGroupBox("人工状态（优先于自动结果）")
+        manual_layout = QGridLayout(manual)
+        for column, label in enumerate(("推荐", "备选", "淘汰")):
+            manual_layout.addWidget(QPushButton(label), 0, column)
+        manual_layout.addWidget(QPushButton("恢复自动"), 1, 0, 1, 3)
+        root.addWidget(manual)
+
+        ai = QGroupBox("AI 审核建议")
+        ai_layout = QVBoxLayout(ai)
+        ai_layout.addWidget(QLabel("当前图片没有 AI 建议"))
+        root.addWidget(ai)
+        root.addStretch(1)
+
+        hint = QLabel(
+            "入口只属于“当前选中图片”的上下文，不放到顶部全局工具栏，"
+            "避免误解为重新扫描整个数据集。"
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(
+            "padding:8px;color:#475569;background:#eef3f8;"
+            "border:1px solid #cbd5e1;border-radius:4px;"
+        )
+        root.addWidget(hint)
 
 
 def make_composite_image(path: Path, seed: int, people=3):
@@ -735,6 +830,44 @@ def render(out_dir: Path):
         return path
 
 
+
+def render_zero_detection_recovery(out_dir: Path):
+    with tempfile.TemporaryDirectory() as td:
+        dialog = CompositeSplitPrototype(Path(td))
+        app = QApplication.instance()
+        dialog.candidates[2].boxes = []
+        dialog.candidate_list.setCurrentRow(2)
+        dialog._show_candidate(2)
+        dialog.show()
+        for _ in range(8):
+            app.processEvents()
+
+        assert dialog.add_box.isVisible()
+        assert not dialog.reset_box.isVisible()
+        assert dialog.outputs.count() == 0
+        assert not dialog.accept_button.isEnabled() or dialog.outputs.count() == 0
+
+        path = out_dir / "composite_split_zero_detection_recovery_v1.png"
+        assert dialog.grab().save(str(path)), path
+        dialog.close()
+        app.processEvents()
+        return path
+
+
+def render_manual_entry_context(out_dir: Path):
+    dialog = ManualEntryContextPrototype()
+    app = QApplication.instance()
+    dialog.show()
+    for _ in range(5):
+        app.processEvents()
+    assert dialog.manual_composite.isVisible()
+    path = out_dir / "composite_manual_entry_context_v1.png"
+    assert dialog.grab().save(str(path)), path
+    dialog.close()
+    app.processEvents()
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
@@ -752,6 +885,8 @@ def main():
                 app.setFont(QFont(families[0], 10))
 
     print(render(args.out))
+    print(render_zero_detection_recovery(args.out))
+    print(render_manual_entry_context(args.out))
     return 0
 
 
