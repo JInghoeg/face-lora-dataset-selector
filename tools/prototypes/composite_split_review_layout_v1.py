@@ -579,6 +579,12 @@ class CompositeSplitPrototype(QDialog):
         self.redetect_button.setVisible(candidate.manual_triggered)
         self.reset_box.setVisible(not zero_boxes)
         self.accept_button.setEnabled(not zero_boxes)
+        self.source_preview.setCursor(Qt.CrossCursor if zero_boxes else Qt.ArrowCursor)
+
+        nav_item = self.candidate_list.item(row)
+        if nav_item is not None:
+            nav_item.setData(Qt.UserRole + 1, candidate.decision)
+            self._refresh_candidate_item(nav_item, candidate)
 
         mode_long = (
             "拆成独立人物 / 视角"
