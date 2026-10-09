@@ -236,10 +236,26 @@ def render_case(out_dir: Path, target_count: int, theme: str = "light"):
         assert dialog.main_splitter is not None
         bottom_height = dialog.main_splitter.sizes()[1]
         assert 190 <= bottom_height <= 225, bottom_height
-        assert (
-            dialog.group_list.viewport().height()
-            <= dialog.group_list.gridSize().height() + 2
-        ), "default navigator must expose exactly one thumbnail row with no second-row sliver"
+        viewport_h = dialog.group_list.viewport().height()
+        grid_h = dialog.group_list.gridSize().height()
+        assert viewport_h <= grid_h + 2, (
+            "default navigator must expose exactly one thumbnail row with no second-row sliver",
+            viewport_h,
+            grid_h,
+            bottom_height,
+        )
+
+        # Expanding the lower splitter must release the one-row cap so the
+        # navigator can grow into multiple rows instead of becoming dead space.
+        sizes = dialog.main_splitter.sizes()
+        dialog.main_splitter.setSizes([max(1, sizes[0] - 180), sizes[1] + 180])
+        dialog._sync_group_strip_expansion()
+        pump(app)
+        assert dialog.group_list.maximumHeight() > 1000
+        assert dialog.group_list.viewport().height() > grid_h + 2
+        dialog.main_splitter.setSizes(sizes)
+        dialog._sync_group_strip_expansion()
+        pump(app)
 
         # Current-group actions must sit below the navigator, with the local
         # primary action at the far left, matching the Auto Crop action grammar.
