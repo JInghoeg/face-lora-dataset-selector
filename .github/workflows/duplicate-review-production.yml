@@ -77,16 +77,16 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ matrix.python }}" -eq "3.12") {
-            python tests/duplicate_review_ui_smoke.py --out production-render
+            python tests/duplicate_review_ui_smoke.py --out production-render --render-count 6 --theme dark
           } else {
             python tests/duplicate_review_ui_smoke.py
           }
 
-      - name: Upload production screenshots
+      - name: Upload production screenshot
         if: ${{ matrix.python == '3.12' }}
         uses: actions/upload-artifact@v4
         with:
-          name: duplicate-review-production-screenshots
+          name: duplicate-review-production-dark-screenshot
           path: production-render/*.png
           if-no-files-found: error
           retention-days: 7
