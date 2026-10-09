@@ -235,11 +235,11 @@ def render_case(out_dir: Path, target_count: int, theme: str = "light"):
         assert dialog.close_button is not None
         assert dialog.main_splitter is not None
         bottom_height = dialog.main_splitter.sizes()[1]
-        assert 190 <= bottom_height <= 240, bottom_height
+        assert 190 <= bottom_height <= 225, bottom_height
         assert (
             dialog.group_list.viewport().height()
-            < dialog.group_list.gridSize().height() * 2
-        ), "default navigator must expose one thumbnail row only"
+            <= dialog.group_list.gridSize().height() + 2
+        ), "default navigator must expose exactly one thumbnail row with no second-row sliver"
 
         # Current-group actions must sit below the navigator, with the local
         # primary action at the far left, matching the Auto Crop action grammar.
