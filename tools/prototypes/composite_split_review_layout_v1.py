@@ -320,7 +320,7 @@ class CompositeSplitPrototype(QDialog):
         super().__init__()
         self.root = root
         self.candidates = build_candidates(root)
-        self.current = 2
+        self.current = 3
         self.selected_output = 0
         self.output_keep: dict[int, list[bool]] = {}
 
@@ -930,7 +930,41 @@ def render(out_dir: Path):
             <= dialog.candidate_list.gridSize().height() + 2
         )
         assert dialog.accept_button.x() < dialog.reject_button.x()
+        assert dialog.outputs.count() == 2
+        assert not dialog.candidates[dialog.current].manual_triggered
+        assert dialog.reset_box.isVisible()
+        assert not dialog.redetect_button.isVisible()
+
+        # Automatic-scan candidates use the same direct-draw creation path.
+        preview = dialog.source_preview
+        rect = preview._display_rect
+        start = QPoint(
+            int(rect.left() + rect.width() * 0.06),
+            int(rect.top() + rect.height() * 0.03),
+        )
+        end = QPoint(
+            int(rect.left() + rect.width() * 0.22),
+            int(rect.top() + rect.height() * 0.13),
+        )
+        QTest.mousePress(preview, Qt.LeftButton, Qt.NoModifier, start)
+        QTest.mouseMove(preview, end, 30)
+        QTest.mouseRelease(preview, Qt.LeftButton, Qt.NoModifier, end)
+        for _ in range(3):
+            app.processEvents()
         assert dialog.outputs.count() == 3
+
+        # "Reset current box" must restore the selected automatic proposal's
+        # detector baseline without touching the other boxes.
+        candidate = dialog.candidates[dialog.current]
+        original = tuple(candidate.baseline_boxes[0])
+        untouched = tuple(candidate.boxes[1])
+        candidate.boxes[0] = (20, 20, 180, 180)
+        dialog.selected_output = 0
+        dialog.reset_box.click()
+        for _ in range(2):
+            app.processEvents()
+        assert tuple(candidate.boxes[0]) == original
+        assert tuple(candidate.boxes[1]) == untouched
 
         accepted_bg = dialog.candidate_list.item(0).data(Qt.BackgroundRole)
         rejected_bg = dialog.candidate_list.item(1).data(Qt.BackgroundRole)
@@ -967,6 +1001,7 @@ def render_zero_detection_recovery(out_dir: Path):
         dialog = CompositeSplitPrototype(Path(td))
         app = QApplication.instance()
         dialog.candidates[2].boxes = []
+        dialog.candidates[2].baseline_boxes = []
         dialog.candidate_list.setCurrentRow(2)
         dialog._show_candidate(2)
         dialog.show()
