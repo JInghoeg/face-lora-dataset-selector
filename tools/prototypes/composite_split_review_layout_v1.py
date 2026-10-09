@@ -935,6 +935,11 @@ def render(out_dir: Path):
         assert dialog.reset_box.isVisible()
         assert not dialog.redetect_button.isVisible()
 
+        # Capture the clean automatic-scan visual before smoke interactions
+        # mutate the candidate with a synthetic drag-created box.
+        path = out_dir / "composite_split_review_layout_v1.png"
+        assert dialog.grab().save(str(path)), path
+
         # Automatic-scan candidates use the same direct-draw creation path.
         preview = dialog.source_preview
         rect = preview._display_rect
@@ -988,8 +993,6 @@ def render(out_dir: Path):
         for _ in range(3):
             app.processEvents()
 
-        path = out_dir / "composite_split_review_layout_v1.png"
-        assert dialog.grab().save(str(path)), path
         dialog.close()
         app.processEvents()
         return path
