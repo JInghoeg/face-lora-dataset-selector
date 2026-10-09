@@ -14,7 +14,7 @@ Design goals:
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import tempfile
@@ -72,12 +72,15 @@ class DemoCandidate:
     boxes: list[tuple[int, int, int, int]]
     mode: str
     decision: str = "pending"
+    manual_triggered: bool = False
+    redetect_boxes: list[tuple[int, int, int, int]] = field(default_factory=list)
 
 
 class SourceBoxPreview(QWidget):
     """Image preview with all proposal boxes and one visibly editable box."""
 
     boxSelected = Signal(int)
+    boxCreated = Signal(object)
 
     BOX_COLORS = ("#5dade2", "#58d68d", "#af7ac5", "#f5b041")
 
@@ -91,6 +94,8 @@ class SourceBoxPreview(QWidget):
         self._boxes: list[tuple[int, int, int, int]] = []
         self._selected = 0
         self._display_rect = QRectF()
+        self._draw_origin = None
+        self._draw_current = None
 
     def set_data(self, path: Path, boxes, selected=0):
         self._pixmap = QPixmap(str(path))
@@ -167,27 +172,80 @@ class SourceBoxPreview(QWidget):
                         QRectF(point.x() - 4, point.y() - 4, 8, 8)
                     )
                 painter.setBrush(Qt.NoBrush)
+
+        if self._draw_origin is not None and self._draw_current is not None:
+            draft = QRectF(self._draw_origin, self._draw_current).normalized()
+            pen = QPen(QColor("#60cdff"))
+            pen.setWidth(2)
+            pen.setStyle(Qt.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QColor(96, 205, 255, 36))
+            painter.drawRect(draft)
+            painter.setBrush(Qt.NoBrush)
         painter.end()
 
+    def _widget_to_source(self, point):
+        sx = self._source_size.width() / self._display_rect.width()
+        sy = self._source_size.height() / self._display_rect.height()
+        return (
+            int(round((point.x() - self._display_rect.left()) * sx)),
+            int(round((point.y() - self._display_rect.top()) * sy)),
+        )
+
     def mousePressEvent(self, event):
-        if not self._display_rect.isValid() or self._source_size.isEmpty():
+        if (
+            event.button() != Qt.LeftButton
+            or not self._display_rect.isValid()
+            or self._source_size.isEmpty()
+        ):
             return super().mousePressEvent(event)
         p = event.position()
         if not self._display_rect.contains(p):
             return super().mousePressEvent(event)
 
-        sx = self._source_size.width() / self._display_rect.width()
-        sy = self._source_size.height() / self._display_rect.height()
-        source_x = (p.x() - self._display_rect.left()) * sx
-        source_y = (p.y() - self._display_rect.top()) * sy
-
+        source_x, source_y = self._widget_to_source(p)
         for index, (x0, y0, x1, y1) in enumerate(self._boxes):
             if x0 <= source_x <= x1 and y0 <= source_y <= y1:
                 self._selected = index
                 self.boxSelected.emit(index)
                 self.update()
-                break
-        super().mousePressEvent(event)
+                return
+
+        # Empty image space enters direct draw-to-create mode. No separate
+        # "add box" toggle/button is required.
+        self._draw_origin = p
+        self._draw_current = p
+        self.setCursor(Qt.CrossCursor)
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._draw_origin is None:
+            return super().mouseMoveEvent(event)
+        p = event.position()
+        x = min(max(p.x(), self._display_rect.left()), self._display_rect.right())
+        y = min(max(p.y(), self._display_rect.top()), self._display_rect.bottom())
+        self._draw_current = QPointF(x, y)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self._draw_origin is None or event.button() != Qt.LeftButton:
+            return super().mouseReleaseEvent(event)
+        end = self._draw_current or event.position()
+        draft = QRectF(self._draw_origin, end).normalized()
+        self._draw_origin = None
+        self._draw_current = None
+        self.unsetCursor()
+
+        if draft.width() >= 24 and draft.height() >= 24:
+            x0, y0 = self._widget_to_source(draft.topLeft())
+            x1, y1 = self._widget_to_source(draft.bottomRight())
+            x0 = max(0, min(self._source_size.width() - 1, x0))
+            x1 = max(1, min(self._source_size.width(), x1))
+            y0 = max(0, min(self._source_size.height() - 1, y0))
+            y1 = max(1, min(self._source_size.height(), y1))
+            if x1 > x0 and y1 > y0:
+                self.boxCreated.emit((x0, y0, x1, y1))
+        self.update()
 
 
 class OutputGrid(QListWidget):
@@ -327,11 +385,12 @@ class CompositeSplitPrototype(QDialog):
         self.mode_label = CaptionLabel("")
         source_head.addWidget(self.mode_label)
         source_head.addStretch(1)
-        self.add_box = PushButton("+ 添加拆分框")
-        self.add_box.setMinimumHeight(34)
-        self.add_box.clicked.connect(self._add_manual_box)
-        self.add_box.hide()
-        source_head.addWidget(self.add_box)
+        self.redetect_button = PushButton("重新检测当前图")
+        self.redetect_button.setMinimumHeight(34)
+        self.redetect_button.setIcon(FluentIcon.SYNC)
+        self.redetect_button.clicked.connect(self._redetect_current)
+        self.redetect_button.hide()
+        source_head.addWidget(self.redetect_button)
 
         self.reset_box = TransparentPushButton("重置当前框")
         self.reset_box.setIcon(FluentIcon.SYNC)
@@ -339,12 +398,13 @@ class CompositeSplitPrototype(QDialog):
         source_layout.addLayout(source_head)
 
         self.source_hint = CaptionLabel(
-            "点击其他框切换编辑 · 当前蓝框可拖动，并可从四边 / 四角缩放"
+            "点击已有框切换编辑 · 当前蓝框可拖动 / 缩放 · 在原图空白处直接拖拽即可新建拆分框"
         )
         source_layout.addWidget(self.source_hint)
 
         self.source_preview = SourceBoxPreview()
         self.source_preview.boxSelected.connect(self._select_output)
+        self.source_preview.boxCreated.connect(self._append_manual_box)
         source_layout.addWidget(self.source_preview, 1)
 
         self.source_meta = CaptionLabel("")
@@ -515,7 +575,7 @@ class CompositeSplitPrototype(QDialog):
         self.source_preview.set_data(candidate.path, candidate.boxes, 0)
 
         zero_boxes = not candidate.boxes
-        self.add_box.setVisible(zero_boxes)
+        self.redetect_button.setVisible(candidate.manual_triggered)
         self.reset_box.setVisible(not zero_boxes)
         self.accept_button.setEnabled(not zero_boxes)
 
@@ -525,9 +585,9 @@ class CompositeSplitPrototype(QDialog):
             else "重叠多人合并裁剪"
         )
         if zero_boxes:
-            self.mode_label.setText("手动触发 · 自动分析未找到可用拆分框")
+            self.mode_label.setText("手动触发 · 当前没有可用拆分框")
             self.source_meta.setText(
-                f"{candidate.path.name} · 1600 × 1000 · 可手动添加第一个拆分框"
+                f"{candidate.path.name} · 1600 × 1000 · 请直接在原图中拖拽创建拆分框，或重新检测"
             )
         else:
             self.mode_label.setText(f"{mode_long} · {len(candidate.boxes)} 个输出")
@@ -579,16 +639,33 @@ class CompositeSplitPrototype(QDialog):
             self.outputs.setCurrentRow(0)
             self._update_output_count()
         else:
-            self.output_count.setText("暂无输出 · 添加拆分框后实时生成预览")
+            self.output_count.setText("暂无输出 · 在原图拖拽创建拆分框后实时生成预览")
 
-    def _add_manual_box(self):
+    def _append_manual_box(self, box):
         candidate = self.candidates[self.current]
-        if candidate.boxes:
+        candidate.boxes = [*candidate.boxes, tuple(map(int, box))]
+        self.output_keep[candidate.candidate_id] = [
+            *self.output_keep.get(candidate.candidate_id, [True] * (len(candidate.boxes) - 1)),
+            True,
+        ]
+        self.selected_output = len(candidate.boxes) - 1
+        self._show_candidate(self.current)
+        self._select_output(self.selected_output)
+
+    def _redetect_current(self):
+        candidate = self.candidates[self.current]
+        if not candidate.manual_triggered:
             return
-        # Recovery default: create one conservative centered ROI. Production
-        # will hand this box to the same bounded ROI editor used by Auto Crop.
-        candidate.boxes = [(360, 150, 1240, 940)]
-        self.output_keep[candidate.candidate_id] = [True]
+        # Prototype simulation of a current-image-only detector retry.
+        candidate.boxes = list(
+            candidate.redetect_boxes
+            or [
+                (120, 160, 520, 940),
+                (590, 150, 1010, 930),
+                (1080, 165, 1470, 940),
+            ]
+        )
+        self.output_keep[candidate.candidate_id] = [True] * len(candidate.boxes)
         self._show_candidate(self.current)
 
     def _select_output(self, index):
@@ -790,6 +867,8 @@ def build_candidates(root: Path):
                 boxes=boxes,
                 mode=mode,
                 decision=decision,
+                manual_triggered=(idx == 3),
+                redetect_boxes=list(boxes) if idx == 3 else [],
             )
         )
     return rows
@@ -854,7 +933,7 @@ def render_zero_detection_recovery(out_dir: Path):
         for _ in range(8):
             app.processEvents()
 
-        assert dialog.add_box.isVisible()
+        assert dialog.redetect_button.isVisible()
         assert not dialog.reset_box.isVisible()
         assert dialog.outputs.count() == 0
         assert not dialog.accept_button.isEnabled()
@@ -862,15 +941,25 @@ def render_zero_detection_recovery(out_dir: Path):
         path = out_dir / "composite_split_zero_detection_recovery_v1.png"
         assert dialog.grab().save(str(path)), path
 
-        # The recovery action must create a usable first ROI in-place rather
-        # than opening a second editor/window.
-        dialog._add_manual_box()
+        # Direct-draw creation must create a usable ROI in-place; there is no
+        # separate "add box" button/toggle.
+        dialog._append_manual_box((360, 150, 1240, 940))
         for _ in range(3):
             app.processEvents()
         assert dialog.outputs.count() == 1
         assert dialog.accept_button.isEnabled()
-        assert not dialog.add_box.isVisible()
         assert dialog.reset_box.isVisible()
+
+        # A detector retry is also available for manually-triggered images and
+        # only replaces the current image's proposal.
+        dialog.candidates[2].boxes = []
+        dialog.output_keep[dialog.candidates[2].candidate_id] = []
+        dialog._show_candidate(2)
+        dialog._redetect_current()
+        for _ in range(3):
+            app.processEvents()
+        assert dialog.outputs.count() == 3
+        assert dialog.accept_button.isEnabled()
 
         dialog.close()
         app.processEvents()
