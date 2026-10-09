@@ -22,7 +22,7 @@ import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import QPointF, QRectF, Qt, QSize, QTimer, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QSize, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -32,6 +32,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -590,7 +591,10 @@ class CompositeSplitPrototype(QDialog):
                 f"{candidate.path.name} · 1600 × 1000 · 请直接在原图中拖拽创建拆分框，或重新检测"
             )
         else:
-            self.mode_label.setText(f"{mode_long} · {len(candidate.boxes)} 个输出")
+            prefix = "手动触发 · " if candidate.manual_triggered else ""
+            self.mode_label.setText(
+                f"{prefix}{mode_long} · {len(candidate.boxes)} 个输出"
+            )
             self.source_meta.setText(
                 f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)}"
             )
@@ -645,12 +649,15 @@ class CompositeSplitPrototype(QDialog):
         candidate = self.candidates[self.current]
         candidate.boxes = [*candidate.boxes, tuple(map(int, box))]
         self.output_keep[candidate.candidate_id] = [
-            *self.output_keep.get(candidate.candidate_id, [True] * (len(candidate.boxes) - 1)),
+            *self.output_keep.get(
+                candidate.candidate_id,
+                [True] * (len(candidate.boxes) - 1),
+            ),
             True,
         ]
-        self.selected_output = len(candidate.boxes) - 1
+        new_index = len(candidate.boxes) - 1
         self._show_candidate(self.current)
-        self._select_output(self.selected_output)
+        self._select_output(new_index)
 
     def _redetect_current(self):
         candidate = self.candidates[self.current]
@@ -941,9 +948,21 @@ def render_zero_detection_recovery(out_dir: Path):
         path = out_dir / "composite_split_zero_detection_recovery_v1.png"
         assert dialog.grab().save(str(path)), path
 
-        # Direct-draw creation must create a usable ROI in-place; there is no
-        # separate "add box" button/toggle.
-        dialog._append_manual_box((360, 150, 1240, 940))
+        # Direct-draw creation must work through the real preview mouse path;
+        # there is no separate "add box" button/toggle.
+        preview = dialog.source_preview
+        rect = preview._display_rect
+        start = QPoint(
+            int(rect.left() + rect.width() * 0.18),
+            int(rect.top() + rect.height() * 0.20),
+        )
+        end = QPoint(
+            int(rect.left() + rect.width() * 0.48),
+            int(rect.top() + rect.height() * 0.86),
+        )
+        QTest.mousePress(preview, Qt.LeftButton, Qt.NoModifier, start)
+        QTest.mouseMove(preview, end, 30)
+        QTest.mouseRelease(preview, Qt.LeftButton, Qt.NoModifier, end)
         for _ in range(3):
             app.processEvents()
         assert dialog.outputs.count() == 1
