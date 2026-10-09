@@ -704,6 +704,29 @@ def render(out_dir: Path):
             <= dialog.candidate_list.gridSize().height() + 2
         )
         assert dialog.accept_button.x() < dialog.reject_button.x()
+        assert dialog.outputs.count() == 3
+
+        accepted_bg = dialog.candidate_list.item(0).data(Qt.BackgroundRole)
+        rejected_bg = dialog.candidate_list.item(1).data(Qt.BackgroundRole)
+        pending_bg = dialog.candidate_list.item(3).data(Qt.BackgroundRole)
+        assert len({accepted_bg.name(), rejected_bg.name(), pending_bg.name()}) == 3
+
+        compact_sizes = dialog.main_splitter.sizes()
+        dialog.main_splitter.setSizes(
+            [max(1, compact_sizes[0] - 180), compact_sizes[1] + 180]
+        )
+        dialog._sync_candidate_expansion()
+        for _ in range(3):
+            app.processEvents()
+        assert dialog.candidate_list.maximumHeight() > 1000
+        assert (
+            dialog.candidate_list.viewport().height()
+            > dialog.candidate_list.gridSize().height() + 2
+        )
+        dialog.main_splitter.setSizes(compact_sizes)
+        dialog._sync_candidate_expansion()
+        for _ in range(3):
+            app.processEvents()
 
         path = out_dir / "composite_split_review_layout_v1.png"
         assert dialog.grab().save(str(path)), path
