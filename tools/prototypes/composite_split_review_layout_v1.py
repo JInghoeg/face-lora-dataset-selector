@@ -137,6 +137,7 @@ class SourceBoxPreview(QWidget):
             pen = QPen(QColor("#60cdff") if selected else color)
             pen.setWidth(3 if selected else 2)
             painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(rect, 5, 5)
 
             badge = QRectF(rect.left() + 7, rect.top() + 7, 28, 24)
@@ -161,6 +162,7 @@ class SourceBoxPreview(QWidget):
                     painter.drawRect(
                         QRectF(point.x() - 4, point.y() - 4, 8, 8)
                     )
+                painter.setBrush(Qt.NoBrush)
         painter.end()
 
     def mousePressEvent(self, event):
@@ -327,7 +329,7 @@ class CompositeSplitPrototype(QDialog):
         source_layout.addLayout(source_head)
 
         self.source_hint = CaptionLabel(
-            "点击其他框切换编辑 · 当前蓝框显示拖动/缩放手柄 · 生产实现复用 Auto Crop ROI"
+            "点击其他框切换编辑 · 当前蓝框可拖动，并可从四边 / 四角缩放"
         )
         source_layout.addWidget(self.source_hint)
 
@@ -485,9 +487,9 @@ class CompositeSplitPrototype(QDialog):
 
     def _apply_candidate_state_colors(self):
         palette = {
-            "accepted": QColor("#e5f3e8"),
-            "pending": QColor("#fff0d7"),
-            "rejected": QColor("#f2e7e7"),
+            "accepted": QColor("#dcefe2"),
+            "pending": QColor("#ffe8bd"),
+            "rejected": QColor("#efd6d8"),
         }
         for row in range(self.candidate_list.count()):
             item = self.candidate_list.item(row)
