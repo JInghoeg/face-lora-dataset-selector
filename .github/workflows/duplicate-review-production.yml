@@ -1,0 +1,92 @@
+name: Duplicate Review Production UI
+
+on:
+  push:
+    branches:
+      - ui/v0.4-duplicate-review-production
+    paths:
+      - "src/ui/qt/duplicate_review.py"
+      - "resources/translations/app_en_US.ts"
+      - "tests/duplicate_review_ui_smoke.py"
+      - "tests/i18n_catalog_contract.py"
+      - "tools/install_ui_dependencies.py"
+      - ".github/workflows/duplicate-review-production.yml"
+  pull_request:
+    paths:
+      - "src/ui/qt/duplicate_review.py"
+      - "resources/translations/app_en_US.ts"
+      - "tests/duplicate_review_ui_smoke.py"
+      - "tests/i18n_catalog_contract.py"
+      - "tools/install_ui_dependencies.py"
+      - ".github/workflows/duplicate-review-production.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  production-ui:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Duplicate Review UI runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir "PySide6-Essentials>=6.6,<6.9" "Pillow>=10,<12"
+          python tools/install_ui_dependencies.py
+
+      - name: Compile Duplicate Review production UI
+        shell: pwsh
+        run: |
+          python -m compileall src/ui/qt/duplicate_review.py tests/duplicate_review_ui_smoke.py
+
+      - name: Validate i18n catalog contract
+        shell: pwsh
+        run: |
+          python tests/i18n_catalog_contract.py
+
+      - name: Download CJK font for production screenshots
+        if: ${{ matrix.python == '3.12' }}
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "DUPLICATE_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Exercise production Duplicate Review
+        shell: pwsh
+        run: |
+          if ("${{ matrix.python }}" -eq "3.12") {
+            python tests/duplicate_review_ui_smoke.py --out production-render --render-count 6 --theme dark
+          } else {
+            python tests/duplicate_review_ui_smoke.py
+          }
+
+      - name: Upload production screenshot
+        if: ${{ matrix.python == '3.12' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: duplicate-review-production-dark-screenshot
+          path: production-render/*.png
+          if-no-files-found: error
+          retention-days: 7

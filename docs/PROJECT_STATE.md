@@ -59,7 +59,8 @@ Historical repository note:
 - v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
 - #83 / PR #84 — the merged Dataset Review UI candidate was explicitly rejected by the user on 2026-10-05 because it violated the previously established UI process and visual direction.
 - PR #87 completed the exact rollback on `main` at `3b7e13d0497c2c0f0dcc8a466954a2561a104ae6`; the rejected Dataset Review shell is no longer on the production branch.
-- **Active authorized UI slice: Duplicate Review visual design/prototype under Draft PR #88.** It is intentionally isolated under `tools/prototypes/` and does not change production `src/` code. Explicit user visual acceptance is required before any production Duplicate Review replacement or merge.
+- Duplicate Review visual design in Draft PR #88 was explicitly accepted by the user after iterative real-Qt review (full-width comparison, one-row default thumbnail group navigator, expandable multi-row navigation, top + bottom close affordances, and finish-group auto-advance).
+- **Active authorized UI slice: bounded Duplicate Review production implementation under Draft PR #90.** The user explicitly approved #88 and instructed the project to continue into production implementation. #90 ports the accepted presentation into `src/ui/qt/duplicate_review.py` while preserving SelectorApplication duplicate-group semantics and a no-Fluent fallback.
 - The accepted order remains small-module-first: Duplicate Review first, Composite Split Review second. The broad main Dataset Review shell redesign stays paused.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
@@ -67,10 +68,10 @@ Historical repository note:
 
 ## Current objective
 
-1. iterate the real Qt/QFluentWidgets Duplicate Review visual prototype in Draft PR #88 until the layout, hierarchy and interaction placement are explicitly accepted by the user;
-2. keep the prototype isolated from production `src/` behavior while visual review is still open;
-3. after explicit visual acceptance, require a separately authorized bounded production implementation rather than silently treating the prototype as shippable code;
-4. keep Composite Split Review as the next UI surface after Duplicate Review establishes the accepted shared pattern.
+1. validate the bounded production Duplicate Review implementation in Draft PR #90 against the explicitly accepted #88 visual baseline;
+2. inspect generated screenshots from the real production `DuplicateReviewDialog` and keep the integrated production UI HUMAN UNVERIFIED until the user accepts that implementation;
+3. preserve existing duplicate backend/application semantics, live i18n, Portable compatibility and the no-Fluent fallback while fixing only integration defects found by automation or screenshot review;
+4. after Duplicate Review production lands, keep Composite Split Review as the next intended UI surface but require a current user instruction before starting that new implementation slice.
 
 No broad main Dataset Review redesign, production GPU integration, PR #74 adoption, recommendation/model change, or manual Auto Crop entry-point implementation is active.
 
@@ -78,7 +79,7 @@ No broad main Dataset Review redesign, production GPU integration, PR #74 adopti
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACTIVE VISUAL DESIGN:** whole-product UI/UX modernization (#75) is currently on the Duplicate Review prototype (#88). The rejected #83/#84 main-shell candidate has been fully reverted by #87. Duplicate Review is first, Composite Split Review is second, and the broad main Dataset Review redesign remains paused.
+- **ACTIVE PRODUCTION IMPLEMENTATION:** whole-product UI/UX modernization (#75) is currently executing the user-approved Duplicate Review design from prototype #88 through bounded production PR #90. Duplicate Review remains first, Composite Split Review remains second, and the broad main Dataset Review redesign remains paused.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -100,15 +101,16 @@ Execution ordering among these directions is intentionally **not inferred here**
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
+- Duplicate Review integrated production UI in PR #90 is **HUMAN UNVERIFIED** until its generated real-production screenshots are reviewed against the accepted #88 baseline; track this under #75.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. finish the current real-Qt Duplicate Review visual iteration in Draft PR #88 and inspect the generated 4 / 6 / 10-member screenshots;
-2. require explicit user visual acceptance before replacing production Duplicate Review UI or merging any production UI change;
-3. after Duplicate Review establishes the accepted shared pattern, move to Composite Split Review only with a current user instruction;
+1. finish PR #90 automated validation and inspect its generated 4 / 6 / 10-member screenshots from the actual production `DuplicateReviewDialog`;
+2. require explicit user acceptance of the integrated production screenshots before merging #90;
+3. after #90 lands, move to Composite Split Review only with a current user instruction;
 4. keep PR #74 frozen unless the user explicitly adopts its Text Cleanup scope.
 
 ## Do not repeat
@@ -143,8 +145,11 @@ Current:
 Non-canonical existing work:
 - Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
 
-Active visual prototype:
-- Draft PR #88 — Duplicate Review real Qt/QFluentWidgets layout prototype; production `src/` unchanged; explicit visual acceptance required
+Accepted visual reference:
+- Draft PR #88 — Duplicate Review real Qt/QFluentWidgets layout prototype; explicitly accepted by the user and retained as the visual/reference evidence rather than merged as production code
+
+Active production implementation:
+- Draft PR #90 — bounded Duplicate Review production implementation of the accepted #88 baseline; HUMAN UNVERIFIED until integrated production screenshots are accepted
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate
