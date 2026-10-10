@@ -696,14 +696,10 @@ class CompositeSplitPrototype(QDialog):
             del keep[index]
         self.output_keep[candidate.candidate_id] = keep
 
-        if candidate.boxes:
-            self.selected_output = min(index, len(candidate.boxes) - 1)
-        else:
-            self.selected_output = 0
-
+        next_index = min(index, len(candidate.boxes) - 1) if candidate.boxes else 0
         self._show_candidate(self.current)
         if candidate.boxes:
-            self._select_output(self.selected_output)
+            self._select_output(next_index)
 
     def _append_manual_box(self, box):
         candidate = self.candidates[self.current]
@@ -1044,7 +1040,10 @@ def render_zero_detection_recovery(out_dir: Path):
             app.processEvents()
 
         assert dialog.redetect_button.isVisible()
-        assert not dialog.reset_box.isVisible()
+        assert dialog.reset_box.isVisible()
+        assert dialog.delete_box.isVisible()
+        assert not dialog.reset_box.isEnabled()
+        assert not dialog.delete_box.isEnabled()
         assert dialog.outputs.count() == 0
         assert not dialog.accept_button.isEnabled()
 
@@ -1070,7 +1069,9 @@ def render_zero_detection_recovery(out_dir: Path):
             app.processEvents()
         assert dialog.outputs.count() == 1
         assert dialog.accept_button.isEnabled()
-        assert dialog.reset_box.isVisible()
+        assert dialog.redetect_button.isVisible()
+        assert dialog.reset_box.isVisible() and dialog.reset_box.isEnabled()
+        assert dialog.delete_box.isVisible() and dialog.delete_box.isEnabled()
 
         # A detector retry is also available for manually-triggered images and
         # only replaces the current image's proposal.
@@ -1082,6 +1083,43 @@ def render_zero_detection_recovery(out_dir: Path):
             app.processEvents()
         assert dialog.outputs.count() == 3
         assert dialog.accept_button.isEnabled()
+        assert dialog.redetect_button.isVisible()
+        assert dialog.reset_box.isVisible() and dialog.reset_box.isEnabled()
+        assert dialog.delete_box.isVisible() and dialog.delete_box.isEnabled()
+
+        # Right-side output cards and left-side boxes share one current-box
+        # selection. Select output 2, then reset/delete must affect box 2 only.
+        candidate = dialog.candidates[2]
+        dialog.outputs.setCurrentRow(1)
+        for _ in range(2):
+            app.processEvents()
+        assert dialog.selected_output == 1
+        assert dialog.source_preview._selected == 1
+
+        box1_before = tuple(candidate.boxes[0])
+        box2_baseline = tuple(candidate.baseline_boxes[1])
+        box3_before = tuple(candidate.boxes[2])
+        candidate.boxes[1] = (40, 40, 260, 260)
+        dialog.reset_box.click()
+        for _ in range(2):
+            app.processEvents()
+        assert tuple(candidate.boxes[0]) == box1_before
+        assert tuple(candidate.boxes[1]) == box2_baseline
+        assert tuple(candidate.boxes[2]) == box3_before
+
+        manual_result_path = out_dir / "composite_split_manual_result_v1.png"
+        assert dialog.grab().save(str(manual_result_path)), manual_result_path
+
+        dialog.delete_box.click()
+        for _ in range(2):
+            app.processEvents()
+        assert dialog.outputs.count() == 2
+        assert len(candidate.boxes) == 2
+        assert tuple(candidate.boxes[0]) == box1_before
+        assert tuple(candidate.boxes[1]) == box3_before
+        assert dialog.redetect_button.isVisible()
+        assert dialog.reset_box.isVisible()
+        assert dialog.delete_box.isVisible()
 
         dialog.close()
         app.processEvents()
