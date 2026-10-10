@@ -99,6 +99,35 @@
     <message><source>推荐</source><translation>Recommended</translation></message>
     <message><source>淘汰</source><translation>Rejected</translation></message>
     <message><source>输出 {index}</source><translation>Output {index}</translation></message>
+    <message><source>检查原图、调整拆分框、选择保留输出并确认当前候选</source><translation>Inspect the source, adjust split boxes, choose outputs, and confirm the current candidate</translation></message>
+    <message><source>原图</source><translation>Source</translation></message>
+    <message><source>蓝框 = 当前框 · 空白处拖拽可新建</source><translation>Blue = current box · Drag empty space to create</translation></message>
+    <message><source>点击左侧框或右侧输出切换当前框；当前蓝框可拖动 / 缩放；原图空白处直接拖拽可新建拆分框。</source><translation>Click a source box or output card to select it; drag/resize the current blue box; drag empty source space to create a new split box.</translation></message>
+    <message><source>输出预览</source><translation>Output Preview</translation></message>
+    <message><source>勾选保留 · 点击选择</source><translation>Check to keep · Click to select</translation></message>
+    <message><source>取消勾选后，该输出会在接受拆分时进入淘汰；点击输出卡片会选择左侧对应拆分框。</source><translation>Unchecked outputs are sent to Rejected when the split is accepted; clicking an output card selects the matching source box.</translation></message>
+    <message><source>候选</source><translation>Candidates</translation></message>
+    <message><source>上拖展开</source><translation>Drag up to expand</translation></message>
+    <message><source>向上拖动分隔条可展开更多候选缩略图</source><translation>Drag the divider upward to reveal more candidate thumbnails</translation></message>
+    <message><source>重新检测当前图</source><translation>Re-detect Current Image</translation></message>
+    <message><source>重置当前框</source><translation>Reset Current Box</translation></message>
+    <message><source>删除当前框</source><translation>Delete Current Box</translation></message>
+    <message><source>接受当前拆分</source><translation>Accept Current Split</translation></message>
+    <message><source>接受后：勾选输出进入推荐，未勾选输出进入淘汰；原图移入组合图隔离目录。</source><translation>After acceptance, checked outputs become Recommended and unchecked outputs become Rejected; the source image is moved to the Composite archive.</translation></message>
+    <message><source>拒绝拆分</source><translation>Reject Split</translation></message>
+    <message><source>群组</source><translation>Group</translation></message>
+    <message><source>{index:02d} · {mode} · {count} 输出</source><translation>{index:02d} · {mode} · {count} outputs</translation></message>
+    <message><source>候选 {index:02d} · {state}</source><translation>Candidate {index:02d} · {state}</translation></message>
+    <message><source>待定 {pending} · 接受 {accepted} · 拒绝 {rejected}</source><translation>Pending {pending} · Accepted {accepted} · Rejected {rejected}</translation></message>
+    <message><source>手动</source><translation>Manual</translation></message>
+    <message><source>自动</source><translation>Auto</translation></message>
+    <message><source>{current:02d} / {total} · {state}</source><translation>{current:02d} / {total} · {state}</translation></message>
+    <message><source>{source} · {count} 输出</source><translation>{source} · {count} outputs</translation></message>
+    <message><source>{name} · 当前框 {current} / {count}</source><translation>{name} · Box {current} / {count}</translation></message>
+    <message><source>{name} · 暂无拆分框</source><translation>{name} · No split boxes</translation></message>
+    <message><source>保留 {kept}/{total} · 当前 {current}</source><translation>Keep {kept}/{total} · Current {current}</translation></message>
+    <message><source>暂无输出</source><translation>No outputs</translation></message>
+    <message><source>输出 {index} · {state}</source><translation>Output {index} · {state}</translation></message>
   </context>
   <context>
     <name>MainWindow</name>
@@ -125,6 +154,12 @@
     <message><source>组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。</source><translation>The Composite Split archive _CompositeSplit_Originals will not be touched; image pixels will not be modified; empty directories will not be deleted.</translation></message>
     <message><source>执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。</source><translation>Execution uses a journal and transactional rollback; failed or interrupted operations are recovered on the next launch.</translation></message>
     <message><source>…另有 {count} 项</source><translation>…and {count} more items</translation></message>
+    <message><source>手动组合图拆分…</source><translation>Manual Composite Split…</translation></message>
+    <message><source>仅重新检测当前选中图片，并在同一组合图拆分复核界面中编辑；不会重扫整个数据集。</source><translation>Re-detect only the currently selected image and edit it in the same Composite Split Review; the whole dataset is not rescanned.</translation></message>
+    <message><source>没有选中图片</source><translation>No Image Selected</translation></message>
+    <message><source>请先在数据集中选择一张图片。</source><translation>Select an image in the dataset first.</translation></message>
+    <message><source>重新检测当前图：{name}</source><translation>Re-detecting current image: {name}</translation></message>
+    <message><source>重新检测当前图失败</source><translation>Re-detect Current Image Failed</translation></message>
     <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
     <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
     <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
