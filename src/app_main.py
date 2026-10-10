@@ -260,10 +260,11 @@ class Analyzer(QObject):
             self.failed.emit(traceback.format_exc())
 class CompositeScanWorker(QObject):
     progress=Signal(int,int,str); finished=Signal(object); failed=Signal(str); cancelled=Signal()
-    def __init__(self,records):super().__init__();self.records=records
+    def __init__(self,records,force=False,manual=False):
+        super().__init__();self.records=list(records);self.force=bool(force);self.manual=bool(manual)
     def run(self):
         try:
-            todo=[r for r in self.records if r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version]
+            todo=list(self.records) if self.force else [r for r in self.records if r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version]
             total=len(todo)
             for i,r in enumerate(todo,1):
                 if QThread.currentThread().isInterruptionRequested():
@@ -272,7 +273,22 @@ class CompositeScanWorker(QObject):
                     try:im.seek(0)
                     except EOFError:pass
                     image=ImageOps.exif_transpose(im).convert('RGB')
-                r.composite_proposal=BACKEND.composite_detect_proposal(image,COMPOSITE_MODEL_CACHE)
+                proposal=BACKEND.composite_detect_proposal(image,COMPOSITE_MODEL_CACHE)
+                if self.manual:
+                    if proposal is None:
+                        proposal=BACKEND.make_composite_proposal(
+                            mode='split_people',
+                            output_boxes=[],
+                            baseline_boxes=[],
+                            manual_triggered=True,
+                            decision='pending',
+                            detail='',
+                        )
+                    else:
+                        proposal.manual_triggered=True
+                        proposal.baseline_boxes=[list(box) for box in proposal.output_boxes]
+                        proposal.decision='pending'
+                r.composite_proposal=proposal
                 r.composite_scan_version=BACKEND.composite_proposal_version
                 self.progress.emit(i,total,r.path.name)
             self.finished.emit(self.records)
@@ -568,6 +584,10 @@ class Window(QMainWindow):
         self.prev.setText(self._tr_main('上一页'));self.next.setText(self._tr_main('下一页'))
         self.stat_box.setTitle(self._tr_main('统计（点击分类筛选）'))
         self.analysis_box.setTitle(self._tr_main('图片分析数据'))
+        self.manual_composite_btn.setText(self._tr_main('手动组合图拆分…'))
+        self.manual_composite_btn.setToolTip(
+            self._tr_main('仅重新检测当前选中图片，并在同一组合图拆分复核界面中编辑；不会重扫整个数据集。')
+        )
         self.manual_box.setTitle(self._tr_main('人工状态（优先于自动结果）'))
         for button,source in zip(self.manual_status_buttons,('推荐','备选','淘汰')):button.setText(self._tr_main(source))
         self.restore_btn.setText(self._tr_main('恢复自动'))
@@ -673,7 +693,7 @@ class Window(QMainWindow):
         self.dataset_splitter=QSplitter(Qt.Horizontal);self.dataset_model=DatasetListModel(self);self.grid=DatasetListView();self.grid.setModel(self.dataset_model);self.grid.clicked.connect(self.details);self.grid.doubleClicked.connect(self.open);self.grid.middleIndexClicked.connect(self.quick_toggle_item);self.grid.rightIndexDoubleClicked.connect(self.quick_reject_item);self.dataset_splitter.addWidget(self.grid)
         side=QWidget();sl=QVBoxLayout(side);self.stats=QLabel();self.stats.setWordWrap(True);sl.addWidget(self.stats)
         self.stat_box=QGroupBox();self.stat_layout=QGridLayout(self.stat_box);sl.addWidget(self.stat_box)
-        self.analysis_box=QGroupBox();bl=QVBoxLayout(self.analysis_box);self.detail=QLabel();self.detail.setWordWrap(True);bl.addWidget(self.detail);sl.addWidget(self.analysis_box)
+        self.analysis_box=QGroupBox();bl=QVBoxLayout(self.analysis_box);self.detail=QLabel();self.detail.setWordWrap(True);bl.addWidget(self.detail);self.manual_composite_btn=QPushButton();self.manual_composite_btn.clicked.connect(self.open_manual_composite_for_selected);self.manual_composite_btn.setEnabled(False);self.manual_composite_btn.setVisible(BACKEND.feature_available('composite'));bl.addWidget(self.manual_composite_btn);sl.addWidget(self.analysis_box)
         self.manual_box=QGroupBox();ml=QGridLayout(self.manual_box);self.manual_status_buttons=[]
         for i,value in enumerate(('推荐','备选','淘汰')):
             b=QPushButton();b.clicked.connect(lambda _,v=value:self.manual(v));ml.addWidget(b,0,i);self.manual_status_buttons.append(b)
@@ -792,6 +812,7 @@ class Window(QMainWindow):
         has_records=bool(self.records)
         self.export.setEnabled(has_records);self.composite_btn.setEnabled(has_records);self.auto_crop_btn.setEnabled(has_records);self.organizer_btn.setEnabled(has_records)
         self.update_composite_button();self.update_auto_crop_button()
+        if hasattr(self,'manual_composite_btn'):self.manual_composite_btn.setEnabled(self.selected() is not None)
         self.finish_operation_ui()
         names={
             'dataset':'图片分析',
@@ -812,6 +833,7 @@ class Window(QMainWindow):
         has_records=bool(self.records)
         self.export.setEnabled(has_records);self.composite_btn.setEnabled(has_records);self.auto_crop_btn.setEnabled(has_records);self.organizer_btn.setEnabled(has_records)
         self.finish_operation_ui()
+        if hasattr(self,'manual_composite_btn'):self.manual_composite_btn.setEnabled(self.selected() is not None)
         QMessageBox.critical(self,self._tr_main(title),error)
 
     def choose(self):
@@ -1003,6 +1025,7 @@ class Window(QMainWindow):
         r=self.record_from_view(index)
         if r is None:return
         none=self._tr_main('无');flags='；'.join(self._finding_display(x) for x in r.review_flags) or none;rejects='；'.join(self._finding_display(x) for x in r.hard_rejects) or none;gr,gs=self.group_rank(r);qr,qs=self.qualified_group_rank(r);dup=self._tr_main('第 {group} 组').format(group=r.duplicate_group) if r.duplicate_group else self._tr_main('无（独立图片）');primary=next((x for x in r.face_detections if x.is_primary),None);pconf=f'{primary.confidence:.3f}' if primary else none;status_source=self._tr_main('人工') if r.manual_status else self._tr_main('自动');rank_text=qr if qr else self._tr_main('未达推荐门槛');reason_text='；'.join(self._reason_display(r,x) for x in r.recommendation_reasons) or none
+        self.manual_composite_btn.setEnabled(BACKEND.feature_available('composite'))
         self.detail.setText(self._tr_main('文件：{file}\n样本 ID：{sample_id}\n\n状态：{status}（{source}）\n判定状态：{eligibility}\n分辨率：{width} × {height}\n人脸检测数：{faces}\n主脸置信度：{confidence}\n主脸占比：{ratio}%\n主脸实际尺寸：{face_px}px\neDifFIQA-T：{fiqa}（高更好）\nBRISQUE：{brisque}（低更好）\nLaplacian 清晰度：{sharpness}\n平均亮度：{brightness}\nyaw / pitch / roll：{yaw}° / {pitch}° / {roll}°\n水平角度分类：{angle}\n俯仰分类：{pitch_class}\n景别：{scale}\n重复组：{duplicate}\n组内数量：{group_size}\n组内排名：{group_rank} / {group_size}\n合格成员排名：{qualified_rank} / {qualified_size}\n\n推荐/备选原因：{reason}\n需复核：{flags}\n硬淘汰：{rejects}').format(file=r.path.name,sample_id=r.sample_id,status=self._display_value(r.status),source=status_source,eligibility=r.eligibility,width=r.width,height=r.height,faces=r.faces,confidence=pconf,ratio=f'{r.face_ratio*100:.1f}',face_px=r.face_px,fiqa=f'{r.face_quality:.4f}',brisque=f'{r.brisque:.2f}',sharpness=f'{r.blur:.1f}',brightness=f'{r.brightness:.1f}',yaw=f'{r.yaw:.1f}',pitch=f'{r.pitch:.1f}',roll=f'{r.roll:.1f}',angle=self._display_value(r.angle_class),pitch_class=self._display_value(r.pitch_class),scale=self._display_value(r.person_scale),duplicate=dup,group_size=gs,group_rank=gr,qualified_rank=rank_text,qualified_size=qs,reason=reason_text,flags=flags,rejects=rejects));self.update_ai_panel(r)
     def update_ai_panel(self,r=None):
         r=r or self.selected()
@@ -1235,6 +1258,56 @@ class Window(QMainWindow):
         self.auto_crop_worker=None;self.auto_crop_thread=None
     def auto_crop_review_changed(self):
         self.save();self.update_auto_crop_button()
+
+    def open_manual_composite_for_selected(self):
+        if not BACKEND.feature_available('composite'):return
+        record=self.selected()
+        if record is None:
+            QMessageBox.information(
+                self,
+                self._tr_main('没有选中图片'),
+                self._tr_main('请先在数据集中选择一张图片。'),
+            )
+            return
+        if self.composite_thread and self.composite_thread.isRunning():return
+        self.manual_composite_btn.setEnabled(False)
+        self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False)
+        self.begin_cancellable_analysis(
+            self._tr_main('重新检测当前图：{name}').format(name=record.path.name)
+        )
+        self.composite_thread=QThread(self)
+        self.composite_worker=CompositeScanWorker([record],force=True,manual=True)
+        self.composite_worker.moveToThread(self.composite_thread)
+        self.composite_thread.started.connect(self.composite_worker.run)
+        self.composite_worker.progress.connect(self.composite_progress,Qt.ConnectionType.QueuedConnection)
+        self.composite_worker.finished.connect(self.manual_composite_scan_done,Qt.ConnectionType.QueuedConnection)
+        self.composite_worker.failed.connect(self.composite_scan_failed,Qt.ConnectionType.QueuedConnection)
+        self.composite_worker.cancelled.connect(self.composite_cancelled,Qt.ConnectionType.QueuedConnection)
+        self.composite_worker.finished.connect(self.composite_thread.quit)
+        self.composite_worker.failed.connect(self.composite_thread.quit)
+        self.composite_worker.cancelled.connect(self.composite_thread.quit)
+        self.composite_thread.finished.connect(self.composite_thread_done)
+        self.composite_thread.start(QThread.Priority.LowPriority)
+
+    def manual_composite_scan_done(self,records):
+        record=records[0] if records else None
+        self.finish_operation_ui()
+        self.composite_btn.setEnabled(bool(self.records));self.auto_crop_btn.setEnabled(bool(self.records));self.organizer_btn.setEnabled(bool(self.records))
+        self.manual_composite_btn.setEnabled(self.selected() is not None)
+        if record is None or record not in self.records:return
+        self.save();self.update_composite_button()
+        CompositeSplitReviewDialog(
+            BACKEND,
+            self.records,
+            self.composite_review_changed,
+            self.materialize_composite,
+            THUMB_CACHE,
+            self,
+            event_logger=runtime_event,
+            focus_record=record,
+            redetect_current=self.redetect_composite_record,
+        ).exec()
+        self.after_composite_review()
 
     def update_composite_button(self):
         if not hasattr(self,'composite_btn'):return
