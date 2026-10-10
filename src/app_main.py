@@ -1249,13 +1249,54 @@ class Window(QMainWindow):
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
             if not candidates:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'));return
-            CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review();return
+            CompositeSplitReviewDialog(
+                BACKEND,
+                self.records,
+                self.composite_review_changed,
+                self.materialize_composite,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+                redetect_current=self.redetect_composite_record,
+            ).exec();self.after_composite_review();return
         self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.begin_cancellable_analysis(self._tr_main('组合图拆分扫描准备中：{todo} 张待检查').format(todo=todo))
         self.composite_thread=QThread(self);self.composite_worker=CompositeScanWorker(self.records);self.composite_worker.moveToThread(self.composite_thread);self.composite_thread.started.connect(self.composite_worker.run);self.composite_worker.progress.connect(self.composite_progress,Qt.ConnectionType.QueuedConnection);self.composite_worker.finished.connect(self.composite_scan_done,Qt.ConnectionType.QueuedConnection);self.composite_worker.failed.connect(self.composite_scan_failed,Qt.ConnectionType.QueuedConnection);self.composite_worker.cancelled.connect(self.composite_cancelled,Qt.ConnectionType.QueuedConnection);self.composite_worker.finished.connect(self.composite_thread.quit);self.composite_worker.failed.connect(self.composite_thread.quit);self.composite_worker.cancelled.connect(self.composite_thread.quit);self.composite_thread.finished.connect(self.composite_thread_done);self.composite_thread.start(QThread.Priority.LowPriority)
     def composite_scan_done(self,records):
         self.records=records;count=sum(r.status=='推荐' and r.composite_proposal is not None for r in records);self.progress.setText(self._tr_main('组合图拆分扫描完成：{count} 张推荐候选').format(count=count));self.finish_operation_ui();self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.update_composite_button();self.save()
-        if count:CompositeSplitReviewDialog(self.records,self.composite_review_changed,self.materialize_composite,self).exec();self.after_composite_review()
+        if count:CompositeSplitReviewDialog(
+                BACKEND,
+                self.records,
+                self.composite_review_changed,
+                self.materialize_composite,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+                redetect_current=self.redetect_composite_record,
+            ).exec();self.after_composite_review()
         else:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'))
+    def redetect_composite_record(self,record):
+        if record not in self.records:
+            return None
+        try:
+            with Image.open(record.path) as im:
+                try:im.seek(0)
+                except EOFError:pass
+                image=ImageOps.exif_transpose(im).convert('RGB')
+            proposal=BACKEND.composite_detect_proposal(image,COMPOSITE_MODEL_CACHE)
+            if proposal is not None:
+                proposal.manual_triggered=True
+                proposal.baseline_boxes=[list(box) for box in proposal.output_boxes]
+                proposal.decision='pending'
+            record.composite_scan_version=BACKEND.composite_proposal_version
+            return proposal
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                self._tr_main('重新检测当前图失败'),
+                f'{record.path.name}\n\n{e}',
+            )
+            return record.composite_proposal
+
     def composite_scan_failed(self,error):
         self.finish_operation_ui();self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText(self._tr_main('组合图拆分扫描失败'));QMessageBox.critical(self,self._tr_main('组合图拆分扫描失败'),error)
     def composite_thread_done(self):
