@@ -344,9 +344,11 @@ class CompositeSplitPrototype(QDialog):
         title = StrongBodyLabel("组合图拆分复核")
         title.setStyleSheet("font-size:20px;")
         header.addWidget(title)
-        header.addWidget(
-            CaptionLabel("检查原图 · 调整拆分框 · 选择保留输出 · 确认当前候选")
+        self.header_subtitle = CaptionLabel("组合图候选复核")
+        self.header_subtitle.setToolTip(
+            "检查原图、调整拆分框、选择保留输出并确认当前候选"
         )
+        header.addWidget(self.header_subtitle)
         header.addStretch(1)
         self.header_state = CaptionLabel("")
         header.addWidget(self.header_state)
@@ -382,9 +384,11 @@ class CompositeSplitPrototype(QDialog):
         source_layout.setSpacing(7)
 
         source_head = QHBoxLayout()
-        self.source_title = StrongBodyLabel("原图与拆分框")
+        self.source_title = StrongBodyLabel("原图")
+        self.source_title.setStyleSheet("font-size:16px;font-weight:700;")
         source_head.addWidget(self.source_title)
         self.mode_label = CaptionLabel("")
+        self.mode_label.setStyleSheet("color:#64748b;")
         source_head.addWidget(self.mode_label)
         source_head.addStretch(1)
         self.redetect_button = PushButton("重新检测当前图")
@@ -406,7 +410,12 @@ class CompositeSplitPrototype(QDialog):
         source_layout.addLayout(source_head)
 
         self.source_hint = CaptionLabel(
-            "自动 / 手动候选均可：点击左侧框或右侧输出切换当前框 · 当前蓝框可拖动 / 缩放 · 空白处直接拖拽新建"
+            "蓝框 = 当前框 · 空白处拖拽可新建"
+        )
+        self.source_hint.setStyleSheet("color:#64748b;")
+        self.source_hint.setToolTip(
+            "自动 / 手动候选均可：点击左侧框或右侧输出切换当前框；"
+            "当前蓝框可拖动 / 缩放；原图空白处直接拖拽可新建拆分框。"
         )
         source_layout.addWidget(self.source_hint)
 
@@ -426,15 +435,21 @@ class CompositeSplitPrototype(QDialog):
         outputs_layout.setSpacing(7)
 
         outputs_head = QHBoxLayout()
-        outputs_head.addWidget(StrongBodyLabel("建议输出"))
+        self.outputs_title = StrongBodyLabel("输出预览")
+        self.outputs_title.setStyleSheet("font-size:16px;font-weight:700;")
+        outputs_head.addWidget(self.outputs_title)
         self.output_count = CaptionLabel("")
         outputs_head.addWidget(self.output_count)
         outputs_head.addStretch(1)
         outputs_layout.addLayout(outputs_head)
 
-        outputs_layout.addWidget(
-            CaptionLabel("取消勾选 = 接受拆分后该输出直接进入淘汰；点击输出可定位对应拆分框")
+        self.outputs_hint = CaptionLabel("勾选 = 保留 · 点击卡片 = 选择对应框")
+        self.outputs_hint.setStyleSheet("color:#64748b;")
+        self.outputs_hint.setToolTip(
+            "取消勾选后，该输出会在接受拆分时进入淘汰；"
+            "点击输出卡片会选择左侧对应拆分框。"
         )
+        outputs_layout.addWidget(self.outputs_hint)
 
         self.outputs = OutputGrid()
         self.outputs.currentRowChanged.connect(self._select_output)
@@ -455,10 +470,16 @@ class CompositeSplitPrototype(QDialog):
 
         nav_head = QHBoxLayout()
         nav_head.setSpacing(8)
-        nav_head.addWidget(StrongBodyLabel("组合图候选"))
+        self.nav_title = StrongBodyLabel("候选")
+        self.nav_title.setStyleSheet("font-size:15px;font-weight:700;")
+        nav_head.addWidget(self.nav_title)
         self.nav_counts = CaptionLabel("")
+        self.nav_counts.setStyleSheet("color:#64748b;")
         nav_head.addWidget(self.nav_counts)
-        nav_head.addWidget(CaptionLabel("缩略图定位 · 上拖展开更多候选"))
+        self.nav_expand_hint = CaptionLabel("上拖展开")
+        self.nav_expand_hint.setStyleSheet("color:#94a3b8;")
+        self.nav_expand_hint.setToolTip("向上拖动分隔条可展开更多候选缩略图")
+        nav_head.addWidget(self.nav_expand_hint)
         nav_head.addStretch(1)
         nav_layout.addLayout(nav_head)
 
@@ -481,8 +502,10 @@ class CompositeSplitPrototype(QDialog):
         self.pending_button.setMinimumHeight(40)
         actions.addWidget(self.pending_button)
 
-        self.accept_note = CaptionLabel(
-            "接受后：勾选输出→推荐，未勾选→淘汰；原图移入组合图隔离目录"
+        self.accept_note = CaptionLabel("接受后按勾选状态落盘")
+        self.accept_note.setStyleSheet("color:#94a3b8;")
+        self.accept_note.setToolTip(
+            "接受后：勾选输出进入推荐，未勾选输出进入淘汰；原图移入组合图隔离目录。"
         )
         actions.addWidget(self.accept_note)
         actions.addStretch(1)
@@ -541,14 +564,14 @@ class CompositeSplitPrototype(QDialog):
         self._apply_candidate_state_colors()
 
     def _refresh_candidate_item(self, item, candidate):
-        mode = "拆分" if candidate.mode == "split_people" else "群组裁剪"
+        mode = "拆分" if candidate.mode == "split_people" else "群组"
         state = {
-            "accepted": "✓ 已接受",
-            "rejected": "× 已拒绝",
-            "pending": "• 待定",
+            "accepted": "已接受",
+            "rejected": "已拒绝",
+            "pending": "待定",
         }[candidate.decision]
         item.setText(
-            f"候选 {candidate.candidate_id:02d} · {mode} {len(candidate.boxes)}\n{state}"
+            f"{candidate.candidate_id:02d} · {mode} · {len(candidate.boxes)} 输出"
         )
         item.setToolTip(
             f"候选 {candidate.candidate_id:02d} · {mode} · "
@@ -560,7 +583,7 @@ class CompositeSplitPrototype(QDialog):
         rejected = sum(c.decision == "rejected" for c in self.candidates)
         pending = len(self.candidates) - accepted - rejected
         self.nav_counts.setText(
-            f"待定 {pending} · 已接受 {accepted} · 已拒绝 {rejected}"
+            f"待定 {pending} · 接受 {accepted} · 拒绝 {rejected}"
         )
 
     def _apply_candidate_state_colors(self):
@@ -604,7 +627,10 @@ class CompositeSplitPrototype(QDialog):
         if zero_boxes:
             self.mode_label.setText("手动触发 · 当前没有可用拆分框")
             self.source_meta.setText(
-                f"{candidate.path.name} · 1600 × 1000 · 请直接在原图中拖拽创建拆分框，或重新检测"
+                f"{candidate.path.name} · 暂无拆分框"
+            )
+            self.source_meta.setToolTip(
+                "可直接在原图中拖拽创建拆分框，或重新检测当前图。"
             )
         else:
             prefix = "手动触发 · " if candidate.manual_triggered else ""
@@ -612,7 +638,10 @@ class CompositeSplitPrototype(QDialog):
                 f"{prefix}{mode_long} · {len(candidate.boxes)} 个输出"
             )
             self.source_meta.setText(
-                f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)} · 可单独重置 / 删除"
+                f"{candidate.path.name} · 当前框 1 / {len(candidate.boxes)}"
+            )
+            self.source_meta.setToolTip(
+                "当前框可单独重置或删除。"
             )
         state_text = {
             "accepted": "已接受",
@@ -620,8 +649,7 @@ class CompositeSplitPrototype(QDialog):
             "pending": "待定",
         }[candidate.decision]
         self.header_state.setText(
-            f"候选 {candidate.candidate_id:02d} / {len(self.candidates)}"
-            f" · {len(candidate.boxes)} 个输出 · {state_text}"
+            f"{candidate.candidate_id:02d} / {len(self.candidates)} · {state_text}"
         )
 
         keep = self.output_keep.get(candidate.candidate_id)
@@ -646,7 +674,7 @@ class CompositeSplitPrototype(QDialog):
             state = "推荐" if keep[index] else "淘汰"
             item = QListWidgetItem(
                 QIcon(crop),
-                f"输出 {index + 1}\n{x1 - x0} × {y1 - y0}\n→ {state}",
+                f"输出 {index + 1} · {state}\n{x1 - x0} × {y1 - y0}",
             )
             item.setData(Qt.UserRole, index)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -743,10 +771,9 @@ class CompositeSplitPrototype(QDialog):
         self.selected_output = index
         self.source_preview.set_selected(index)
         self.source_meta.setText(
-            f"{candidate.path.name} · 1600 × 1000"
-            f" · 当前框 {index + 1} / {len(candidate.boxes)}"
-            f" · 可单独重置 / 删除"
+            f"{candidate.path.name} · 当前框 {index + 1} / {len(candidate.boxes)}"
         )
+        self.source_meta.setToolTip("当前框可单独重置或删除。")
         if self.outputs.currentRow() != index:
             self.outputs.blockSignals(True)
             self.outputs.setCurrentRow(index)
@@ -762,7 +789,7 @@ class CompositeSplitPrototype(QDialog):
         state = "推荐" if keep[index] else "淘汰"
         lines = item.text().splitlines()
         if lines:
-            lines[-1] = f"→ {state}"
+            lines[0] = f"输出 {index + 1} · {state}"
             item.setText("\n".join(lines))
         self._update_output_count()
 
