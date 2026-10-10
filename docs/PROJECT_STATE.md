@@ -62,7 +62,7 @@ Historical repository note:
 - Duplicate Review visual prototype #88 established the accepted shared review pattern. Production implementation Draft PR #90 is complete enough for automated validation (all latest gates PASS) but remains **HUMAN UNVERIFIED** and unmerged because the user explicitly chose to defer HUMAN PASS.
 - Composite Split visual prototype #91 received explicit HUMAN PASS on 2026-10-10 and was closed unmerged as accepted visual reference evidence.
 - Composite Split production PR #93 received explicit HUMAN PASS and was squash-merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`.
-- **Active authorized UI slice: bounded main Dataset Review visual re-evaluation.** The prerequisite small-module patterns are now established by Auto Crop / Duplicate / Composite. New work must remain prototype-only until the user accepts a concrete render, and must not revive rejected #83/#84 structure.
+- **Active authorized UI slice: bounded main Dataset Review visual re-evaluation under Draft PR #94.** The prerequisite small-module patterns are now established by Auto Crop / Duplicate / Composite. #94 is prototype-only until the user accepts a concrete render, and must not revive rejected #83/#84 structure.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
@@ -80,7 +80,7 @@ No production main Dataset Review replacement, production GPU integration, PR #7
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACTIVE VISUAL DESIGN:** whole-product UI/UX modernization (#75) has completed Composite Split production (#93 merged). The current authorized slice is a bounded main Dataset Review visual re-evaluation that must not reuse the rejected #83/#84 stacked-card structure. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice.
+- **ACTIVE VISUAL DESIGN:** whole-product UI/UX modernization (#75) has completed Composite Split production (#93 merged). The current authorized slice is Draft PR #94, a bounded main Dataset Review visual re-evaluation that must not reuse the rejected #83/#84 stacked-card structure. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -154,6 +154,9 @@ Accepted visual reference / pending production QA:
 
 Accepted Composite visual reference:
 - PR #91 — HUMAN PASS visual prototype; closed unmerged as reference evidence
+
+Active Dataset Review visual prototype:
+- Draft PR #94 — bounded v2 visual re-evaluation; production `src/` unchanged; HUMAN UNVERIFIED pending user visual review
 
 Completed Composite production work:
 - PR #93 — HUMAN PASS; squash-merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`
