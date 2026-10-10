@@ -22,7 +22,7 @@ try:
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -333,7 +333,7 @@ class IncrementalAnalysisWorker(QObject):
         except OperationCancelled:self.cancelled.emit()
         except Exception:self.failed.emit(traceback.format_exc())
 
-class CompositeSplitReviewDialog(QDialog):
+class LegacyCompositeSplitReviewDialog(QDialog):
     def __init__(self,records,changed,accept_materialized,parent=None):
         super().__init__(parent);self.records=[r for r in records if r.status=='推荐' and r.composite_proposal is not None];self.changed=changed;self.accept_materialized=accept_materialized;self.current=-1;self.output_keep={}
         self.resize(1320,820);self.ui();self.retranslate();self.reload()
