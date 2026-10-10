@@ -1023,6 +1023,8 @@ class CompositeSplitReviewDialog(QDialog):
             return
         record = self.records[self.current]
         proposal = self.redetect_current_callback(record)
+        if proposal is False:
+            return
         if proposal is None:
             proposal = self.backend.make_composite_proposal(
                 mode="split_people",
