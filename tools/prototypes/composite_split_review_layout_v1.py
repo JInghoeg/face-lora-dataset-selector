@@ -1090,6 +1090,25 @@ def render_zero_detection_recovery(out_dir: Path):
         # Right-side output cards and left-side boxes share one current-box
         # selection. Select output 2, then reset/delete must affect box 2 only.
         candidate = dialog.candidates[2]
+
+        # Left source-image box selection is independent and explicit.
+        preview = dialog.source_preview
+        rect = preview._display_rect
+        box3 = candidate.boxes[2]
+        cx = (box3[0] + box3[2]) / 2
+        cy = (box3[1] + box3[3]) / 2
+        source_size = preview._source_size
+        point = QPoint(
+            int(rect.left() + (cx / source_size.width()) * rect.width()),
+            int(rect.top() + (cy / source_size.height()) * rect.height()),
+        )
+        QTest.mouseClick(preview, Qt.LeftButton, Qt.NoModifier, point)
+        for _ in range(2):
+            app.processEvents()
+        assert dialog.selected_output == 2
+        assert preview._selected == 2
+
+        # Right-side output-card selection targets the same current box.
         dialog.outputs.setCurrentRow(1)
         for _ in range(2):
             app.processEvents()
