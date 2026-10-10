@@ -85,13 +85,15 @@ class CompositeROIWidget(AutoCropROIWidget):
     OUTLINE_COLORS = ("#5dade2", "#58d68d", "#af7ac5", "#f5b041", "#ec7063")
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        # AutoCropROIWidget.__init__ calls self.set_theme(), so Composite-owned
+        # state used by the override must exist before entering the parent.
         self.boxes = []
         self.selected_index = -1
         self._other_outlines = []
         self._drawing = False
         self._draw_start = None
         self._draw_current = None
+        super().__init__(parent)
         self._draft = pg.PlotCurveItem(
             [],
             [],
