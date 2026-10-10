@@ -648,8 +648,16 @@ class CompositeSplitReviewDialog(QDialog):
     def _ensure_baselines(self, proposal):
         boxes = [list(map(int, box)) for box in proposal.output_boxes]
         baseline = getattr(proposal, "baseline_boxes", None)
-        if not isinstance(baseline, list) or len(baseline) != len(boxes):
-            proposal.baseline_boxes = [list(box) for box in boxes]
+        if not isinstance(baseline, list):
+            baseline = []
+        baseline = [list(map(int, box)) for box in baseline]
+        if len(baseline) < len(boxes):
+            baseline.extend(
+                [list(box) for box in boxes[len(baseline) :]]
+            )
+        elif len(baseline) > len(boxes):
+            baseline = baseline[: len(boxes)]
+        proposal.baseline_boxes = baseline
         return proposal.baseline_boxes
 
     def _thumbnail(self, path):
@@ -953,11 +961,11 @@ class CompositeSplitReviewDialog(QDialog):
         if self.current < 0:
             return
         proposal = self._proposal(self.records[self.current])
+        baseline = self._ensure_baselines(proposal)
         new_box = list(map(int, box))
         proposal.output_boxes.append(new_box)
-        self._ensure_baselines(proposal)
-        # _ensure_baselines sees the length mismatch and copies all current
-        # boxes, making the creation geometry the new box's reset baseline.
+        baseline.append(list(new_box))
+        proposal.baseline_boxes = baseline
         record_key = self._record_key(self.records[self.current])
         keep = self.output_keep.setdefault(record_key, [])
         keep.append(True)
@@ -991,10 +999,11 @@ class CompositeSplitReviewDialog(QDialog):
         proposal = self._proposal(record)
         if not (0 <= self.selected_box < len(proposal.output_boxes)):
             return
-        del proposal.output_boxes[self.selected_box]
         baseline = self._ensure_baselines(proposal)
+        del proposal.output_boxes[self.selected_box]
         if self.selected_box < len(baseline):
             del baseline[self.selected_box]
+        proposal.baseline_boxes = baseline
         keep = self.output_keep.setdefault(self._record_key(record), [])
         if self.selected_box < len(keep):
             del keep[self.selected_box]
