@@ -129,13 +129,6 @@ class GalleryList(QListWidget):
         self.setGridSize(QSize(cell_w, icon_h + 54))
 
 
-class InspectorTabButton(PushButton):
-    def __init__(self, text):
-        super().__init__(text)
-        self.setCheckable(True)
-        self.setMinimumHeight(34)
-
-
 class DatasetReviewLayoutV2(QDialog):
     def __init__(self):
         super().__init__()
@@ -351,7 +344,9 @@ class DatasetReviewLayoutV2(QDialog):
         self.tab_group.setExclusive(True)
         self.tab_buttons = []
         for index, name in enumerate(("概览", "分析", "审核")):
-            b = InspectorTabButton(name)
+            b = PushButton(name)
+            b.setCheckable(True)
+            b.setMinimumHeight(34)
             b.setChecked(index == 0)
             self.tab_group.addButton(b, index)
             tab_layout.addWidget(b)
