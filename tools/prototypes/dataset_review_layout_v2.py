@@ -108,9 +108,6 @@ class GalleryList(QListWidget):
         self.setGridSize(QSize(206, 190))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
-        self._sync_target_styles()
-        self._sync_tab_styles()
-        self._sync_manual_styles()
 
         self.setStyleSheet(
             "QListWidget#DatasetGalleryPrototype {"
@@ -397,6 +394,10 @@ class DatasetReviewLayoutV2(QDialog):
         self.main_splitter.setStretchFactor(1, 0)
         self.main_splitter.setSizes([1220, 420])
         root.addWidget(self.main_splitter, 1)
+
+        self._sync_target_styles()
+        self._sync_tab_styles()
+        self._sync_manual_styles()
 
         self.setStyleSheet(
             "QDialog#DatasetReviewLayoutV2 { background:#f4f6f8; color:#1f2328; }"
