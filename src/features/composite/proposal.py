@@ -40,6 +40,12 @@ class CompositeProposal:
     version: int = PROPOSAL_VERSION
     mode: str = ""  # split_people | group_crop
     output_boxes: list[list[int]] = field(default_factory=list)
+    # Stable per-box reset baseline. Detector proposals initialize this from
+    # output_boxes; directly drawn boxes use their creation geometry.
+    baseline_boxes: list[list[int]] = field(default_factory=list)
+    # Marks the missed-composite recovery path so Review can expose the
+    # current-image re-detect action without changing automatic candidates.
+    manual_triggered: bool = False
     person_detections: list[Detection] = field(default_factory=list)
     head_detections: list[Detection] = field(default_factory=list)
     decision: str = "pending"  # pending | accepted | rejected
@@ -56,10 +62,20 @@ def proposal_from_dict(value) -> Optional[CompositeProposal]:
     if not isinstance(value, dict):
         return None
     try:
+        output_boxes = [
+            list(map(int, b)) for b in value.get("output_boxes", [])
+        ]
+        baseline_boxes = [
+            list(map(int, b)) for b in value.get("baseline_boxes", [])
+        ]
+        if len(baseline_boxes) != len(output_boxes):
+            baseline_boxes = [list(box) for box in output_boxes]
         return CompositeProposal(
             version=int(value.get("version", PROPOSAL_VERSION)),
             mode=str(value.get("mode", "")),
-            output_boxes=[list(map(int, b)) for b in value.get("output_boxes", [])],
+            output_boxes=output_boxes,
+            baseline_boxes=baseline_boxes,
+            manual_triggered=bool(value.get("manual_triggered", False)),
             person_detections=[
                 Detection(
                     bbox=list(map(int, d.get("bbox", []))),
@@ -236,6 +252,7 @@ def proposal_from_detections(image_size, people, heads) -> Optional[CompositePro
     return CompositeProposal(
         mode=mode,
         output_boxes=output_boxes,
+        baseline_boxes=[list(box) for box in output_boxes],
         person_detections=people,
         head_detections=heads,
         detail=detail,
