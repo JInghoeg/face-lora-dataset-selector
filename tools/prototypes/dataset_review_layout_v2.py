@@ -108,6 +108,10 @@ class GalleryList(QListWidget):
         self.setGridSize(QSize(206, 190))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self._sync_target_styles()
+        self._sync_tab_styles()
+        self._sync_manual_styles()
+
         self.setStyleSheet(
             "QListWidget#DatasetGalleryPrototype {"
             "background:transparent; border:none; outline:none;}"
@@ -192,6 +196,7 @@ class DatasetReviewLayoutV2(QDialog):
         self.custom_spin.setValue(175)
         self.custom_spin.setMaximumWidth(72)
         target_row.addWidget(self.custom_spin)
+        self.target_group.idClicked.connect(lambda _id: self._sync_target_styles())
         command_grid.addWidget(target_wrap, 1, 1, 1, 2)
 
         self.face_boxes = QCheckBox("显示人脸框")
@@ -359,6 +364,7 @@ class DatasetReviewLayoutV2(QDialog):
         self.stack.addWidget(self._review_page())
         il.addWidget(self.stack)
         self.tab_group.idClicked.connect(self.stack.setCurrentIndex)
+        self.tab_group.idClicked.connect(lambda _id: self._sync_tab_styles())
 
         # Manual status is persistent and close to the selected image.
         state_sep = QLabel()
@@ -383,6 +389,7 @@ class DatasetReviewLayoutV2(QDialog):
             self.manual_group.addButton(b)
             state_row.addWidget(b)
         self.rec_btn.setChecked(True)
+        self.manual_group.idClicked.connect(lambda _id: self._sync_manual_styles())
         il.addLayout(state_row)
 
         self.main_splitter.addWidget(inspector)
@@ -396,6 +403,40 @@ class DatasetReviewLayoutV2(QDialog):
             "QSplitter::handle { background:rgba(0,0,0,14); }"
             "QSplitter::handle:hover { background:rgba(0,120,212,95); }"
         )
+
+    @staticmethod
+    def _set_checked_style(button, checked, *, accent="#e7f2ff", text="#175f96", border="#6aa7e8"):
+        button.setStyleSheet(
+            (
+                f"background:{accent}; color:{text}; border:1px solid {border}; "
+                "font-weight:700; border-radius:6px;"
+            )
+            if checked
+            else ""
+        )
+
+    def _sync_target_styles(self):
+        for button in self.target_group.buttons():
+            self._set_checked_style(button, button.isChecked())
+
+    def _sync_tab_styles(self):
+        for button in self.tab_buttons:
+            self._set_checked_style(button, button.isChecked())
+
+    def _sync_manual_styles(self):
+        styles = {
+            self.rec_btn: ("#dcefe2", "#2f6f44", "#75b88a"),
+            self.backup_btn: ("#fff0cc", "#8a5d00", "#d3ad58"),
+            self.reject_btn: ("#efd6d8", "#8c2f39", "#c57d84"),
+        }
+        for button, (bg, fg, border) in styles.items():
+            self._set_checked_style(
+                button,
+                button.isChecked(),
+                accent=bg,
+                text=fg,
+                border=border,
+            )
 
     def _overview_page(self):
         page = QWidget()
@@ -533,6 +574,8 @@ def main():
     assert dialog.stack.count() == 3
     assert dialog.stack.currentIndex() == 0
     assert all(button.isCheckable() for button in dialog.tab_buttons)
+    assert dialog.tab_buttons[0].isChecked()
+    assert dialog.rec_btn.isChecked()
     assert dialog.manual_composite.parent() is not None
     assert dialog.more.toolTip()
     assert dialog.gallery.count() == 30
