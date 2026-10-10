@@ -344,11 +344,9 @@ class CompositeSplitPrototype(QDialog):
         title = StrongBodyLabel("组合图拆分复核")
         title.setStyleSheet("font-size:20px;")
         header.addWidget(title)
-        self.header_subtitle = CaptionLabel("组合图候选复核")
-        self.header_subtitle.setToolTip(
+        title.setToolTip(
             "检查原图、调整拆分框、选择保留输出并确认当前候选"
         )
-        header.addWidget(self.header_subtitle)
         header.addStretch(1)
         self.header_state = CaptionLabel("")
         header.addWidget(self.header_state)
@@ -443,7 +441,7 @@ class CompositeSplitPrototype(QDialog):
         outputs_head.addStretch(1)
         outputs_layout.addLayout(outputs_head)
 
-        self.outputs_hint = CaptionLabel("勾选 = 保留 · 点击卡片 = 选择对应框")
+        self.outputs_hint = CaptionLabel("勾选保留 · 点击选择")
         self.outputs_hint.setStyleSheet("color:#64748b;")
         self.outputs_hint.setToolTip(
             "取消勾选后，该输出会在接受拆分时进入淘汰；"
@@ -502,12 +500,9 @@ class CompositeSplitPrototype(QDialog):
         self.pending_button.setMinimumHeight(40)
         actions.addWidget(self.pending_button)
 
-        self.accept_note = CaptionLabel("接受后按勾选状态落盘")
-        self.accept_note.setStyleSheet("color:#94a3b8;")
-        self.accept_note.setToolTip(
+        self.accept_button.setToolTip(
             "接受后：勾选输出进入推荐，未勾选输出进入淘汰；原图移入组合图隔离目录。"
         )
-        actions.addWidget(self.accept_note)
         actions.addStretch(1)
 
         self.close_button = TransparentPushButton("关闭")
@@ -624,8 +619,13 @@ class CompositeSplitPrototype(QDialog):
             if candidate.mode == "split_people"
             else "重叠多人合并裁剪"
         )
+        source_label = "手动" if candidate.manual_triggered else "自动"
         if zero_boxes:
-            self.mode_label.setText("手动触发 · 当前没有可用拆分框")
+            self.mode_label.setText(f"{source_label} · 0 输出")
+            self.mode_label.setToolTip(
+                "当前没有可用拆分框。可直接在原图空白处拖拽创建，"
+                "手动触发的候选也可重新检测当前图。"
+            )
             self.source_meta.setText(
                 f"{candidate.path.name} · 暂无拆分框"
             )
@@ -633,10 +633,10 @@ class CompositeSplitPrototype(QDialog):
                 "可直接在原图中拖拽创建拆分框，或重新检测当前图。"
             )
         else:
-            prefix = "手动触发 · " if candidate.manual_triggered else ""
             self.mode_label.setText(
-                f"{prefix}{mode_long} · {len(candidate.boxes)} 个输出"
+                f"{source_label} · {len(candidate.boxes)} 输出"
             )
+            self.mode_label.setToolTip(mode_long)
             self.source_meta.setText(
                 f"{candidate.path.name} · 当前框 1 / {len(candidate.boxes)}"
             )
@@ -687,7 +687,10 @@ class CompositeSplitPrototype(QDialog):
             self.outputs.setCurrentRow(0)
             self._update_output_count()
         else:
-            self.output_count.setText("暂无输出 · 在原图拖拽创建拆分框后实时生成预览")
+            self.output_count.setText("暂无输出")
+            self.output_count.setToolTip(
+                "在原图空白处直接拖拽创建拆分框后，这里会实时生成对应输出预览。"
+            )
 
     def _reset_current_box(self):
         candidate = self.candidates[self.current]
@@ -797,7 +800,7 @@ class CompositeSplitPrototype(QDialog):
         candidate = self.candidates[self.current]
         keep = self.output_keep.get(candidate.candidate_id, [])
         self.output_count.setText(
-            f"勾选 {sum(keep)} / {len(keep)} · 当前编辑输出 {self.selected_output + 1}"
+            f"保留 {sum(keep)}/{len(keep)} · 当前 {self.selected_output + 1}"
         )
 
     def _apply_style(self):
