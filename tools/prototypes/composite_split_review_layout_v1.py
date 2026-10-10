@@ -398,10 +398,15 @@ class CompositeSplitPrototype(QDialog):
         self.reset_box.setIcon(FluentIcon.SYNC)
         self.reset_box.clicked.connect(self._reset_current_box)
         source_head.addWidget(self.reset_box)
+
+        self.delete_box = TransparentPushButton("删除当前框")
+        self.delete_box.setMinimumHeight(34)
+        self.delete_box.clicked.connect(self._delete_current_box)
+        source_head.addWidget(self.delete_box)
         source_layout.addLayout(source_head)
 
         self.source_hint = CaptionLabel(
-            "自动 / 手动候选均可：点击已有框切换编辑 · 当前蓝框可拖动 / 缩放 · 原图空白处直接拖拽新建拆分框"
+            "自动 / 手动候选均可：点击左侧框或右侧输出切换当前框 · 当前蓝框可拖动 / 缩放 · 空白处直接拖拽新建"
         )
         source_layout.addWidget(self.source_hint)
 
@@ -579,8 +584,10 @@ class CompositeSplitPrototype(QDialog):
 
         zero_boxes = not candidate.boxes
         self.redetect_button.setVisible(candidate.manual_triggered)
-        self.reset_box.setVisible(not zero_boxes)
+        self.reset_box.setVisible(True)
+        self.delete_box.setVisible(True)
         self.reset_box.setEnabled(not zero_boxes)
+        self.delete_box.setEnabled(not zero_boxes)
         self.accept_button.setEnabled(not zero_boxes)
         self.source_preview.setCursor(Qt.CrossCursor if zero_boxes else Qt.ArrowCursor)
 
@@ -605,7 +612,7 @@ class CompositeSplitPrototype(QDialog):
                 f"{prefix}{mode_long} · {len(candidate.boxes)} 个输出"
             )
             self.source_meta.setText(
-                f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)}"
+                f"{candidate.path.name} · 1600 × 1000 · 当前框 1 / {len(candidate.boxes)} · 可单独重置 / 删除"
             )
         state_text = {
             "accepted": "已接受",
@@ -674,6 +681,30 @@ class CompositeSplitPrototype(QDialog):
         self._show_candidate(self.current)
         self._select_output(index)
 
+    def _delete_current_box(self):
+        candidate = self.candidates[self.current]
+        index = self.selected_output
+        if not (0 <= index < len(candidate.boxes)):
+            return
+
+        del candidate.boxes[index]
+        if index < len(candidate.baseline_boxes):
+            del candidate.baseline_boxes[index]
+
+        keep = self.output_keep.get(candidate.candidate_id, [])
+        if index < len(keep):
+            del keep[index]
+        self.output_keep[candidate.candidate_id] = keep
+
+        if candidate.boxes:
+            self.selected_output = min(index, len(candidate.boxes) - 1)
+        else:
+            self.selected_output = 0
+
+        self._show_candidate(self.current)
+        if candidate.boxes:
+            self._select_output(self.selected_output)
+
     def _append_manual_box(self, box):
         candidate = self.candidates[self.current]
         new_box = tuple(map(int, box))
@@ -718,6 +749,7 @@ class CompositeSplitPrototype(QDialog):
         self.source_meta.setText(
             f"{candidate.path.name} · 1600 × 1000"
             f" · 当前框 {index + 1} / {len(candidate.boxes)}"
+            f" · 可单独重置 / 删除"
         )
         if self.outputs.currentRow() != index:
             self.outputs.blockSignals(True)
