@@ -1349,7 +1349,7 @@ class Window(QMainWindow):
         else:QMessageBox.information(self,self._tr_main('没有候选'),self._tr_main('当前推荐图片中没有检测到需要组合图拆分的图片。'))
     def redetect_composite_record(self,record):
         if record not in self.records:
-            return None
+            return False
         try:
             with Image.open(record.path) as im:
                 try:im.seek(0)
@@ -1368,7 +1368,7 @@ class Window(QMainWindow):
                 self._tr_main('重新检测当前图失败'),
                 f'{record.path.name}\n\n{e}',
             )
-            return record.composite_proposal
+            return False
 
     def composite_scan_failed(self,error):
         self.finish_operation_ui();self.composite_btn.setEnabled(True);self.auto_crop_btn.setEnabled(True);self.organizer_btn.setEnabled(True);self.progress.setText(self._tr_main('组合图拆分扫描失败'));QMessageBox.critical(self,self._tr_main('组合图拆分扫描失败'),error)
