@@ -1,0 +1,71 @@
+name: Dataset Review Layout v2 Prototype
+
+on:
+  push:
+    branches:
+      - ui/v0.4-dataset-review-layout-v2
+    paths:
+      - "tools/prototypes/dataset_review_layout_v2.py"
+      - ".github/workflows/dataset-review-layout-v2.yml"
+      - "docs/PROJECT_STATE.md"
+  pull_request:
+    paths:
+      - "tools/prototypes/dataset_review_layout_v2.py"
+      - ".github/workflows/dataset-review-layout-v2.yml"
+      - "docs/PROJECT_STATE.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  render:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install prototype UI runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir "PySide6-Essentials>=6.6,<6.9"
+          python tools/install_ui_dependencies.py
+
+      - name: Compile prototype
+        shell: pwsh
+        run: |
+          python -m compileall tools/prototypes/dataset_review_layout_v2.py
+
+      - name: Download CJK font
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "DATASET_V2_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Render real Qt prototype
+        shell: pwsh
+        run: |
+          python tools/prototypes/dataset_review_layout_v2.py --out render
+
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataset-review-layout-v2
+          path: render/*.png
+          if-no-files-found: error
+          retention-days: 7

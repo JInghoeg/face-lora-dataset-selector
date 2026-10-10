@@ -61,26 +61,26 @@ Historical repository note:
 - PR #87 completed the exact rollback on `main` at `3b7e13d0497c2c0f0dcc8a466954a2561a104ae6`; the rejected Dataset Review shell is no longer on the production branch.
 - Duplicate Review visual prototype #88 established the accepted shared review pattern. Production implementation Draft PR #90 is complete enough for automated validation (all latest gates PASS) but remains **HUMAN UNVERIFIED** and unmerged because the user explicitly chose to defer HUMAN PASS.
 - Composite Split visual prototype #91 received explicit HUMAN PASS on 2026-10-10 and was closed unmerged as accepted visual reference evidence.
-- **Active authorized UI slice: Composite Split production implementation under Draft PR #93.** It is based on the accepted #91 direction and remains HUMAN UNVERIFIED until production visual/interactive QA is explicitly accepted.
-- The accepted order remains small-module-first: Duplicate Review first, Composite Split Review second. Duplicate has established the shared pattern; Composite is now the active visual slice. The broad main Dataset Review shell redesign stays paused.
+- Composite Split production PR #93 received explicit HUMAN PASS and was squash-merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`.
+- **Active authorized UI slice: bounded main Dataset Review visual re-evaluation under Draft PR #94.** The prerequisite small-module patterns are now established by Auto Crop / Duplicate / Composite. #94 remains prototype-only until the user accepts a concrete render, must not revive rejected #83/#84 structure, and its current real-Qt render workflow is PASS.
 - GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
 - Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
 - HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
 
 ## Current objective
 
-1. keep Duplicate Review production PR #90 Draft and HUMAN UNVERIFIED until the user explicitly chooses to perform that HUMAN PASS; do not merge it merely because CI is green;
-2. implement and validate the accepted Composite Split production UI in Draft PR #93 without broad Dataset-shell redesign;
-3. keep PR #93 HUMAN UNVERIFIED until the real production render and interactive checkpoint are explicitly accepted;
-4. preserve the accepted Composite requirements: shared Auto Crop ROI interaction for the current box, per-box select/reset/delete, direct-drag box creation, three-state candidate status, and selected-image manual entry with current-image re-detect.
+1. keep Duplicate Review production PR #90 Draft and HUMAN UNVERIFIED until the user explicitly returns to that checkpoint;
+2. prototype a new bounded main Dataset Review information architecture from current `main`, explicitly avoiding the rejected #83/#84 stacked-card shell;
+3. require a concrete real-Qt render and explicit visual acceptance before any production Dataset Review replacement;
+4. preserve current DatasetListModel / filtering / sorting / recommendation / persistence behavior during this visual phase.
 
-No broad main Dataset Review redesign, production GPU integration, PR #74 adoption, recommendation/model change, or manual Auto Crop entry-point implementation is active.
+No production main Dataset Review replacement, production GPU integration, PR #74 adoption, recommendation/model change, or manual Auto Crop entry-point implementation is active.
 
 ## Accepted future directions
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACTIVE PRODUCTION UI:** whole-product UI/UX modernization (#75) is currently on Composite Split production PR #93, following HUMAN PASS of prototype #91. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
+- **ACTIVE VISUAL DESIGN:** whole-product UI/UX modernization (#75) has completed Composite Split production (#93 merged). The current authorized slice is Draft PR #94, a bounded main Dataset Review visual re-evaluation that must not reuse the rejected #83/#84 stacked-card structure. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -104,15 +104,15 @@ Execution ordering among these directions is intentionally **not inferred here**
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
-- Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
+- Composite Split production PR #93 received HUMAN PASS and is merged.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. finish Composite Split production implementation and automated validation in Draft PR #93;
-2. inspect the real production render and keep #93 HUMAN UNVERIFIED until explicit user acceptance;
+1. render and inspect the bounded Dataset Review v2 visual prototype from current `main`;
+2. keep it isolated from production `src/` until explicit user visual acceptance;
 3. keep Duplicate Review PR #90 Draft and unmerged until the user explicitly returns to its HUMAN PASS;
 4. keep PR #74 frozen unless the user explicitly adopts its Text Cleanup scope.
 
@@ -155,8 +155,11 @@ Accepted visual reference / pending production QA:
 Accepted Composite visual reference:
 - PR #91 — HUMAN PASS visual prototype; closed unmerged as reference evidence
 
-Active Composite production work:
-- Draft PR #93 — Composite Split production implementation; HUMAN UNVERIFIED pending production checkpoint
+Active Dataset Review visual prototype:
+- Draft PR #94 — bounded v2 visual re-evaluation; production `src/` unchanged; HUMAN UNVERIFIED pending user visual review
+
+Completed Composite production work:
+- PR #93 — HUMAN PASS; squash-merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate
