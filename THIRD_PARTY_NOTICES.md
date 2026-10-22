@@ -91,7 +91,17 @@ The full MIT and Apache-2.0 license texts accompanying redistributed weights are
 
 ## Python dependencies
 
-Python packages installed through `requirements/runtime.txt` retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
+Python packages installed through `requirements/runtime.txt` or the Windows NVIDIA runtime profile retain their own upstream licenses. In particular, this project depends on PySide6, MediaPipe, OpenCV contrib, Pillow, ONNX Runtime, and pyclipper. Their licenses are not relicensed by this repository.
+
+### NVIDIA CUDA / cuDNN runtime
+
+- Purpose here: CUDA Execution Provider acceleration for ONNX Runtime in the Windows NVIDIA Portable profile
+- CUDA license: NVIDIA Software License Agreement and CUDA Supplement
+- CUDA license source: https://docs.nvidia.com/cuda/eula/
+- cuDNN license: NVIDIA cuDNN Software License Agreement / supplement
+- cuDNN documentation: https://docs.nvidia.com/deeplearning/cudnn/
+
+The NVIDIA Portable profile installs the official ONNX Runtime GPU package together with redistributable NVIDIA runtime libraries and bundles the required runtime DLLs inside the application's private `_internal` directory. The project does not redistribute NVIDIA developer tools, compilers, drivers, or a system-wide CUDA installation. NVIDIA retains all rights in these components and their license terms apply independently of this project's GPL license.
 
 ### PySide6-Fluent-Widgets
 
