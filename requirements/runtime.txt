@@ -1,4 +1,9 @@
 -r runtime-base.txt
 
-# Universal runtime profile. Keep Python 3.9 support and CPU-only portability.
-onnxruntime>=1.19,<2
+# Universal CPU/source profile.
+# Keep Python 3.9 supported while aligning Python 3.10+ with the exact ORT
+# version used by the optional NVIDIA accelerator pack.  Matching versions let
+# the accelerator pack replace only native ORT binaries without maintaining a
+# second application build.
+onnxruntime==1.19.2; python_version < "3.10"
+onnxruntime==1.26.0; python_version >= "3.10"
