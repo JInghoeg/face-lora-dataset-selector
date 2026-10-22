@@ -147,6 +147,47 @@ jobs:
           # the JSON status was explicitly accepted above.
           exit 0
 
+      - name: Build standalone workstation checkpoint bundle
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "Windows-ML-Checkpoint"
+          $target = Join-Path $bundle "tools\benchmarks"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+
+          Copy-Item "tools/benchmarks/windows_ml_runtime_probe.py" $target
+          Copy-Item "tools/benchmarks/requirements-windowsml.txt" $target
+          Copy-Item "tools/benchmarks/run-windows-ml-checkpoint.ps1" $target
+          Copy-Item "tools/benchmarks/run-windows-ml-checkpoint.cmd" $target
+
+          @'
+          Windows ML target-workstation checkpoint
+          ========================================
+
+          This bundle is standalone. It does not require a Git repository.
+
+          1. Extract the artifact to a normal local folder.
+          2. Open Command Prompt in the extracted Windows-ML-Checkpoint folder.
+          3. Run:
+             tools\benchmarks\run-windows-ml-checkpoint.cmd
+
+          The default discovery pass does NOT install the Windows App SDK Runtime
+          and does NOT download the NVIDIA execution provider.
+
+          Generated reports are written under:
+             _research_output\windows-ml-runtime\
+          '@ | Set-Content -Encoding UTF8 (Join-Path $bundle "README.txt")
+
+          if (-not (Test-Path (Join-Path $target "run-windows-ml-checkpoint.cmd"))) {
+            throw "Standalone checkpoint bundle was not staged correctly."
+          }
+
+      - name: Upload standalone workstation checkpoint bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-ML-Checkpoint
+          path: Windows-ML-Checkpoint
+          if-no-files-found: error
+
       - name: Upload discovery report
         uses: actions/upload-artifact@v4
         with:
