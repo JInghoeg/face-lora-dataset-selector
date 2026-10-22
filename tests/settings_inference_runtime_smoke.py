@@ -17,6 +17,7 @@ settings_spec = importlib.util.spec_from_file_location(
     SRC / "application" / "settings.py",
 )
 settings_module = importlib.util.module_from_spec(settings_spec)
+sys.modules[settings_spec.name] = settings_module
 settings_spec.loader.exec_module(settings_module)
 AppSettings = settings_module.AppSettings
 SettingsService = settings_module.SettingsService
