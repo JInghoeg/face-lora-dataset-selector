@@ -219,7 +219,15 @@ def run(args: argparse.Namespace) -> int:
             # Keep research discovery non-interactive. ON_NO_MATCH_SHOW_UI can
             # display a system dialog when the matching Windows App SDK Runtime
             # is missing; CI/discovery must report that state instead.
-            with initialize(options=InitializeOptions.NONE):
+            try:
+                bootstrap = initialize(options=InitializeOptions.NONE)
+            except OSError as exc:
+                report["status"] = "app_sdk_runtime_unavailable"
+                report["error"] = f"{type(exc).__name__}: {exc}"
+                report["traceback"] = traceback.format_exc()
+                return 9
+
+            with bootstrap:
                 catalog = winml.ExecutionProviderCatalog.get_default()
                 providers = list(catalog.find_all_providers())
                 report["catalog"] = [_provider_row(p) for p in providers]
