@@ -62,7 +62,7 @@ Historical repository note:
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - PR #95 merged to `main` at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable AppSettings + shared ONNX Runtime provider policy are now the production infrastructure baseline.
 - Draft PR #96 proved the direct CUDA provider/package path technically, but was closed unmerged after its self-contained CUDA/cuDNN payload expanded the uncompressed product to roughly 3.3 GB. It is evidence, not product state.
-- **Active authorized research slice (2026-10-22):** Windows ML / system-managed NVIDIA execution-provider feasibility on branch `research/v0.4-windows-ml-runtime`.
+- **Active authorized research slice (2026-10-22):** Draft PR #97 (`research/v0.4-windows-ml-runtime`) — Windows ML / system-managed NVIDIA execution-provider feasibility.
 - This slice is intentionally bounded: no feature code changes, no product runtime dependency change, no main Dataset shell redesign, no Settings UI, no background scheduler, and no algorithm/threshold change.
 
 ## Current objective
@@ -158,7 +158,7 @@ Completed Composite production work:
 - PR #93 — Composite Split production implementation; HUMAN PASS and merged at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`
 
 Active accelerator research:
-- `research/v0.4-windows-ml-runtime` — Windows ML / system-managed NVIDIA EP feasibility; research-only until target-workstation evidence passes the decision gate
+- Draft PR #97 / `research/v0.4-windows-ml-runtime` — Windows ML / system-managed NVIDIA EP feasibility; research-only until target-workstation evidence passes the decision gate
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate
