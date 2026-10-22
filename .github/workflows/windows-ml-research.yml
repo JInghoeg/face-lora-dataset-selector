@@ -133,6 +133,11 @@ jobs:
             throw "CI discovery probe must never enable EP download."
           }
 
+          # The probe uses non-zero exit codes for expected feasibility states
+          # such as a missing Windows App SDK Runtime. Reaching this point means
+          # the JSON status was explicitly accepted above.
+          exit 0
+
       - name: Upload discovery report
         uses: actions/upload-artifact@v4
         with:
