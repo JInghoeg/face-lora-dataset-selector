@@ -25,6 +25,12 @@ Historical repository note:
 - current public repository: `JInghoeg/face-lora-dataset-selector`;
 - old private/history repository: `JInghoeg/face-lora-dataset-selector-dev`.
 
+Local-workspace continuity note:
+- `G:\ComfyUI-aki\数据集\人脸LoRA数据集筛选器_git` is a frozen historical/private baseline and must not be reused as the current public-repository development checkout;
+- no permanent canonical local development checkout path is currently recorded in repository state;
+- assistants must not infer or reconstruct a local checkout path from chat memory;
+- target-workstation research that only needs a bounded probe should prefer a validated standalone CI artifact over asking the user to locate, mutate, or re-clone a development checkout.
+
 ## Verified complete
 
 - v0.3.0 recovery PR #54 merged and stable v0.3.0 published.
