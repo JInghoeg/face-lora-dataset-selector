@@ -110,10 +110,9 @@ product runtime requirements:
 
 - `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0`
 - `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0`
-- `onnxruntime-windowsml==1.30.0.202609102321`
+- `onnxruntime-windowsml==1.25.2.202605110140`
 
-These versions are for this feasibility checkpoint only. They do not become
-product support commitments merely because the research CI resolves them.
+These versions are for this feasibility checkpoint only. The ORT pin is not an arbitrary downgrade: `wasdk-Microsoft.Windows.AI.MachineLearning==2.3.0` declares an exact dependency on `onnxruntime-windowsml==1.25.2.202605110140`. The first CI resolver pass intentionally caught and rejected an invalid mix with ORT 1.30.0. These research pins do not become product support commitments merely because CI resolves them.
 
 The dedicated `Windows ML Research` workflow runs on `windows-latest` with
 Python 3.12 and verifies:
