@@ -65,27 +65,65 @@ It does not change feature code, product provider defaults, or production requir
 
 ## Target-workstation checkpoint
 
-Use a clean research environment on the target Windows workstation. Do not modify the released Portable for this checkpoint.
+Use a clean research environment on the target Windows workstation. Do not
+modify the released Portable for this checkpoint.
 
-Discovery only:
+### Preferred launcher
+
+Run the checkpoint from **Command Prompt** through the CMD launcher:
+
+```bat
+tools\benchmarks\run-windows-ml-checkpoint.cmd
+```
+
+The launcher sets `POWERSHELL_UPDATECHECK=Off` only for its child process
+before starting `pwsh`. This works around the upstream PowerShell 7.6.x
+localized update-notification startup crash that can terminate `pwsh` before
+any profile or script runs (for example the zh-Hans
+`totalWidth ('-17')` failure). If `pwsh.exe` is unavailable, the launcher
+falls back to Windows PowerShell.
+
+The underlying PowerShell helper creates its isolated venv and reports only
+under the gitignored `_research_output/windows-ml-runtime/` folder. It does
+not install the Windows App SDK Runtime and does not download an execution
+provider unless `-EnsureEp` is explicitly supplied.
+
+If discovery reports `download_required` and the system-managed EP download
+is explicitly accepted:
+
+```bat
+tools\benchmarks\run-windows-ml-checkpoint.cmd -EnsureEp
+```
+
+For the real-model pass:
+
+```bat
+tools\benchmarks\run-windows-ml-checkpoint.cmd -EnsureEp -Model "<path-to-existing-project-model.onnx>"
+```
+
+Only add `-FixWinrtRuntime` in the isolated research environment if the
+documented pywinrt `msvcp140.dll` conflict is actually encountered.
+
+Upstream PowerShell references:
+- https://github.com/PowerShell/PowerShell/issues/28239
+- https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_update_notifications
+
+### Lower-level probe commands
+
+The Python probe remains available for diagnosis after the isolated research
+environment has been prepared:
 
 ```powershell
 python tools/benchmarks/windows_ml_runtime_probe.py --output .project/qa/windows-ml-discovery.json
 ```
 
-If the NVIDIA EP is reported as `NotPresent`, and downloading the system-managed EP is acceptable:
-
 ```powershell
 python tools/benchmarks/windows_ml_runtime_probe.py --ensure --output .project/qa/windows-ml-ready.json
 ```
 
-Then repeat with one existing project ONNX model:
-
 ```powershell
 python tools/benchmarks/windows_ml_runtime_probe.py --ensure --model "<path-to-existing-project-model.onnx>" --check-cpu-fallback --output .project/qa/windows-ml-session.json
 ```
-
-Only use `--fix-winrt-runtime` in the isolated research environment if the documented pywinrt `msvcp140.dll` conflict is actually encountered.
 
 ## Decision gate
 
