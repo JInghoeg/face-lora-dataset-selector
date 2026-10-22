@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-ml-research-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   probe-sanity:
     runs-on: windows-latest
