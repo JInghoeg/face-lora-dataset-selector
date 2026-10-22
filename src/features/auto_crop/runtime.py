@@ -21,6 +21,10 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
+from infrastructure.inference_runtime import (
+    create_ort_session,
+    inference_runtime_generation,
+)
 from infrastructure.model_download import ModelSpec, ensure_model
 from infrastructure.runtime_tuning import configure_ort_cpu_options
 
@@ -42,15 +46,16 @@ _SESSIONS = {}
 
 
 def _session_for(model_path: Path):
-    key = str(model_path.resolve())
+    model_key = str(model_path.resolve())
+    cache_key = (model_key, inference_runtime_generation())
     with _SESSION_LOCK:
-        item = _SESSIONS.get(key)
+        item = _SESSIONS.get(cache_key)
         if item is None:
             options = configure_ort_cpu_options(ort)
-            session = ort.InferenceSession(
-                key,
+            session = create_ort_session(
+                ort,
+                model_key,
                 sess_options=options,
-                providers=["CPUExecutionProvider"],
             )
             inputs = session.get_inputs()
             if len(inputs) != 1 or inputs[0].name != "img":
@@ -59,7 +64,7 @@ def _session_for(model_path: Path):
                     f"{[(x.name, x.shape) for x in inputs]!r}"
                 )
             item = (session, threading.Lock())
-            _SESSIONS[key] = item
+            _SESSIONS[cache_key] = item
         return item
 
 

@@ -31,6 +31,7 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
 from core.cancellation import check_cancelled
 from core.models import AnalysisFinding, FaceDetection, Photo, derive_eligibility
 from infrastructure.filesystem import sha256_file
+from infrastructure.inference_runtime import create_ort_session
 from infrastructure.runtime_tuning import (
     configure_opencv_threads,
     configure_ort_cpu_options,
@@ -255,16 +256,16 @@ class QualityModels:
         self.det_fallback = cv2.FaceDetectorYN.create(
             str(self.yunet_path), "", (320, 320), 0.45, 0.3, 5000
         )
-        self.fq = ort.InferenceSession(
+        self.fq = create_ort_session(
+            ort,
             str(EDIFF),
             sess_options=configure_ort_cpu_options(ort),
-            providers=["CPUExecutionProvider"],
         )
         self.fqin = self.fq.get_inputs()[0].name
-        self.pose = ort.InferenceSession(
+        self.pose = create_ort_session(
+            ort,
             str(DDDFA),
             sess_options=configure_ort_cpu_options(ort),
-            providers=["CPUExecutionProvider"],
         )
         self.posein = self.pose.get_inputs()[0].name
         with DDDFA_NORM.open("rb") as handle:

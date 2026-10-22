@@ -16,6 +16,8 @@ import numpy as np
 import onnxruntime as ort
 import pyclipper
 
+from infrastructure.inference_runtime import create_ort_session
+
 
 class ResizeImgError(Exception):
     pass
@@ -227,10 +229,10 @@ class TextDetector:
         if inter > 0:
             options.inter_op_num_threads = inter
 
-        self.session = ort.InferenceSession(
+        self.session = create_ort_session(
+            ort,
             str(config["model_path"]),
             sess_options=options,
-            providers=["CPUExecutionProvider"],
         )
         self.input_name = self.session.get_inputs()[0].name
 

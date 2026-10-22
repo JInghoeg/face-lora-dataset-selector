@@ -31,6 +31,10 @@ from typing import List, Tuple, Union
 import numpy as np
 import onnxruntime as ort
 
+from infrastructure.inference_runtime import (
+    create_ort_session,
+    inference_runtime_generation,
+)
 from infrastructure.runtime_tuning import configure_ort_cpu_options
 from PIL import Image
 
@@ -135,15 +139,16 @@ def _safe_names(names_text: str) -> List[str]:
 
 
 def _session_for(path: Path):
-    cache_key = str(path.resolve())
+    model_key = str(path.resolve())
+    cache_key = (model_key, inference_runtime_generation())
     with _SESSION_LOCK:
         item = _SESSIONS.get(cache_key)
         if item is None:
             options = configure_ort_cpu_options(ort)
-            session = ort.InferenceSession(
-                cache_key,
-                options,
-                providers=["CPUExecutionProvider"],
+            session = create_ort_session(
+                ort,
+                model_key,
+                sess_options=options,
             )
             metadata = session.get_modelmeta().custom_metadata_map
             if "imgsz" in metadata:
