@@ -60,17 +60,17 @@ Historical repository note:
 - Incorrect Dataset Review v2 prototype PR #94 was closed unmerged and is non-canonical; production `src/` was not changed by it.
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
-- **Active authorized infrastructure slice (2026-10-22):** portable application settings + shared ONNX Runtime execution-provider policy on branch `infra/v0.4-settings-inference-runtime`.
-- This slice is intentionally bounded: no main Dataset shell redesign, no complete Settings UI, no background-enrichment scheduler, no algorithm/threshold changes, and no feature-to-feature dependencies.
-- The next GPU work is to enable a real NVIDIA-capable runtime/package path and validate GPU→CPU fallback using the shared provider layer before automatic background Composite/Auto Crop work begins.
+- PR #95 merged to `main` at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable AppSettings + shared ONNX Runtime provider policy are now the production infrastructure baseline.
+- **Active authorized infrastructure slice (2026-10-22):** real NVIDIA-capable Windows Portable runtime/package path on branch `infra/v0.4-nvidia-runtime`.
+- This slice remains intentionally bounded: no main Dataset shell redesign, no complete Settings UI, no background-enrichment scheduler, no algorithm/threshold changes, and no feature-to-feature dependencies.
 
 ## Current objective
 
-1. establish a dedicated portable application-settings store under `_userdata/settings.json`, separate from dataset/cache state;
-2. route ONNX model sessions through one infrastructure-level provider policy with `Auto / GPU / CPU` semantics and mandatory CPU fallback;
-3. keep feature packages independent siblings and strengthen/retain architecture gates against cross-feature imports;
-4. validate the infrastructure slice in Draft PR/CI before exposing it through a full Settings UI;
-5. after this slice is stable, proceed to the real NVIDIA GPU runtime/package integration, then the dependency-aware background Composite → Auto Crop workflow and streaming review.
+1. keep Python 3.9/source development on the universal CPU runtime profile while giving the Windows Python 3.12 Portable build a dedicated NVIDIA GPU profile;
+2. bundle the CUDA/cuDNN runtime DLLs required by ONNX Runtime GPU so end users do not need a separate CUDA toolkit installation;
+3. preserve `Auto / GPU / CPU` policy and mandatory CPU fallback from PR #95;
+4. keep feature packages independent siblings; GPU/runtime policy stays entirely in infrastructure;
+5. validate the packaged CUDA provider/payload once in CI, then move to the minimal Settings UI and dependency-aware background Composite → Auto Crop workflow.
 
 ## Accepted future directions
 
@@ -88,7 +88,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
+- NVIDIA acceleration is now an active production-runtime integration (#55); actual RTX hardware validation remains a lightweight post-package checkpoint rather than a research gate.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -100,17 +100,17 @@ Execution ordering among these directions is intentionally **not inferred here**
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
-- Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
+- Composite Split production PR #93 received explicit HUMAN PASS before merge; no remaining #93 human checkpoint.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. finish automated validation of the settings/inference-runtime infrastructure branch and keep the PR Draft until checks are green;
-2. do not expand this PR into a Settings-page redesign or background scheduler;
-3. next, implement the NVIDIA-capable runtime/package path on top of the shared provider abstraction, with CPU fallback and lightweight real-model integration validation;
-4. only after the resource model is stable, implement background enrichment and streaming review.
+1. validate the NVIDIA Portable runtime profile, bundled CUDA/cuDNN DLL payload, and CPU fallback in one bounded Draft PR;
+2. do not expand this slice into a Settings-page redesign, background scheduler, or feature-specific CUDA logic;
+3. after the runtime package is stable, expose the existing AppSettings through a minimal Settings UI;
+4. then implement dependency-aware background Composite → Auto Crop enrichment and streaming review.
 
 ## Do not repeat
 
