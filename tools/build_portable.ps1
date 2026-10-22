@@ -84,10 +84,11 @@ Face LoRA Dataset Selector - Windows x64 Portable
 使用方法：
 1. 解压整个 ZIP。
 2. 双击 “Face LoRA Dataset Selector.exe”。
-3. 不需要安装 Python，也不需要单独安装 CUDA。
-4. NVIDIA GPU 可用时会自动优先使用 GPU 推理；GPU 不可用或初始化失败时会自动回退 CPU。
+3. 不需要安装 Python。
+4. 基础 Portable 使用 CPU 推理；需要 NVIDIA GPU 加速时，可安装同版本的可选 NVIDIA Accelerator Pack。
 
 注意：
+- NVIDIA Accelerator Pack 只增加/替换推理运行时，不包含第二套应用代码；GPU 初始化失败时仍会自动回退 CPU。
 - 请不要只把 exe 单独复制出去，_internal 目录也是程序的一部分。
 - Composite Split、Auto Crop ISNetIS 和 MI-GAN 权重已随 Portable 打包并做 SHA-256 校验，不再依赖首次使用联网下载。
 - 程序自身产生的缓存、日志和状态只写入当前 Portable 文件夹；首次启动会只读旧版 AppData 并非破坏性复制历史记录。
