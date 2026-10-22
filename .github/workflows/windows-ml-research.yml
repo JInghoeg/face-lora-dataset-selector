@@ -54,6 +54,30 @@ jobs:
                   raise SystemExit(f"{name}: expected {wanted}, got {actual}")
           '@ | python -
 
+      - name: Verify Windows ML ORT dynamic EP API shape
+        shell: pwsh
+        run: |
+          @'
+          import onnxruntime as ort
+
+          required_module = [
+              "get_ep_devices",
+              "register_execution_provider_library",
+          ]
+          for name in required_module:
+              value = getattr(ort, name, None)
+              print(f"onnxruntime.{name}: {value}")
+              if not callable(value):
+                  raise SystemExit(f"Missing required dynamic EP API: onnxruntime.{name}")
+
+          options = ort.SessionOptions()
+          for name in ("add_provider_for_devices", "has_providers"):
+              value = getattr(options, name, None)
+              print(f"SessionOptions.{name}: {value}")
+              if not callable(value):
+                  raise SystemExit(f"Missing required dynamic EP API: SessionOptions.{name}")
+          '@ | python -
+
       - name: Compile probe and validate CLI
         shell: pwsh
         run: |
