@@ -36,23 +36,6 @@ datas += collect_data_files('qfluentwidgets')
 # reached by the application/runtime.
 binaries = collect_dynamic_libs('mediapipe')
 
-# The NVIDIA Portable profile installs CUDA/cuDNN runtime wheels beside
-# onnxruntime-gpu.  PyInstaller does not reliably discover DLLs from the
-# namespace-style nvidia packages, so collect them explicitly while preserving
-# their package-relative destinations.  CPU-only developer builds simply skip
-# packages that are not installed.
-for package in (
-    'nvidia.cublas',
-    'nvidia.cufft',
-    'nvidia.cuda_runtime',
-    'nvidia.cuda_nvrtc',
-    'nvidia.curand',
-    'nvidia.cudnn',
-):
-    try:
-        binaries += collect_dynamic_libs(package)
-    except Exception:
-        pass
 
 hiddenimports = [
     'mediapipe.tasks.python.vision.pose_landmarker',
