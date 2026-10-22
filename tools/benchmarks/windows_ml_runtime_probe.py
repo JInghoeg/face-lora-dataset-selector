@@ -128,21 +128,6 @@ def _write_report(report: dict[str, Any], output: str | None) -> None:
         print(f"Wrote: {path}")
 
 
-def _finish(
-    report: dict[str, Any],
-    args: argparse.Namespace,
-    code: int,
-    winrt_dll_change: tuple[Path, Path] | None,
-) -> int:
-    """Restore any temporary research mutation before emitting the final report."""
-    if args.fix_winrt_runtime:
-        report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(
-            winrt_dll_change
-        )
-    _write_report(report, args.output)
-    return code
-
-
 def run(args: argparse.Namespace) -> int:
     build = _windows_build()
     report: dict[str, Any] = {
@@ -200,141 +185,194 @@ def run(args: argparse.Namespace) -> int:
         report["winrt_runtime_dll_workaround"] = workaround
 
     try:
-        from winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import (
-            InitializeOptions,
-            initialize,
-        )
-        import winui3.microsoft.windows.ai.machinelearning as winml
-        import onnxruntime as ort
-    except Exception as exc:
-        report["status"] = "dependency_import_failed"
-        report["error"] = f"{type(exc).__name__}: {exc}"
-        report["traceback"] = traceback.format_exc()
-        return _finish(report, args, 3, winrt_dll_change)
-
-    report["environment"]["onnxruntime_version"] = getattr(ort, "__version__", "unknown")
-    report["environment"]["static_providers"] = list(ort.get_available_providers())
-    get_ep_devices = getattr(ort, "get_ep_devices", None)
-    if not callable(get_ep_devices):
-        report["status"] = "unsupported_onnxruntime_api"
-        report["error"] = "onnxruntime-windowsml does not expose get_ep_devices()."
-        return _finish(report, args, 3, winrt_dll_change)
-    report["environment"]["ep_devices_before_registration"] = [
-        _ep_device_row(d) for d in get_ep_devices()
-    ]
-
-    try:
-        # Keep research discovery non-interactive. ON_NO_MATCH_SHOW_UI can
-        # display a system dialog when the matching Windows App SDK Runtime is
-        # missing; a probe/CI process must report that state instead.
-        with initialize(options=InitializeOptions.NONE):
-            catalog = winml.ExecutionProviderCatalog.get_default()
-            providers = list(catalog.find_all_providers())
-            report["catalog"] = [_provider_row(p) for p in providers]
-
-            target = next(
-                (p for p in providers if str(getattr(p, "name", "")) == TARGET_EP),
-                None,
+        try:
+            from winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import (
+                InitializeOptions,
+                initialize,
             )
-            if target is None:
-                report["status"] = "target_provider_unavailable"
-                report["error"] = (
-                    f"{TARGET_EP} is not advertised for this device/driver combination."
+            import winui3.microsoft.windows.ai.machinelearning as winml
+            import onnxruntime as ort
+        except Exception as exc:
+            report["status"] = "dependency_import_failed"
+            report["error"] = f"{type(exc).__name__}: {exc}"
+            report["traceback"] = traceback.format_exc()
+            return 3
+
+        report["environment"]["onnxruntime_version"] = getattr(
+            ort, "__version__", "unknown"
+        )
+        report["environment"]["static_providers"] = list(
+            ort.get_available_providers()
+        )
+        get_ep_devices = getattr(ort, "get_ep_devices", None)
+        if not callable(get_ep_devices):
+            report["status"] = "unsupported_onnxruntime_api"
+            report["error"] = (
+                "onnxruntime-windowsml does not expose get_ep_devices()."
+            )
+            return 3
+        report["environment"]["ep_devices_before_registration"] = [
+            _ep_device_row(d) for d in get_ep_devices()
+        ]
+
+        try:
+            # Keep research discovery non-interactive. ON_NO_MATCH_SHOW_UI can
+            # display a system dialog when the matching Windows App SDK Runtime
+            # is missing; CI/discovery must report that state instead.
+            with initialize(options=InitializeOptions.NONE):
+                catalog = winml.ExecutionProviderCatalog.get_default()
+                providers = list(catalog.find_all_providers())
+                report["catalog"] = [_provider_row(p) for p in providers]
+
+                target = next(
+                    (
+                        p
+                        for p in providers
+                        if str(getattr(p, "name", "")) == TARGET_EP
+                    ),
+                    None,
                 )
-                return _finish(report, args, 4, winrt_dll_change)
-
-            ready_state = getattr(target, "ready_state", None)
-            report["target_before"] = _provider_row(target)
-
-            not_present = getattr(winml.ExecutionProviderReadyState, "NOT_PRESENT", None)
-            not_ready = getattr(winml.ExecutionProviderReadyState, "NOT_READY", None)
-            ready = getattr(winml.ExecutionProviderReadyState, "READY", None)
-
-            if ready_state == not_present and not args.ensure:
-                report["status"] = "download_required"
-                report["error"] = (
-                    "Target EP is not installed. Re-run with --ensure only after "
-                    "explicitly accepting the system-managed EP download."
-                )
-                return _finish(report, args, 5, winrt_dll_change)
-
-            if ready_state in (not_present, not_ready):
-                result = target.ensure_ready_async().get()
-                report["ensure_result"] = {
-                    "status": _enum_name(getattr(result, "status", None)),
-                    "diagnostic_text": str(getattr(result, "diagnostic_text", "") or ""),
-                    "extended_error": str(getattr(result, "extended_error", "") or ""),
-                }
-
-            report["target_after"] = _provider_row(target)
-            if getattr(target, "ready_state", None) != ready:
-                report["status"] = "target_not_ready"
-                report["error"] = f"{TARGET_EP} did not reach READY after preparation."
-                return _finish(report, args, 6, winrt_dll_change)
-
-            library_path = str(getattr(target, "library_path", "") or "")
-            if not library_path:
-                report["status"] = "missing_provider_library"
-                report["error"] = "Windows ML returned no provider library path."
-                return _finish(report, args, 7, winrt_dll_change)
-
-            # Python Windows ML registration is intentionally done through the
-            # Python ORT API. Windows ML's native RegisterCertifiedAsync/TryRegister
-            # does not register EPs into the Python ORT environment.
-            ort.register_execution_provider_library(TARGET_EP, library_path)
-            ep_devices = list(get_ep_devices())
-            report["environment"]["ep_devices_after_registration"] = [
-                _ep_device_row(d) for d in ep_devices
-            ]
-            target_devices = [
-                d for d in ep_devices if str(getattr(d, "ep_name", "")) == TARGET_EP
-            ]
-            if not target_devices:
-                report["status"] = "registration_not_visible"
-                report["error"] = (
-                    f"{TARGET_EP} registered without exposing an OrtEpDevice."
-                )
-                return _finish(report, args, 7, winrt_dll_change)
-
-            if args.model:
-                model = Path(args.model).resolve()
-                if not model.is_file():
-                    raise FileNotFoundError(model)
-
-                # Windows ML 2.x dynamically registered EPs are selected through
-                # OrtEpDevice + SessionOptions, not the legacy static providers=
-                # list used by built-in CUDAExecutionProvider.
-                options = ort.SessionOptions()
-                options.add_provider_for_devices([target_devices[0]], {})
-                if not options.has_providers():
-                    raise RuntimeError("NVIDIA OrtEpDevice was not attached to SessionOptions.")
-                session = ort.InferenceSession(str(model), sess_options=options)
-                report["session"] = {
-                    "model": str(model),
-                    "providers": list(session.get_providers()),
-                    "selected_ep_device": _ep_device_row(target_devices[0]),
-                    "inputs": [
-                        {"name": item.name, "shape": item.shape, "type": item.type}
-                        for item in session.get_inputs()
-                    ],
-                }
-                if args.check_cpu_fallback:
-                    cpu = ort.InferenceSession(
-                        str(model), providers=["CPUExecutionProvider"]
+                if target is None:
+                    report["status"] = "target_provider_unavailable"
+                    report["error"] = (
+                        f"{TARGET_EP} is not advertised for this "
+                        "device/driver combination."
                     )
-                    report["cpu_fallback_session"] = {
-                        "providers": list(cpu.get_providers())
+                    return 4
+
+                ready_state = getattr(target, "ready_state", None)
+                report["target_before"] = _provider_row(target)
+
+                not_present = getattr(
+                    winml.ExecutionProviderReadyState, "NOT_PRESENT", None
+                )
+                not_ready = getattr(
+                    winml.ExecutionProviderReadyState, "NOT_READY", None
+                )
+                ready = getattr(
+                    winml.ExecutionProviderReadyState, "READY", None
+                )
+
+                if ready_state == not_present and not args.ensure:
+                    report["status"] = "download_required"
+                    report["error"] = (
+                        "Target EP is not installed. Re-run with --ensure only "
+                        "after explicitly accepting the system-managed EP download."
+                    )
+                    return 5
+
+                if ready_state in (not_present, not_ready):
+                    result = target.ensure_ready_async().get()
+                    report["ensure_result"] = {
+                        "status": _enum_name(getattr(result, "status", None)),
+                        "diagnostic_text": str(
+                            getattr(result, "diagnostic_text", "") or ""
+                        ),
+                        "extended_error": str(
+                            getattr(result, "extended_error", "") or ""
+                        ),
                     }
 
-            report["status"] = "pass"
-            return _finish(report, args, 0, winrt_dll_change)
+                report["target_after"] = _provider_row(target)
+                if getattr(target, "ready_state", None) != ready:
+                    report["status"] = "target_not_ready"
+                    report["error"] = (
+                        f"{TARGET_EP} did not reach READY after preparation."
+                    )
+                    return 6
 
-    except Exception as exc:
-        report["status"] = "probe_failed"
-        report["error"] = f"{type(exc).__name__}: {exc}"
-        report["traceback"] = traceback.format_exc()
-        return _finish(report, args, 8, winrt_dll_change)
+                library_path = str(
+                    getattr(target, "library_path", "") or ""
+                )
+                if not library_path:
+                    report["status"] = "missing_provider_library"
+                    report["error"] = (
+                        "Windows ML returned no provider library path."
+                    )
+                    return 7
 
+                # Native catalog registration does not populate Python ORT.
+                # Register the library directly into the Python ORT environment.
+                ort.register_execution_provider_library(
+                    TARGET_EP, library_path
+                )
+                ep_devices = list(get_ep_devices())
+                report["environment"]["ep_devices_after_registration"] = [
+                    _ep_device_row(d) for d in ep_devices
+                ]
+                target_devices = [
+                    d
+                    for d in ep_devices
+                    if str(getattr(d, "ep_name", "")) == TARGET_EP
+                ]
+                if not target_devices:
+                    report["status"] = "registration_not_visible"
+                    report["error"] = (
+                        f"{TARGET_EP} registered without exposing an OrtEpDevice."
+                    )
+                    return 7
+
+                if args.model:
+                    model = Path(args.model).resolve()
+                    if not model.is_file():
+                        raise FileNotFoundError(model)
+
+                    # Dynamically registered Windows ML EPs use OrtEpDevice +
+                    # SessionOptions rather than the legacy static providers=
+                    # list used by built-in CUDAExecutionProvider.
+                    options = ort.SessionOptions()
+                    options.add_provider_for_devices(
+                        [target_devices[0]], {}
+                    )
+                    if not options.has_providers():
+                        raise RuntimeError(
+                            "NVIDIA OrtEpDevice was not attached to "
+                            "SessionOptions."
+                        )
+                    session = ort.InferenceSession(
+                        str(model), sess_options=options
+                    )
+                    report["session"] = {
+                        "model": str(model),
+                        "providers": list(session.get_providers()),
+                        "selected_ep_device": _ep_device_row(
+                            target_devices[0]
+                        ),
+                        "inputs": [
+                            {
+                                "name": item.name,
+                                "shape": item.shape,
+                                "type": item.type,
+                            }
+                            for item in session.get_inputs()
+                        ],
+                    }
+                    if args.check_cpu_fallback:
+                        cpu = ort.InferenceSession(
+                            str(model),
+                            providers=["CPUExecutionProvider"],
+                        )
+                        report["cpu_fallback_session"] = {
+                            "providers": list(cpu.get_providers())
+                        }
+
+                report["status"] = "pass"
+                return 0
+
+        except Exception as exc:
+            report["status"] = "probe_failed"
+            report["error"] = f"{type(exc).__name__}: {exc}"
+            report["traceback"] = traceback.format_exc()
+            return 8
+    finally:
+        # Any temporary pywinrt DLL rename is restored only after the Windows
+        # ML/bootstrap context has unwound, avoiding a restore attempt while
+        # the runtime may still hold the file loaded.
+        if args.fix_winrt_runtime:
+            report["winrt_runtime_dll_restore"] = (
+                _restore_conflicting_winrt_dll(winrt_dll_change)
+            )
+        _write_report(report, args.output)
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
