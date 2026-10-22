@@ -128,6 +128,21 @@ def _write_report(report: dict[str, Any], output: str | None) -> None:
         print(f"Wrote: {path}")
 
 
+def _finish(
+    report: dict[str, Any],
+    args: argparse.Namespace,
+    code: int,
+    winrt_dll_change: tuple[Path, Path] | None,
+) -> int:
+    """Restore any temporary research mutation before emitting the final report."""
+    if args.fix_winrt_runtime:
+        report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(
+            winrt_dll_change
+        )
+    _write_report(report, args.output)
+    return code
+
+
 def run(args: argparse.Namespace) -> int:
     build = _windows_build()
     report: dict[str, Any] = {
@@ -195,8 +210,7 @@ def run(args: argparse.Namespace) -> int:
         report["status"] = "dependency_import_failed"
         report["error"] = f"{type(exc).__name__}: {exc}"
         report["traceback"] = traceback.format_exc()
-        _write_report(report, args.output)
-        return 3
+        return _finish(report, args, 3, winrt_dll_change)
 
     report["environment"]["onnxruntime_version"] = getattr(ort, "__version__", "unknown")
     report["environment"]["static_providers"] = list(ort.get_available_providers())
@@ -204,8 +218,7 @@ def run(args: argparse.Namespace) -> int:
     if not callable(get_ep_devices):
         report["status"] = "unsupported_onnxruntime_api"
         report["error"] = "onnxruntime-windowsml does not expose get_ep_devices()."
-        _write_report(report, args.output)
-        return 3
+        return _finish(report, args, 3, winrt_dll_change)
     report["environment"]["ep_devices_before_registration"] = [
         _ep_device_row(d) for d in get_ep_devices()
     ]
@@ -228,10 +241,7 @@ def run(args: argparse.Namespace) -> int:
                 report["error"] = (
                     f"{TARGET_EP} is not advertised for this device/driver combination."
                 )
-                if args.fix_winrt_runtime:
-                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
-                _write_report(report, args.output)
-                return 4
+                return _finish(report, args, 4, winrt_dll_change)
 
             ready_state = getattr(target, "ready_state", None)
             report["target_before"] = _provider_row(target)
@@ -246,10 +256,7 @@ def run(args: argparse.Namespace) -> int:
                     "Target EP is not installed. Re-run with --ensure only after "
                     "explicitly accepting the system-managed EP download."
                 )
-                if args.fix_winrt_runtime:
-                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
-                _write_report(report, args.output)
-                return 5
+                return _finish(report, args, 5, winrt_dll_change)
 
             if ready_state in (not_present, not_ready):
                 result = target.ensure_ready_async().get()
@@ -263,19 +270,13 @@ def run(args: argparse.Namespace) -> int:
             if getattr(target, "ready_state", None) != ready:
                 report["status"] = "target_not_ready"
                 report["error"] = f"{TARGET_EP} did not reach READY after preparation."
-                if args.fix_winrt_runtime:
-                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
-                _write_report(report, args.output)
-                return 6
+                return _finish(report, args, 6, winrt_dll_change)
 
             library_path = str(getattr(target, "library_path", "") or "")
             if not library_path:
                 report["status"] = "missing_provider_library"
                 report["error"] = "Windows ML returned no provider library path."
-                if args.fix_winrt_runtime:
-                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
-                _write_report(report, args.output)
-                return 7
+                return _finish(report, args, 7, winrt_dll_change)
 
             # Python Windows ML registration is intentionally done through the
             # Python ORT API. Windows ML's native RegisterCertifiedAsync/TryRegister
@@ -293,8 +294,7 @@ def run(args: argparse.Namespace) -> int:
                 report["error"] = (
                     f"{TARGET_EP} registered without exposing an OrtEpDevice."
                 )
-                _write_report(report, args.output)
-                return 7
+                return _finish(report, args, 7, winrt_dll_change)
 
             if args.model:
                 model = Path(args.model).resolve()
@@ -327,24 +327,13 @@ def run(args: argparse.Namespace) -> int:
                     }
 
             report["status"] = "pass"
-            _write_report(report, args.output)
-            return 0
+            return _finish(report, args, 0, winrt_dll_change)
 
     except Exception as exc:
         report["status"] = "probe_failed"
         report["error"] = f"{type(exc).__name__}: {exc}"
         report["traceback"] = traceback.format_exc()
-        return_code = 8
-    else:
-        return_code = 0
-    finally:
-        if args.fix_winrt_runtime:
-            report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(
-                winrt_dll_change
-            )
-
-    _write_report(report, args.output)
-    return return_code
+        return _finish(report, args, 8, winrt_dll_change)
 
 
 def parser() -> argparse.ArgumentParser:
