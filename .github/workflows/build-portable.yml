@@ -134,11 +134,12 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install runtime and build dependencies
+      - name: Install NVIDIA runtime and build dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements/runtime.txt -r requirements/build.txt
+          python -m pip install --no-cache-dir -r requirements/runtime-nvidia.txt -r requirements/build.txt
+          python -c "import onnxruntime as ort; providers=ort.get_available_providers(); print('ORT', ort.__version__, 'providers=', providers); assert 'CUDAExecutionProvider' in providers, 'NVIDIA Portable build is missing CUDAExecutionProvider'"
 
       - name: Install Fluent UI runtime (Essentials-only)
         shell: pwsh
@@ -154,7 +155,26 @@ jobs:
       - name: Build portable folder
         shell: pwsh
         run: |
-          .\tools/build_portable.ps1
+          .\tools\build_portable.ps1
+
+      - name: Verify bundled NVIDIA runtime payload
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\_internal"
+          $cudaProvider = @(Get-ChildItem $root -Recurse -File -Filter "onnxruntime_providers_cuda.dll" -ErrorAction SilentlyContinue)
+          $nvidiaRoot = Join-Path $root "nvidia"
+          $nvidiaDlls = @()
+          if (Test-Path $nvidiaRoot) {
+            $nvidiaDlls = @(Get-ChildItem $nvidiaRoot -Recurse -File -Filter "*.dll")
+          }
+          if ($cudaProvider.Count -lt 1) {
+            throw "Packaged Portable is missing onnxruntime_providers_cuda.dll"
+          }
+          if ($nvidiaDlls.Count -lt 1) {
+            throw "Packaged Portable is missing NVIDIA CUDA/cuDNN runtime DLLs"
+          }
+          Write-Host "CUDA provider DLLs: $($cudaProvider.Count)"
+          Write-Host "Bundled NVIDIA runtime DLLs: $($nvidiaDlls.Count)"
 
       - name: Portable size report
         shell: pwsh
