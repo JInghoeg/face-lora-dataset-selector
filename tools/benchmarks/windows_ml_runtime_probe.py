@@ -1,0 +1,299 @@
+#!/usr/bin/env python
+"""Research-only Windows ML NVIDIA execution-provider probe.
+
+This tool intentionally does not change product runtime requirements or feature
+code. It evaluates whether Windows ML can dynamically acquire/register the
+NVIDIA NvTensorRtRtx execution provider without bundling CUDA/cuDNN into the
+application.
+
+Use --ensure only when downloading/installing the compatible EP is acceptable.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import sys
+import traceback
+from importlib import metadata
+from pathlib import Path
+from typing import Any
+
+TARGET_EP = "NvTensorRtRtxExecutionProvider"
+MIN_WINDOWS_BUILD = 26100
+
+
+def _enum_name(value: Any) -> str:
+    return getattr(value, "name", None) or str(value)
+
+
+def _dist_version(name: str) -> str | None:
+    try:
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def _windows_build() -> int | None:
+    if os.name != "nt":
+        return None
+    try:
+        return int(sys.getwindowsversion().build)
+    except Exception:
+        return None
+
+
+def _winrt_runtime_dll() -> Path | None:
+    try:
+        dist = metadata.distribution("winrt-runtime")
+    except metadata.PackageNotFoundError:
+        return None
+    root = Path(str(dist.locate_file("")))
+    return root / "winrt" / "msvcp140.dll"
+
+
+def _disable_conflicting_winrt_dll() -> dict[str, Any]:
+    dll = _winrt_runtime_dll()
+    result = {"path": str(dll) if dll else None, "changed": False}
+    if dll is None or not dll.exists():
+        return result
+    disabled = dll.with_suffix(dll.suffix + ".disabled-by-face-lora-probe")
+    if disabled.exists():
+        result["disabled_path"] = str(disabled)
+        return result
+    dll.replace(disabled)
+    result["changed"] = True
+    result["disabled_path"] = str(disabled)
+    return result
+
+
+def _provider_row(provider: Any) -> dict[str, Any]:
+    row = {
+        "name": str(getattr(provider, "name", "")),
+        "ready_state": _enum_name(getattr(provider, "ready_state", None)),
+    }
+    package_id = getattr(provider, "package_id", None)
+    if package_id is not None:
+        row["package_name"] = str(getattr(package_id, "name", "") or "")
+        version = getattr(package_id, "version", None)
+        if version is not None:
+            row["package_version"] = str(version)
+    library_path = getattr(provider, "library_path", None)
+    if library_path:
+        row["library_path"] = str(library_path)
+    return row
+
+
+def _write_report(report: dict[str, Any], output: str | None) -> None:
+    payload = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+    print(payload)
+    if output:
+        path = Path(output).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload + "\n", encoding="utf-8")
+        print(f"Wrote: {path}")
+
+
+def run(args: argparse.Namespace) -> int:
+    build = _windows_build()
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "kind": "face-lora-windows-ml-runtime-probe",
+        "target_provider": TARGET_EP,
+        "environment": {
+            "platform": platform.platform(),
+            "python": sys.version,
+            "executable": sys.executable,
+            "windows_build": build,
+            "packages": {
+                "onnxruntime-windowsml": _dist_version("onnxruntime-windowsml"),
+                "onnxruntime": _dist_version("onnxruntime"),
+                "winrt-runtime": _dist_version("winrt-runtime"),
+                "winui3-Microsoft.Windows.AI.MachineLearning": _dist_version(
+                    "winui3-Microsoft.Windows.AI.MachineLearning"
+                ),
+                "winui3-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap": _dist_version(
+                    "winui3-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap"
+                ),
+            },
+        },
+        "requested": {
+            "ensure": bool(args.ensure),
+            "model": str(Path(args.model).resolve()) if args.model else None,
+            "fix_winrt_runtime": bool(args.fix_winrt_runtime),
+        },
+        "status": "starting",
+    }
+
+    if os.name != "nt":
+        report["status"] = "unsupported_os"
+        report["error"] = "Windows ML probe requires Windows."
+        _write_report(report, args.output)
+        return 2
+
+    if build is not None and build < MIN_WINDOWS_BUILD:
+        report["status"] = "unsupported_windows_build"
+        report["error"] = (
+            f"Windows build {build} is below {MIN_WINDOWS_BUILD}; "
+            "catalog-delivered hardware EPs require Windows 11 24H2 or newer."
+        )
+        _write_report(report, args.output)
+        return 2
+
+    dll = _winrt_runtime_dll()
+    report["winrt_runtime_dll"] = {
+        "path": str(dll) if dll else None,
+        "exists": bool(dll and dll.exists()),
+    }
+    if args.fix_winrt_runtime:
+        report["winrt_runtime_dll_workaround"] = _disable_conflicting_winrt_dll()
+
+    try:
+        from winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import (
+            InitializeOptions,
+            initialize,
+        )
+        import winui3.microsoft.windows.ai.machinelearning as winml
+        import onnxruntime as ort
+    except Exception as exc:
+        report["status"] = "dependency_import_failed"
+        report["error"] = f"{type(exc).__name__}: {exc}"
+        report["traceback"] = traceback.format_exc()
+        _write_report(report, args.output)
+        return 3
+
+    report["environment"]["onnxruntime_version"] = getattr(ort, "__version__", "unknown")
+    report["environment"]["providers_before_registration"] = list(
+        ort.get_available_providers()
+    )
+
+    try:
+        with initialize(options=InitializeOptions.ON_NO_MATCH_SHOW_UI):
+            catalog = winml.ExecutionProviderCatalog.get_default()
+            providers = list(catalog.find_all_providers())
+            report["catalog"] = [_provider_row(p) for p in providers]
+
+            target = next(
+                (p for p in providers if str(getattr(p, "name", "")) == TARGET_EP),
+                None,
+            )
+            if target is None:
+                report["status"] = "target_provider_unavailable"
+                report["error"] = (
+                    f"{TARGET_EP} is not advertised for this device/driver combination."
+                )
+                _write_report(report, args.output)
+                return 4
+
+            ready_state = getattr(target, "ready_state", None)
+            report["target_before"] = _provider_row(target)
+
+            not_present = getattr(winml.ExecutionProviderReadyState, "NOT_PRESENT", None)
+            not_ready = getattr(winml.ExecutionProviderReadyState, "NOT_READY", None)
+            ready = getattr(winml.ExecutionProviderReadyState, "READY", None)
+
+            if ready_state == not_present and not args.ensure:
+                report["status"] = "download_required"
+                report["error"] = (
+                    "Target EP is not installed. Re-run with --ensure only after "
+                    "explicitly accepting the system-managed EP download."
+                )
+                _write_report(report, args.output)
+                return 5
+
+            if ready_state in (not_present, not_ready):
+                result = target.ensure_ready_async().get()
+                report["ensure_result"] = {
+                    "status": _enum_name(getattr(result, "status", None)),
+                    "diagnostic_text": str(getattr(result, "diagnostic_text", "") or ""),
+                    "extended_error": str(getattr(result, "extended_error", "") or ""),
+                }
+
+            report["target_after"] = _provider_row(target)
+            if getattr(target, "ready_state", None) != ready:
+                report["status"] = "target_not_ready"
+                report["error"] = f"{TARGET_EP} did not reach READY after preparation."
+                _write_report(report, args.output)
+                return 6
+
+            library_path = str(getattr(target, "library_path", "") or "")
+            if not library_path:
+                report["status"] = "missing_provider_library"
+                report["error"] = "Windows ML returned no provider library path."
+                _write_report(report, args.output)
+                return 7
+
+            ort.register_execution_provider_library(TARGET_EP, library_path)
+            report["environment"]["providers_after_registration"] = list(
+                ort.get_available_providers()
+            )
+
+            if args.model:
+                model = Path(args.model).resolve()
+                if not model.is_file():
+                    raise FileNotFoundError(model)
+                session = ort.InferenceSession(
+                    str(model),
+                    providers=[TARGET_EP, "CPUExecutionProvider"],
+                )
+                report["session"] = {
+                    "model": str(model),
+                    "providers": list(session.get_providers()),
+                    "inputs": [
+                        {"name": item.name, "shape": item.shape, "type": item.type}
+                        for item in session.get_inputs()
+                    ],
+                }
+                if args.check_cpu_fallback:
+                    cpu = ort.InferenceSession(
+                        str(model), providers=["CPUExecutionProvider"]
+                    )
+                    report["cpu_fallback_session"] = {
+                        "providers": list(cpu.get_providers())
+                    }
+
+            report["status"] = "pass"
+            _write_report(report, args.output)
+            return 0
+
+    except Exception as exc:
+        report["status"] = "probe_failed"
+        report["error"] = f"{type(exc).__name__}: {exc}"
+        report["traceback"] = traceback.format_exc()
+        _write_report(report, args.output)
+        return 8
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Research-only Windows ML NVIDIA EP registration/session probe"
+    )
+    p.add_argument(
+        "--ensure",
+        action="store_true",
+        help="Allow Windows ML to download/install the target EP if missing.",
+    )
+    p.add_argument(
+        "--model",
+        help="Optional ONNX model used to validate session creation after registration.",
+    )
+    p.add_argument(
+        "--check-cpu-fallback",
+        action="store_true",
+        help="Also create a CPU-only session for the same model.",
+    )
+    p.add_argument(
+        "--fix-winrt-runtime",
+        action="store_true",
+        help=(
+            "Reversibly rename winrt/msvcp140.dll to avoid the pywinrt conflict "
+            "called out by Microsoft. Research environment only."
+        ),
+    )
+    p.add_argument("--output", help="Optional JSON report path.")
+    return p
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(parser().parse_args()))
