@@ -53,18 +53,43 @@ def _winrt_runtime_dll() -> Path | None:
     return root / "winrt" / "msvcp140.dll"
 
 
-def _disable_conflicting_winrt_dll() -> dict[str, Any]:
+def _disable_conflicting_winrt_dll() -> tuple[dict[str, Any], tuple[Path, Path] | None]:
     dll = _winrt_runtime_dll()
     result = {"path": str(dll) if dll else None, "changed": False}
     if dll is None or not dll.exists():
-        return result
+        return result, None
     disabled = dll.with_suffix(dll.suffix + ".disabled-by-face-lora-probe")
     if disabled.exists():
         result["disabled_path"] = str(disabled)
-        return result
+        result["note"] = "A prior disabled copy already exists; this run made no change."
+        return result, None
     dll.replace(disabled)
     result["changed"] = True
     result["disabled_path"] = str(disabled)
+    return result, (dll, disabled)
+
+
+def _restore_conflicting_winrt_dll(change: tuple[Path, Path] | None) -> dict[str, Any]:
+    if change is None:
+        return {"attempted": False, "restored": False}
+    original, disabled = change
+    result = {
+        "attempted": True,
+        "original_path": str(original),
+        "disabled_path": str(disabled),
+        "restored": False,
+    }
+    try:
+        if disabled.exists() and not original.exists():
+            disabled.replace(original)
+            result["restored"] = True
+        elif original.exists():
+            result["restored"] = True
+            result["note"] = "Original DLL path already exists."
+        else:
+            result["note"] = "Disabled DLL was no longer present at restore time."
+    except OSError as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
     return result
 
 
@@ -154,8 +179,10 @@ def run(args: argparse.Namespace) -> int:
         "path": str(dll) if dll else None,
         "exists": bool(dll and dll.exists()),
     }
+    winrt_dll_change = None
     if args.fix_winrt_runtime:
-        report["winrt_runtime_dll_workaround"] = _disable_conflicting_winrt_dll()
+        workaround, winrt_dll_change = _disable_conflicting_winrt_dll()
+        report["winrt_runtime_dll_workaround"] = workaround
 
     try:
         from winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import (
@@ -184,7 +211,10 @@ def run(args: argparse.Namespace) -> int:
     ]
 
     try:
-        with initialize(options=InitializeOptions.ON_NO_MATCH_SHOW_UI):
+        # Keep research discovery non-interactive. ON_NO_MATCH_SHOW_UI can
+        # display a system dialog when the matching Windows App SDK Runtime is
+        # missing; a probe/CI process must report that state instead.
+        with initialize(options=InitializeOptions.NONE):
             catalog = winml.ExecutionProviderCatalog.get_default()
             providers = list(catalog.find_all_providers())
             report["catalog"] = [_provider_row(p) for p in providers]
@@ -198,6 +228,8 @@ def run(args: argparse.Namespace) -> int:
                 report["error"] = (
                     f"{TARGET_EP} is not advertised for this device/driver combination."
                 )
+                if args.fix_winrt_runtime:
+                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
                 _write_report(report, args.output)
                 return 4
 
@@ -214,6 +246,8 @@ def run(args: argparse.Namespace) -> int:
                     "Target EP is not installed. Re-run with --ensure only after "
                     "explicitly accepting the system-managed EP download."
                 )
+                if args.fix_winrt_runtime:
+                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
                 _write_report(report, args.output)
                 return 5
 
@@ -229,6 +263,8 @@ def run(args: argparse.Namespace) -> int:
             if getattr(target, "ready_state", None) != ready:
                 report["status"] = "target_not_ready"
                 report["error"] = f"{TARGET_EP} did not reach READY after preparation."
+                if args.fix_winrt_runtime:
+                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
                 _write_report(report, args.output)
                 return 6
 
@@ -236,6 +272,8 @@ def run(args: argparse.Namespace) -> int:
             if not library_path:
                 report["status"] = "missing_provider_library"
                 report["error"] = "Windows ML returned no provider library path."
+                if args.fix_winrt_runtime:
+                    report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(winrt_dll_change)
                 _write_report(report, args.output)
                 return 7
 
@@ -296,8 +334,17 @@ def run(args: argparse.Namespace) -> int:
         report["status"] = "probe_failed"
         report["error"] = f"{type(exc).__name__}: {exc}"
         report["traceback"] = traceback.format_exc()
-        _write_report(report, args.output)
-        return 8
+        return_code = 8
+    else:
+        return_code = 0
+    finally:
+        if args.fix_winrt_runtime:
+            report["winrt_runtime_dll_restore"] = _restore_conflicting_winrt_dll(
+                winrt_dll_change
+            )
+
+    _write_report(report, args.output)
+    return return_code
 
 
 def parser() -> argparse.ArgumentParser:
