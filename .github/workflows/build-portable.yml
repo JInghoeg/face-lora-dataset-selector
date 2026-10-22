@@ -51,10 +51,18 @@ jobs:
                   ['git', 'diff', '--name-only', before, sha], text=True
               ).splitlines()
 
-          def docs_only(path: str) -> bool:
-              return path.endswith('.md') or path.startswith('docs/')
+          def lightweight_only(path: str) -> bool:
+              # Research benchmark tooling is not part of the PyInstaller input
+              # graph or Portable payload. Keep its own focused workflow as the
+              # validation boundary instead of rebuilding the full application.
+              return (
+                  path.endswith('.md')
+                  or path.startswith('docs/')
+                  or path.startswith('tools/benchmarks/')
+                  or path == '.github/workflows/windows-ml-research.yml'
+              )
 
-          heavy = any(not docs_only(p) for p in changed)
+          heavy = any(not lightweight_only(p) for p in changed)
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"heavy={'true' if heavy else 'false'}\n")
 
