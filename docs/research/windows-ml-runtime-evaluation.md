@@ -145,3 +145,35 @@ The probe classifies this as `app_sdk_runtime_unavailable`, not as a product or
 Python-package failure. This is concrete evidence that installing the Python
 wheels alone does not preserve the current Portable contract: a matching
 Windows App SDK Runtime is a separate machine-level prerequisite.
+
+
+## Deployment interpretation: optional accelerator remains viable
+
+The framework-dependent prerequisite does not automatically disqualify Windows
+ML, but it changes the product model.
+
+Microsoft supports unpackaged/framework-dependent applications by distributing
+the matching x64 `WindowsAppRuntimeInstall.exe` or the required MSIX packages.
+The standalone installer deploys the Framework, Main, Singleton and DDLM
+runtime packages and can be used as part of an application's setup flow.
+
+Official deployment references:
+
+- https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads
+- https://learn.microsoft.com/windows/apps/windows-app-sdk/deploy-unpackaged-apps
+- https://learn.microsoft.com/windows/apps/windows-app-sdk/deployment-architecture
+
+Therefore the feasible product shape, if target-workstation performance later
+justifies Windows ML, is **not** "replace the base Portable runtime". It is:
+
+1. preserve the current CPU-capable Portable as the zero-install baseline;
+2. expose GPU acceleration as an explicit optional capability;
+3. detect whether the matching Windows App SDK Runtime and NVIDIA EP are ready;
+4. only after explicit user action, guide/deploy the Microsoft runtime and
+   acquire the system-managed NVIDIA EP;
+5. always retain the existing CPU fallback.
+
+This keeps the multi-gigabyte CUDA/cuDNN stack out of the application payload,
+but it introduces machine-level state and first-run installation UX. That trade
+off must be reviewed before production integration; this PR does not implement
+an installer or change product dependencies.
