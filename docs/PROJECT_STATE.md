@@ -56,25 +56,21 @@ Historical repository note:
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
-- v0.4 bootstrap #80 / PR #81 is **COMPLETE** on `main` at `89be1d8aa6f24e87131ce81343297309ba748ed8`.
-- #83 / PR #84 — the merged Dataset Review UI candidate was explicitly rejected by the user on 2026-10-05 because it violated the previously established UI process and visual direction.
-- PR #87 completed the exact rollback on `main` at `3b7e13d0497c2c0f0dcc8a466954a2561a104ae6`; the rejected Dataset Review shell is no longer on the production branch.
-- Duplicate Review visual prototype #88 established the accepted shared review pattern. Production implementation Draft PR #90 is complete enough for automated validation (all latest gates PASS) but remains **HUMAN UNVERIFIED** and unmerged because the user explicitly chose to defer HUMAN PASS.
-- Composite Split visual prototype #91 received explicit HUMAN PASS on 2026-10-10 and was closed unmerged as accepted visual reference evidence.
-- **Active authorized UI slice: Composite Split production implementation under Draft PR #93.** It is based on the accepted #91 direction and remains HUMAN UNVERIFIED until production visual/interactive QA is explicitly accepted.
-- The accepted order remains small-module-first: Duplicate Review first, Composite Split Review second. Duplicate has established the shared pattern; Composite is now the active visual slice. The broad main Dataset Review shell redesign stays paused.
-- GPU benchmark infrastructure from #55 / PR #78 is already merged. Running target-workstation CPU/GPU measurements remains research/evaluation work; production GPU integration is still unauthorized.
-- Draft PR #74 exists on `ux/text-cleanup-review-navigation`, but it came from an unapproved scope expansion. It is **frozen and non-canonical**: do not continue, merge, or treat #56 as complete unless the user explicitly adopts that implementation.
-- HUMAN UNVERIFIED layout-migration interactive checkpoint is tracked in Issue #72.
+- Composite Split production PR #93 received explicit HUMAN PASS and was merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`.
+- Incorrect Dataset Review v2 prototype PR #94 was closed unmerged and is non-canonical; production `src/` was not changed by it.
+- Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
+- Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
+- **Active authorized infrastructure slice (2026-10-22):** portable application settings + shared ONNX Runtime execution-provider policy on branch `infra/v0.4-settings-inference-runtime`.
+- This slice is intentionally bounded: no main Dataset shell redesign, no complete Settings UI, no background-enrichment scheduler, no algorithm/threshold changes, and no feature-to-feature dependencies.
+- The next GPU work is to enable a real NVIDIA-capable runtime/package path and validate GPU→CPU fallback using the shared provider layer before automatic background Composite/Auto Crop work begins.
 
 ## Current objective
 
-1. keep Duplicate Review production PR #90 Draft and HUMAN UNVERIFIED until the user explicitly chooses to perform that HUMAN PASS; do not merge it merely because CI is green;
-2. implement and validate the accepted Composite Split production UI in Draft PR #93 without broad Dataset-shell redesign;
-3. keep PR #93 HUMAN UNVERIFIED until the real production render and interactive checkpoint are explicitly accepted;
-4. preserve the accepted Composite requirements: shared Auto Crop ROI interaction for the current box, per-box select/reset/delete, direct-drag box creation, three-state candidate status, and selected-image manual entry with current-image re-detect.
-
-No broad main Dataset Review redesign, production GPU integration, PR #74 adoption, recommendation/model change, or manual Auto Crop entry-point implementation is active.
+1. establish a dedicated portable application-settings store under `_userdata/settings.json`, separate from dataset/cache state;
+2. route ONNX model sessions through one infrastructure-level provider policy with `Auto / GPU / CPU` semantics and mandatory CPU fallback;
+3. keep feature packages independent siblings and strengthen/retain architecture gates against cross-feature imports;
+4. validate the infrastructure slice in Draft PR/CI before exposing it through a full Settings UI;
+5. after this slice is stable, proceed to the real NVIDIA GPU runtime/package integration, then the dependency-aware background Composite → Auto Crop workflow and streaming review.
 
 ## Accepted future directions
 
@@ -111,10 +107,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. finish Composite Split production implementation and automated validation in Draft PR #93;
-2. inspect the real production render and keep #93 HUMAN UNVERIFIED until explicit user acceptance;
-3. keep Duplicate Review PR #90 Draft and unmerged until the user explicitly returns to its HUMAN PASS;
-4. keep PR #74 frozen unless the user explicitly adopts its Text Cleanup scope.
+1. finish automated validation of the settings/inference-runtime infrastructure branch and keep the PR Draft until checks are green;
+2. do not expand this PR into a Settings-page redesign or background scheduler;
+3. next, implement the NVIDIA-capable runtime/package path on top of the shared provider abstraction, with CPU fallback and lightweight real-model integration validation;
+4. only after the resource model is stable, implement background enrichment and streaming review.
 
 ## Do not repeat
 
