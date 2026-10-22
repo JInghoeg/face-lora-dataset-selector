@@ -8,6 +8,7 @@ on:
       - "tools/benchmarks/windows_ml_runtime_probe.py"
       - "tools/benchmarks/requirements-windowsml.txt"
       - "tools/benchmarks/run-windows-ml-checkpoint.ps1"
+      - "tools/benchmarks/run-windows-ml-checkpoint.cmd"
       - "docs/research/windows-ml-runtime-evaluation.md"
       - ".github/workflows/windows-ml-research.yml"
   workflow_dispatch:
@@ -101,6 +102,10 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "PowerShell workstation helper has syntax errors."
           }
+
+      - name: Validate CMD launcher startup workaround
+        shell: cmd
+        run: tools\benchmarks\run-windows-ml-checkpoint.cmd --wrapper-self-test
 
       - name: Safe discovery probe
         shell: pwsh
