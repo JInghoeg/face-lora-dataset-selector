@@ -64,6 +64,7 @@ Historical repository note:
 - Draft PR #96 proved the direct CUDA provider/package path technically, but was closed unmerged after its self-contained CUDA/cuDNN payload expanded the uncompressed product to roughly 3.3 GB. It is evidence, not product state.
 - **Active authorized research slice (2026-10-22):** Draft PR #97 (`research/v0.4-windows-ml-runtime`) — Windows ML / system-managed NVIDIA execution-provider feasibility.
 - This slice is intentionally bounded: no feature code changes, no product runtime dependency change, no main Dataset shell redesign, no Settings UI, no background scheduler, and no algorithm/threshold change.
+- Dedicated hosted Windows research CI now proves the matched Python Windows ML stack resolves and exposes the required dynamic-EP APIs on build 26100, while a clean hosted runner without the matching Windows App SDK Runtime fails bootstrap non-interactively with `Package dependency criteria could not be resolved`.
 
 ## Current objective
 
@@ -90,7 +91,8 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
 - Direct self-contained CUDA redistribution is rejected as the default package after #96 reached roughly 3.3 GB uncompressed; Windows ML/system-managed NVIDIA EP is now the active deployment feasibility question (#55).
-- Python Windows ML introduces Windows App Runtime / pywinrt deployment prerequisites and first-run EP acquisition; whether that preserves an acceptable Portable experience is not yet proven.
+- Python Windows ML introduces Windows App Runtime / pywinrt deployment prerequisites and first-run EP acquisition; hosted CI has confirmed the matching Runtime is not guaranteed to exist even on build 26100.
+- Microsoft provides a standalone Windows App Runtime installer for unpackaged/framework-dependent apps, so the remaining candidate is an **optional accelerator** layered on top of the unchanged CPU Portable, not a replacement for the base package. Installer UX / machine-level state remains unapproved and must be evaluated before production integration.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
