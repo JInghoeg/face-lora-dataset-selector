@@ -1,0 +1,9 @@
+# Research-only Windows ML feasibility environment.
+# Keep this isolated from requirements/runtime*.txt until the target-workstation
+# deployment gate passes.
+#
+# Microsoft documents Python Windows ML as framework-dependent only. The
+# matching Windows App SDK Runtime must exist on the target machine.
+wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0
+wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0
+onnxruntime-windowsml==1.25.2.202605110140

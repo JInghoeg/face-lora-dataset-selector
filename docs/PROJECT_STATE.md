@@ -25,6 +25,12 @@ Historical repository note:
 - current public repository: `JInghoeg/face-lora-dataset-selector`;
 - old private/history repository: `JInghoeg/face-lora-dataset-selector-dev`.
 
+Local-workspace continuity note:
+- `G:\ComfyUI-aki\数据集\人脸LoRA数据集筛选器_git` is a frozen historical/private baseline and must not be reused as the current public-repository development checkout;
+- no permanent canonical local development checkout path is currently recorded in repository state;
+- assistants must not infer or reconstruct a local checkout path from chat memory;
+- target-workstation research that only needs a bounded probe should prefer a validated standalone CI artifact over asking the user to locate, mutate, or re-clone a development checkout.
+
 ## Verified complete
 
 - v0.3.0 recovery PR #54 merged and stable v0.3.0 published.
@@ -60,17 +66,19 @@ Historical repository note:
 - Incorrect Dataset Review v2 prototype PR #94 was closed unmerged and is non-canonical; production `src/` was not changed by it.
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
-- **Active authorized infrastructure slice (2026-10-22):** portable application settings + shared ONNX Runtime execution-provider policy on branch `infra/v0.4-settings-inference-runtime`.
-- This slice is intentionally bounded: no main Dataset shell redesign, no complete Settings UI, no background-enrichment scheduler, no algorithm/threshold changes, and no feature-to-feature dependencies.
-- The next GPU work is to enable a real NVIDIA-capable runtime/package path and validate GPU→CPU fallback using the shared provider layer before automatic background Composite/Auto Crop work begins.
+- PR #95 merged to `main` at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable AppSettings + shared ONNX Runtime provider policy are now the production infrastructure baseline.
+- Draft PR #96 proved the direct CUDA provider/package path technically, but was closed unmerged after its self-contained CUDA/cuDNN payload expanded the uncompressed product to roughly 3.3 GB. It is evidence, not product state.
+- **Active authorized research slice (2026-10-22):** Draft PR #97 (`research/v0.4-windows-ml-runtime`) — Windows ML / system-managed NVIDIA execution-provider feasibility.
+- This slice is intentionally bounded: no feature code changes, no product runtime dependency change, no main Dataset shell redesign, no Settings UI, no background scheduler, and no algorithm/threshold change.
+- Dedicated hosted Windows research CI now proves the matched Python Windows ML stack resolves and exposes the required dynamic-EP APIs on build 26100, while a clean hosted runner without the matching Windows App SDK Runtime fails bootstrap non-interactively with `Package dependency criteria could not be resolved`.
 
 ## Current objective
 
-1. establish a dedicated portable application-settings store under `_userdata/settings.json`, separate from dataset/cache state;
-2. route ONNX model sessions through one infrastructure-level provider policy with `Auto / GPU / CPU` semantics and mandatory CPU fallback;
-3. keep feature packages independent siblings and strengthen/retain architecture gates against cross-feature imports;
-4. validate the infrastructure slice in Draft PR/CI before exposing it through a full Settings UI;
-5. after this slice is stable, proceed to the real NVIDIA GPU runtime/package integration, then the dependency-aware background Composite → Auto Crop workflow and streaming review.
+1. evaluate Windows ML `ExecutionProviderCatalog` as a system-managed NVIDIA accelerator path that avoids redistributing the full CUDA/cuDNN stack;
+2. validate discovery/readiness/registration of `NvTensorRtRtxExecutionProvider` on the target RTX workstation with a research-only probe;
+3. validate at least one real project ONNX model session plus CPU-only fallback before touching production runtime code;
+4. measure Windows App Runtime / VC++ prerequisite cost and first-run provider-download UX against the current Portable product contract;
+5. only if feasibility passes, integrate the provider through the existing infrastructure abstraction, then benchmark real Auto Crop / Composite / Text Cleanup workflow gains before background enrichment work.
 
 ## Accepted future directions
 
@@ -88,7 +96,9 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
+- Direct self-contained CUDA redistribution is rejected as the default package after #96 reached roughly 3.3 GB uncompressed; Windows ML/system-managed NVIDIA EP is now the active deployment feasibility question (#55).
+- Python Windows ML introduces Windows App Runtime / pywinrt deployment prerequisites and first-run EP acquisition; hosted CI has confirmed the matching Runtime is not guaranteed to exist even on build 26100.
+- Microsoft provides a standalone Windows App Runtime installer for unpackaged/framework-dependent apps, so the remaining candidate is an **optional accelerator** layered on top of the unchanged CPU Portable, not a replacement for the base package. Installer UX / machine-level state remains unapproved and must be evaluated before production integration.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -100,17 +110,17 @@ Execution ordering among these directions is intentionally **not inferred here**
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
-- Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
+- Composite Split production PR #93 received explicit HUMAN PASS before merge; no remaining #93 human checkpoint.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. finish automated validation of the settings/inference-runtime infrastructure branch and keep the PR Draft until checks are green;
-2. do not expand this PR into a Settings-page redesign or background scheduler;
-3. next, implement the NVIDIA-capable runtime/package path on top of the shared provider abstraction, with CPU fallback and lightweight real-model integration validation;
-4. only after the resource model is stable, implement background enrichment and streaming review.
+1. validate the research-only Windows ML probe and keep production dependencies/features unchanged;
+2. run the target-workstation checkpoint for `NvTensorRtRtxExecutionProvider`: discovery -> optional explicit acquisition -> registration -> real-model session -> CPU fallback;
+3. if feasibility passes, extend the existing real-workflow provider benchmark before choosing a production integration;
+4. only after the accelerator resource/deployment model is stable, expose minimal Settings UI and implement dependency-aware background Composite -> Auto Crop enrichment and streaming review.
 
 ## Do not repeat
 
@@ -143,6 +153,7 @@ Current:
 
 Non-canonical existing work:
 - Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
+- Closed PR #96 — direct CUDA/cuDNN packaging technical proof; successful provider/fallback validation but rejected multi-GB distribution path
 
 Accepted visual reference / pending production QA:
 - Draft PR #88 — Duplicate Review visual prototype/reference evidence
@@ -151,8 +162,11 @@ Accepted visual reference / pending production QA:
 Accepted Composite visual reference:
 - PR #91 — HUMAN PASS visual prototype; closed unmerged as reference evidence
 
-Active Composite production work:
-- Draft PR #93 — Composite Split production implementation; HUMAN UNVERIFIED pending production checkpoint
+Completed Composite production work:
+- PR #93 — Composite Split production implementation; HUMAN PASS and merged at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`
+
+Active accelerator research:
+- Draft PR #97 / `research/v0.4-windows-ml-runtime` — Windows ML / system-managed NVIDIA EP feasibility; research-only until target-workstation evidence passes the decision gate
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate
