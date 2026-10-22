@@ -7,6 +7,9 @@ non-fatal, and CPU remains the mandatory fallback.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
+import sys
 from threading import RLock
 from typing import Optional, Tuple
 
@@ -20,6 +23,9 @@ _preference = "auto"
 _generation = 0
 _last_active_provider = ""
 _last_fallback_reason = ""
+_accelerator_prepare_attempted = False
+_accelerator_prepare_error = ""
+_dll_directory_handles = []
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,7 @@ class InferenceRuntimeSnapshot:
     preferred: Tuple[str, ...]
     last_active_provider: str
     fallback_reason: str
+    accelerator_prepare_error: str
 
 
 def _normalize_preference(value: Optional[str]) -> str:
@@ -50,11 +57,14 @@ def _normalize_preference(value: Optional[str]) -> str:
 def configure_inference_runtime(preference: str) -> int:
     """Set provider preference and invalidate feature-local session caches."""
     global _preference, _generation
+    global _accelerator_prepare_attempted, _accelerator_prepare_error
     normalized = _normalize_preference(preference)
     with _LOCK:
         if normalized != _preference:
             _preference = normalized
             _generation += 1
+            _accelerator_prepare_attempted = False
+            _accelerator_prepare_error = ""
         return _generation
 
 
@@ -103,6 +113,65 @@ def provider_plan(ort_module, preference: Optional[str] = None) -> ProviderPlan:
     return ProviderPlan(requested, available, (_CPU_PROVIDER,), reason)
 
 
+def _frozen_nvidia_bin_dirs() -> Tuple[Path, ...]:
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return ()
+    root = getattr(sys, "_MEIPASS", None)
+    if not root:
+        return ()
+
+    base = Path(root) / "nvidia"
+    components = (
+        "cublas",
+        "cufft",
+        "cuda_runtime",
+        "cuda_nvrtc",
+        "curand",
+        "cudnn",
+    )
+    return tuple(
+        path
+        for path in (base / component / "bin" for component in components)
+        if path.is_dir()
+    )
+
+
+def prepare_accelerator_runtime(ort_module) -> str:
+    """Make packaged/source NVIDIA runtime DLLs discoverable once per policy generation.
+
+    Failure here is advisory. Session creation still gets a chance to use a
+    system CUDA installation before the shared CPU fallback is applied.
+    """
+    global _accelerator_prepare_attempted, _accelerator_prepare_error
+    with _LOCK:
+        if _accelerator_prepare_attempted:
+            return _accelerator_prepare_error
+        _accelerator_prepare_attempted = True
+
+        errors = []
+        if os.name == "nt":
+            add_directory = getattr(os, "add_dll_directory", None)
+            if add_directory is not None:
+                for path in _frozen_nvidia_bin_dirs():
+                    try:
+                        _dll_directory_handles.append(add_directory(str(path)))
+                    except OSError as exc:
+                        errors.append(f"{path.name}: {exc}")
+
+        # ORT 1.21+ can preload NVIDIA CUDA/cuDNN wheels in normal Python
+        # environments. Frozen builds use explicit DLL directories above
+        # because site-packages metadata is not guaranteed to survive freezing.
+        preload = getattr(ort_module, "preload_dlls", None)
+        if callable(preload) and not getattr(sys, "frozen", False):
+            try:
+                preload(directory="")
+            except Exception as exc:
+                errors.append(f"preload_dlls: {exc}")
+
+        _accelerator_prepare_error = "; ".join(errors)
+        return _accelerator_prepare_error
+
+
 def _record_runtime(session, fallback_reason: str = "") -> None:
     global _last_active_provider, _last_fallback_reason
     try:
@@ -124,6 +193,9 @@ def create_ort_session(
 ):
     """Create an ORT session using shared policy and safe CPU fallback."""
     plan = provider_plan(ort_module, preference)
+    prepare_error = ""
+    if plan.providers and plan.providers[0] == _ACCELERATOR_PROVIDER:
+        prepare_error = prepare_accelerator_runtime(ort_module)
     try:
         session = ort_module.InferenceSession(
             str(model_path),
@@ -131,7 +203,10 @@ def create_ort_session(
             providers=list(plan.providers),
             **kwargs,
         )
-        _record_runtime(session, plan.fallback_reason)
+        _record_runtime(
+            session,
+            plan.fallback_reason or prepare_error,
+        )
         return session
     except Exception as accelerator_error:
         if (
@@ -147,7 +222,10 @@ def create_ort_session(
             )
             _record_runtime(
                 session,
-                "accelerator session failed; CPU fallback: "
+                (
+                    (prepare_error + "; ") if prepare_error else ""
+                )
+                + "accelerator session failed; CPU fallback: "
                 + str(accelerator_error),
             )
             return session
@@ -164,4 +242,5 @@ def runtime_snapshot(ort_module) -> InferenceRuntimeSnapshot:
             preferred=plan.providers,
             last_active_provider=_last_active_provider,
             fallback_reason=_last_fallback_reason or plan.fallback_reason,
+            accelerator_prepare_error=_accelerator_prepare_error,
         )

@@ -1,0 +1,8 @@
+-r runtime-base.txt
+
+# NVIDIA accelerated profile.
+# ORT 1.26.0 is the last release line before PyPI GPU packages switched to
+# CUDA 13 by default; it targets CUDA 12.8 / cuDNN 9 and supports Python 3.12.
+# The extras install redistributable CUDA/cuDNN runtime wheels so a system CUDA
+# toolkit is not required by the NVIDIA Portable build.
+onnxruntime-gpu[cuda,cudnn]==1.26.0

@@ -44,10 +44,15 @@ class FakeOrt:
     available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     fail_cuda = False
     calls = []
+    preload_calls = []
 
     @classmethod
     def get_available_providers(cls):
         return list(cls.available)
+
+    @classmethod
+    def preload_dlls(cls, **kwargs):
+        cls.preload_calls.append(dict(kwargs))
 
     @classmethod
     def InferenceSession(cls, path, sess_options=None, providers=None, **kwargs):
@@ -96,10 +101,12 @@ assert configure_inference_runtime("gpu") == generation + 1
 FakeOrt.available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
 FakeOrt.fail_cuda = False
 FakeOrt.calls = []
+FakeOrt.preload_calls = []
 plan = provider_plan(FakeOrt)
 assert plan.providers == ("CUDAExecutionProvider", "CPUExecutionProvider")
 session = create_ort_session(FakeOrt, "model.onnx")
 assert session.get_providers()[0] == "CUDAExecutionProvider"
+assert FakeOrt.preload_calls == [{"directory": ""}]
 
 FakeOrt.fail_cuda = True
 FakeOrt.calls = []
@@ -121,5 +128,8 @@ assert "unavailable" in plan.fallback_reason
 
 configure_inference_runtime("cpu")
 assert provider_plan(FakeOrt).providers == ("CPUExecutionProvider",)
+cpu_preload_count = len(FakeOrt.preload_calls)
+create_ort_session(FakeOrt, "cpu-model.onnx")
+assert len(FakeOrt.preload_calls) == cpu_preload_count
 
 print("Settings + inference runtime smoke OK")
