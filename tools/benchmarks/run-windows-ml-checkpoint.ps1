@@ -85,8 +85,13 @@ switch ([string]$result.status) {
         exit 0
     }
     "dependency_import_failed" {
-        Write-Host "Windows ML Python packages are present but the Windows App SDK runtime/bootstrap is not usable."
-        Write-Host "Do not install anything automatically yet; keep this report as deployment evidence."
+        Write-Host "Windows ML Python packages could not be imported."
+        Write-Host "Keep this report as dependency evidence; do not alter the product environment."
+        exit 0
+    }
+    "app_sdk_runtime_unavailable" {
+        Write-Host "Windows ML Python packages and ORT are present, but the matching Windows App SDK Runtime is unavailable."
+        Write-Host "Do not install a system runtime automatically; keep this report as deployment evidence."
         exit 0
     }
     "target_provider_unavailable" {
