@@ -121,18 +121,22 @@ def _frozen_nvidia_bin_dirs() -> Tuple[Path, ...]:
         return ()
 
     base = Path(root) / "nvidia"
-    components = (
-        "cublas",
-        "cufft",
-        "cuda_runtime",
-        "cuda_nvrtc",
-        "curand",
-        "cudnn",
-    )
+    if not base.is_dir():
+        return ()
+
+    # Discover packaged NVIDIA component bins instead of hard-coding a CUDA
+    # wheel dependency list.  This keeps runtime preparation compatible with
+    # NVIDIA wheel dependency changes while the accelerator pack remains an
+    # infrastructure concern.
     return tuple(
-        path
-        for path in (base / component / "bin" for component in components)
-        if path.is_dir()
+        sorted(
+            (
+                component / "bin"
+                for component in base.iterdir()
+                if component.is_dir() and (component / "bin").is_dir()
+            ),
+            key=lambda path: str(path).casefold(),
+        )
     )
 
 
