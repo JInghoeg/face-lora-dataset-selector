@@ -100,3 +100,31 @@ Do **not** integrate Windows ML into `src/infrastructure/inference_runtime.py` u
 7. After feasibility passes, does the existing real-workflow benchmark show enough gain on Auto Crop / Composite / Text Cleanup to justify integration?
 
 If the deployment/Portable answers are unacceptable, Windows ML remains a research result and the project returns to other accelerator deployment options. Feature modules remain unchanged either way.
+
+
+## Reproducible research environment
+
+The branch now pins the Windows ML Python research stack in
+`tools/benchmarks/requirements-windowsml.txt` rather than adding it to the
+product runtime requirements:
+
+- `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0`
+- `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0`
+- `onnxruntime-windowsml==1.30.0.202609102321`
+
+These versions are for this feasibility checkpoint only. They do not become
+product support commitments merely because the research CI resolves them.
+
+The dedicated `Windows ML Research` workflow runs on `windows-latest` with
+Python 3.12 and verifies:
+
+1. the pinned distributions resolve exactly;
+2. the probe compiles and exposes its CLI;
+3. discovery executes without `--ensure`, so CI can never trigger an EP
+   download;
+4. a machine-readable report is always produced;
+5. expected hosted-runner outcomes such as missing Windows App SDK Runtime,
+   no NVIDIA provider, or download-required state are recorded as observations
+   rather than misclassified as product failures.
+
+Actual NVIDIA session execution remains a target-workstation checkpoint.
