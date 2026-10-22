@@ -121,6 +121,7 @@ jobs:
           $allowed = @(
             "unsupported_windows_build",
             "dependency_import_failed",
+            "app_sdk_runtime_unavailable",
             "target_provider_unavailable",
             "download_required",
             "pass"
