@@ -1,6 +1,7 @@
 """Smoke coverage for portable app settings and shared ORT provider policy."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import tempfile
@@ -11,7 +12,15 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from application.settings import AppSettings, SettingsService
+settings_spec = importlib.util.spec_from_file_location(
+    "face_lora_application_settings",
+    SRC / "application" / "settings.py",
+)
+settings_module = importlib.util.module_from_spec(settings_spec)
+settings_spec.loader.exec_module(settings_module)
+AppSettings = settings_module.AppSettings
+SettingsService = settings_module.SettingsService
+
 from infrastructure.inference_runtime import (
     configure_inference_runtime,
     create_ort_session,
