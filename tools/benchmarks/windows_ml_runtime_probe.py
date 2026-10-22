@@ -85,6 +85,14 @@ def _provider_row(provider: Any) -> dict[str, Any]:
     return row
 
 
+def _ep_device_row(device: Any) -> dict[str, Any]:
+    hardware = getattr(device, "hardware_device", None) or getattr(device, "device", None)
+    return {
+        "ep_name": str(getattr(device, "ep_name", "") or ""),
+        "hardware_type": _enum_name(getattr(hardware, "type", None)) if hardware else "",
+    }
+
+
 def _write_report(report: dict[str, Any], output: str | None) -> None:
     payload = json.dumps(report, ensure_ascii=False, indent=2, default=str)
     print(payload)
@@ -110,11 +118,11 @@ def run(args: argparse.Namespace) -> int:
                 "onnxruntime-windowsml": _dist_version("onnxruntime-windowsml"),
                 "onnxruntime": _dist_version("onnxruntime"),
                 "winrt-runtime": _dist_version("winrt-runtime"),
-                "winui3-Microsoft.Windows.AI.MachineLearning": _dist_version(
-                    "winui3-Microsoft.Windows.AI.MachineLearning"
+                "wasdk-Microsoft.Windows.AI.MachineLearning": _dist_version(
+                    "wasdk-Microsoft.Windows.AI.MachineLearning"
                 ),
-                "winui3-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap": _dist_version(
-                    "winui3-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap"
+                "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap": _dist_version(
+                    "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap"
                 ),
             },
         },
@@ -164,9 +172,16 @@ def run(args: argparse.Namespace) -> int:
         return 3
 
     report["environment"]["onnxruntime_version"] = getattr(ort, "__version__", "unknown")
-    report["environment"]["providers_before_registration"] = list(
-        ort.get_available_providers()
-    )
+    report["environment"]["static_providers"] = list(ort.get_available_providers())
+    get_ep_devices = getattr(ort, "get_ep_devices", None)
+    if not callable(get_ep_devices):
+        report["status"] = "unsupported_onnxruntime_api"
+        report["error"] = "onnxruntime-windowsml does not expose get_ep_devices()."
+        _write_report(report, args.output)
+        return 3
+    report["environment"]["ep_devices_before_registration"] = [
+        _ep_device_row(d) for d in get_ep_devices()
+    ]
 
     try:
         with initialize(options=InitializeOptions.ON_NO_MATCH_SHOW_UI):
@@ -224,22 +239,42 @@ def run(args: argparse.Namespace) -> int:
                 _write_report(report, args.output)
                 return 7
 
+            # Python Windows ML registration is intentionally done through the
+            # Python ORT API. Windows ML's native RegisterCertifiedAsync/TryRegister
+            # does not register EPs into the Python ORT environment.
             ort.register_execution_provider_library(TARGET_EP, library_path)
-            report["environment"]["providers_after_registration"] = list(
-                ort.get_available_providers()
-            )
+            ep_devices = list(get_ep_devices())
+            report["environment"]["ep_devices_after_registration"] = [
+                _ep_device_row(d) for d in ep_devices
+            ]
+            target_devices = [
+                d for d in ep_devices if str(getattr(d, "ep_name", "")) == TARGET_EP
+            ]
+            if not target_devices:
+                report["status"] = "registration_not_visible"
+                report["error"] = (
+                    f"{TARGET_EP} registered without exposing an OrtEpDevice."
+                )
+                _write_report(report, args.output)
+                return 7
 
             if args.model:
                 model = Path(args.model).resolve()
                 if not model.is_file():
                     raise FileNotFoundError(model)
-                session = ort.InferenceSession(
-                    str(model),
-                    providers=[TARGET_EP, "CPUExecutionProvider"],
-                )
+
+                # Windows ML 2.x dynamically registered EPs are selected through
+                # OrtEpDevice + SessionOptions, not the legacy static providers=
+                # list used by built-in CUDAExecutionProvider.
+                options = ort.SessionOptions()
+                options.add_provider_for_devices([target_devices[0]], {})
+                if not options.has_providers():
+                    raise RuntimeError("NVIDIA OrtEpDevice was not attached to SessionOptions.")
+                session = ort.InferenceSession(str(model), sess_options=options)
                 report["session"] = {
                     "model": str(model),
                     "providers": list(session.get_providers()),
+                    "selected_ep_device": _ep_device_row(target_devices[0]),
                     "inputs": [
                         {"name": item.name, "shape": item.shape, "type": item.type}
                         for item in session.get_inputs()
