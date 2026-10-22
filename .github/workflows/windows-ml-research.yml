@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/benchmarks/windows_ml_runtime_probe.py"
       - "tools/benchmarks/requirements-windowsml.txt"
+      - "tools/benchmarks/run-windows-ml-checkpoint.ps1"
       - "docs/research/windows-ml-runtime-evaluation.md"
       - ".github/workflows/windows-ml-research.yml"
   workflow_dispatch:
@@ -58,6 +59,20 @@ jobs:
         run: |
           python -m py_compile tools/benchmarks/windows_ml_runtime_probe.py
           python tools/benchmarks/windows_ml_runtime_probe.py --help
+
+      - name: Validate workstation helper syntax
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/benchmarks/run-windows-ml-checkpoint.ps1"),
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell workstation helper has syntax errors."
+          }
 
       - name: Safe discovery probe
         shell: pwsh
