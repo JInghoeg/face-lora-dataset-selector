@@ -127,3 +127,21 @@ Python 3.12 and verifies:
    rather than misclassified as product failures.
 
 Actual NVIDIA session execution remains a target-workstation checkpoint.
+
+
+## Hosted-runner deployment evidence
+
+The dedicated Windows ML CI produced a useful negative deployment result on a
+Windows Server 2025 / build 26100 hosted runner:
+
+- the matched Windows ML Python packages resolved successfully;
+- `onnxruntime-windowsml 1.25.2` imported and exposed the required dynamic EP
+  APIs;
+- CPU and DirectML EP devices were visible before any dynamic registration;
+- Windows App SDK bootstrap then failed non-interactively with
+  `Package dependency criteria could not be resolved`.
+
+The probe classifies this as `app_sdk_runtime_unavailable`, not as a product or
+Python-package failure. This is concrete evidence that installing the Python
+wheels alone does not preserve the current Portable contract: a matching
+Windows App SDK Runtime is a separate machine-level prerequisite.
