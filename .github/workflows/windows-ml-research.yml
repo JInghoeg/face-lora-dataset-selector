@@ -1,0 +1,101 @@
+name: Windows ML Research
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tools/benchmarks/windows_ml_runtime_probe.py"
+      - "tools/benchmarks/requirements-windowsml.txt"
+      - "docs/research/windows-ml-runtime-evaluation.md"
+      - ".github/workflows/windows-ml-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-sanity:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: tools/benchmarks/requirements-windowsml.txt
+
+      - name: Install research-only Windows ML dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/benchmarks/requirements-windowsml.txt
+
+      - name: Verify pinned research distributions
+        shell: pwsh
+        run: |
+          @'
+          from importlib import metadata
+
+          expected = {
+              "wasdk-Microsoft.Windows.AI.MachineLearning": "2.3.0",
+              "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap": "2.3.0",
+              "onnxruntime-windowsml": "1.30.0.202609102321",
+          }
+          for name, wanted in expected.items():
+              actual = metadata.version(name)
+              print(f"{name}={actual}")
+              if actual != wanted:
+                  raise SystemExit(f"{name}: expected {wanted}, got {actual}")
+          '@ | python -
+
+      - name: Compile probe and validate CLI
+        shell: pwsh
+        run: |
+          python -m py_compile tools/benchmarks/windows_ml_runtime_probe.py
+          python tools/benchmarks/windows_ml_runtime_probe.py --help
+
+      - name: Safe discovery probe
+        shell: pwsh
+        run: |
+          $report = Join-Path $PWD "windows-ml-ci-probe.json"
+          python tools/benchmarks/windows_ml_runtime_probe.py --output $report
+          $exitCode = $LASTEXITCODE
+
+          if (-not (Test-Path $report)) {
+            throw "Windows ML probe did not write its JSON report."
+          }
+
+          $json = Get-Content $report -Raw | ConvertFrom-Json
+          Write-Host "Probe exit=$exitCode status=$($json.status)"
+          Write-Host "Windows build=$($json.environment.windows_build)"
+          Write-Host "Target=$($json.target_provider)"
+
+          # Hosted CI is not expected to expose an NVIDIA EP and may not have
+          # the matching Windows App SDK Runtime installed. These are valid
+          # feasibility observations, not product failures. The probe must,
+          # however, fail safely without downloading anything.
+          $allowed = @(
+            "unsupported_windows_build",
+            "dependency_import_failed",
+            "target_provider_unavailable",
+            "download_required",
+            "pass"
+          )
+          if ($allowed -notcontains [string]$json.status) {
+            throw "Unexpected Windows ML probe status: $($json.status)"
+          }
+          if ($json.requested.ensure) {
+            throw "CI discovery probe must never enable EP download."
+          }
+
+      - name: Upload discovery report
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ml-ci-probe
+          path: windows-ml-ci-probe.json
+          if-no-files-found: error
