@@ -134,12 +134,12 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install NVIDIA runtime and build dependencies
+      - name: Install runtime and build dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements/runtime-nvidia.txt -r requirements/build.txt
-          python -c "import onnxruntime as ort; providers=ort.get_available_providers(); print('ORT', ort.__version__, 'providers=', providers); assert 'CUDAExecutionProvider' in providers, 'NVIDIA Portable build is missing CUDAExecutionProvider'"
+          python -m pip install -r requirements/runtime.txt -r requirements/build.txt
+          python -c "import onnxruntime as ort; print('CPU ORT', ort.__version__, 'providers=', ort.get_available_providers()); assert ort.__version__ == '1.26.0'"
 
       - name: Install Fluent UI runtime (Essentials-only)
         shell: pwsh
@@ -156,25 +156,6 @@ jobs:
         shell: pwsh
         run: |
           .\tools\build_portable.ps1
-
-      - name: Verify bundled NVIDIA runtime payload
-        shell: pwsh
-        run: |
-          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\_internal"
-          $cudaProvider = @(Get-ChildItem $root -Recurse -File -Filter "onnxruntime_providers_cuda.dll" -ErrorAction SilentlyContinue)
-          $nvidiaRoot = Join-Path $root "nvidia"
-          $nvidiaDlls = @()
-          if (Test-Path $nvidiaRoot) {
-            $nvidiaDlls = @(Get-ChildItem $nvidiaRoot -Recurse -File -Filter "*.dll")
-          }
-          if ($cudaProvider.Count -lt 1) {
-            throw "Packaged Portable is missing onnxruntime_providers_cuda.dll"
-          }
-          if ($nvidiaDlls.Count -lt 1) {
-            throw "Packaged Portable is missing NVIDIA CUDA/cuDNN runtime DLLs"
-          }
-          Write-Host "CUDA provider DLLs: $($cudaProvider.Count)"
-          Write-Host "Bundled NVIDIA runtime DLLs: $($nvidiaDlls.Count)"
 
       - name: Portable size report
         shell: pwsh
@@ -252,6 +233,73 @@ jobs:
           path: qa-overlay/
           if-no-files-found: error
 
+      - name: Install NVIDIA accelerator-pack runtime
+        shell: pwsh
+        run: |
+          python -m pip uninstall -y onnxruntime
+          python -m pip install --no-cache-dir -r requirements/runtime-nvidia.txt
+          python -c "import onnxruntime as ort; providers=ort.get_available_providers(); print('GPU ORT', ort.__version__, 'providers=', providers); assert ort.__version__ == '1.26.0'; assert 'CUDAExecutionProvider' in providers"
+
+      - name: Build NVIDIA accelerator pack
+        shell: pwsh
+        run: |
+          .\tools\build-nvidia-accelerator-pack.ps1 -OutputRoot ".\nvidia-accelerator-pack"
+
+          $files = Get-ChildItem ".\nvidia-accelerator-pack" -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+          "Uncompressed NVIDIA accelerator pack: $totalMB MB" | Tee-Object -FilePath "nvidia-accelerator-pack-size-report.txt"
+
+      - name: Validate NVIDIA accelerator overlay
+        shell: pwsh
+        run: |
+          $base = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          $testRoot = Join-Path $env:RUNNER_TEMP "Face-LoRA-NVIDIA-Overlay-Test"
+
+          if (Test-Path $testRoot) {
+            Remove-Item $testRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
+          Copy-Item -Path (Join-Path $base "*") -Destination $testRoot -Recurse -Force
+          Copy-Item -Path ".\nvidia-accelerator-pack\*" -Destination $testRoot -Recurse -Force
+
+          $cudaProvider = @(Get-ChildItem $testRoot -Recurse -File -Filter "onnxruntime_providers_cuda.dll")
+          $nvidiaDlls = @(Get-ChildItem (Join-Path $testRoot "_internal\nvidia") -Recurse -File -Filter "*.dll")
+          if ($cudaProvider.Count -lt 1) {
+            throw "Applied accelerator overlay is missing onnxruntime_providers_cuda.dll"
+          }
+          if ($nvidiaDlls.Count -lt 1) {
+            throw "Applied accelerator overlay is missing NVIDIA runtime DLLs"
+          }
+
+          $exe = Join-Path $testRoot "Face LoRA Dataset Selector.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            throw "NVIDIA-overlay Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+          Write-Host "NVIDIA overlay validation PASS: CUDA provider DLLs=$($cudaProvider.Count), NVIDIA DLLs=$($nvidiaDlls.Count)"
+
+      - name: Create NVIDIA accelerator pack ZIP and checksum
+        shell: pwsh
+        run: |
+          $name = "Face-LoRA-Dataset-Selector-Windows-x64-NVIDIA-Accelerator-Pack"
+          $zip = Join-Path $PWD ($name + ".zip")
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "nvidia-accelerator-pack\*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Set-Content ($zip + ".sha256") -Encoding ascii
+
+      - name: Upload NVIDIA accelerator pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: Face-LoRA-Dataset-Selector-Windows-x64-NVIDIA-Accelerator-Pack
+          path: |
+            Face-LoRA-Dataset-Selector-Windows-x64-NVIDIA-Accelerator-Pack.zip
+            Face-LoRA-Dataset-Selector-Windows-x64-NVIDIA-Accelerator-Pack.zip.sha256
+            nvidia-accelerator-pack-size-report.txt
+          if-no-files-found: error
+
       - name: Attach approved portable build to GitHub Release
         if: "${{ steps.release_gate.outputs.should_release == 'true' }}"
         shell: pwsh
@@ -260,6 +308,8 @@ jobs:
         run: |
           $zip = "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
           $sum = "$zip.sha256"
+          $gpuZip = "Face-LoRA-Dataset-Selector-Windows-x64-NVIDIA-Accelerator-Pack.zip"
+          $gpuSum = "$gpuZip.sha256"
           $tag = "${{ steps.release_gate.outputs.tag }}"
           $notes = "${{ steps.release_gate.outputs.notes }}"
 
@@ -269,7 +319,7 @@ jobs:
             exit 0
           }
 
-          gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+          gh release create $tag $zip $sum $gpuZip $gpuSum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
 
   merge-gate:
     name: Merge Gate
