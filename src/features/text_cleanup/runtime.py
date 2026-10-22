@@ -8,6 +8,10 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from infrastructure.inference_runtime import (
+    create_ort_session,
+    inference_runtime_generation,
+)
 from infrastructure.model_download import ModelSpec, ensure_model
 from infrastructure.runtime_tuning import configure_ort_cpu_options
 
@@ -55,16 +59,17 @@ class MIRepair:
     """Official MI-GAN ONNX pipeline used by the existing text-cleanup UI."""
 
     def __init__(self, model_path: Path):
-        key = str(Path(model_path).resolve())
+        model_key = str(Path(model_path).resolve())
+        cache_key = (model_key, inference_runtime_generation())
         with _SESSION_LOCK:
-            session = _SESSIONS.get(key)
+            session = _SESSIONS.get(cache_key)
             if session is None:
-                session = ort.InferenceSession(
-                    key,
+                session = create_ort_session(
+                    ort,
+                    model_key,
                     sess_options=configure_ort_cpu_options(ort),
-                    providers=["CPUExecutionProvider"],
                 )
-                _SESSIONS[key] = session
+                _SESSIONS[cache_key] = session
         self.session = session
 
     def run(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:

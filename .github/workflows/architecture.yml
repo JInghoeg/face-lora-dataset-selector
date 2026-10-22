@@ -12,6 +12,7 @@ on:
       - "src/app_main.py"
       - "tests/duplicate_backend_smoke.py"
       - "tests/v031_carryforward_contract.py"
+      - "tests/settings_inference_runtime_smoke.py"
       - "packaging/portable.spec"
       - "tools/build_portable.ps1"
       - ".importlinter"
@@ -31,6 +32,7 @@ on:
       - "app.py"
       - "src/app_main.py"
       - "tests/duplicate_backend_smoke.py"
+      - "tests/settings_inference_runtime_smoke.py"
       - ".importlinter"
       - "requirements/dev.txt"
       - ".github/workflows/architecture.yml"
@@ -82,3 +84,8 @@ jobs:
         shell: pwsh
         run: |
           python tests/v031_carryforward_contract.py
+
+      - name: Settings and inference runtime smoke
+        shell: pwsh
+        run: |
+          python tests/settings_inference_runtime_smoke.py

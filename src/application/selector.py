@@ -15,7 +15,13 @@ from core.contracts import ExportResult
 from features.ranking.service import recommend, recommendation_qualified
 from infrastructure.filesystem import active_image_files, copy_file, save_crop, unique_output_path
 from infrastructure.cache_store import DatasetCache
+from infrastructure.inference_runtime import (
+    configure_inference_runtime,
+    runtime_snapshot,
+)
+from infrastructure.settings_store import JsonSettingsStore
 from .dataset_refresh import DatasetRefreshService
+from .settings import SettingsService
 
 from .feature_registry import default_registry
 
@@ -129,6 +135,10 @@ class SelectorApplication:
         self.model_cache_root = app_root / "_FaceLoRA_ModelCache"
         user_data_root = app_root / "_userdata"
         _migrate_legacy_user_data(user_data_root)
+        self.settings = SettingsService(
+            JsonSettingsStore(user_data_root / "settings.json")
+        )
+        configure_inference_runtime(self.settings.current.inference_device)
         self.cache = DatasetCache(
             cache_root=user_data_root / "cache",
             legacy_cache_root=repo_root / "cache",
@@ -160,6 +170,21 @@ class SelectorApplication:
             if _TextCleanupService is not None
             else None
         )
+
+    @property
+    def app_settings(self):
+        return self.settings.current
+
+    def update_app_settings(self, **changes):
+        before = self.settings.current
+        updated = self.settings.update(**changes)
+        if updated.inference_device != before.inference_device:
+            configure_inference_runtime(updated.inference_device)
+        return updated
+
+    def inference_runtime_status(self):
+        import onnxruntime as ort
+        return runtime_snapshot(ort)
 
     def _duplicate_module(self, required=True):
         if _duplicate_service is None and required:
