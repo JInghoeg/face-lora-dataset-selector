@@ -160,14 +160,39 @@ jobs:
           Copy-Item "tools/benchmarks/run-windows-ml-checkpoint.cmd" $target
 
           @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          echo ========================================
+          echo   Windows ML Checkpoint
+          echo ========================================
+          echo.
+          call tools\benchmarks\run-windows-ml-checkpoint.cmd %*
+          set "RC=%ERRORLEVEL%"
+          echo.
+          echo ========================================
+          echo   Checkpoint launcher exit code: %RC%
+          echo ========================================
+          echo.
+          echo This window will stay open so the result can be read or copied.
+          echo Press any key to close.
+          pause >nul
+          exit /b %RC%
+          '@ | Set-Content -Encoding ASCII (Join-Path $bundle "RUN_CHECKPOINT.cmd")
+
+          @'
           Windows ML target-workstation checkpoint
           ========================================
 
           This bundle is standalone. It does not require a Git repository.
 
+          Recommended:
           1. Extract the artifact to a normal local folder.
-          2. Open Command Prompt in the extracted Windows-ML-Checkpoint folder.
-          3. Run:
+          2. Double-click RUN_CHECKPOINT.cmd.
+          3. The launcher deliberately stays open at the end so errors/results
+             cannot disappear in a flashing console window.
+
+          Advanced/manual equivalent:
              tools\benchmarks\run-windows-ml-checkpoint.cmd
 
           The default discovery pass does NOT install the Windows App SDK Runtime
@@ -179,6 +204,9 @@ jobs:
 
           if (-not (Test-Path (Join-Path $target "run-windows-ml-checkpoint.cmd"))) {
             throw "Standalone checkpoint bundle was not staged correctly."
+          }
+          if (-not (Test-Path (Join-Path $bundle "RUN_CHECKPOINT.cmd"))) {
+            throw "Standalone interactive launcher was not staged correctly."
           }
 
       - name: Upload standalone workstation checkpoint bundle
