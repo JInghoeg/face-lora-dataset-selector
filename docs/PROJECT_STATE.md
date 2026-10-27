@@ -52,6 +52,7 @@ Historical repository note:
 - Carry-forward audit on 2026-09-25 found one missing high-confidence product mainline: whole-product UI/UX modernization. It is now restored as Issue #75 and linked from #60.
 - Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
 - PR #78 merged at `016ff44a799e6ab95046a15a7cbd2f3dce55f631`: the research-only GPU benchmark harness and cost note are now on main. It also includes a continuity-gate bug fix that scopes State impact matching to the full Yes/No state-choice text. No production GPU provider decision was made.
+- PR #95 merged at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable application settings and the shared `Auto / GPU / CPU` ONNX provider policy are now on `main`; feature ONNX sessions route through the infrastructure layer with mandatory CPU fallback.
 
 ## In progress
 
@@ -60,17 +61,17 @@ Historical repository note:
 - Incorrect Dataset Review v2 prototype PR #94 was closed unmerged and is non-canonical; production `src/` was not changed by it.
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
-- **Active authorized infrastructure slice (2026-10-22):** portable application settings + shared ONNX Runtime execution-provider policy on branch `infra/v0.4-settings-inference-runtime`.
-- This slice is intentionally bounded: no main Dataset shell redesign, no complete Settings UI, no background-enrichment scheduler, no algorithm/threshold changes, and no feature-to-feature dependencies.
-- The next GPU work is to enable a real NVIDIA-capable runtime/package path and validate GPU→CPU fallback using the shared provider layer before automatic background Composite/Auto Crop work begins.
+- Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
+- **Active authorized accelerator slice (2026-10-27):** separate Python 3.12 DirectML runtime/Portable research on branch `research/v0.4-directml-runtime`, tracked under Issue #55.
+- This slice is intentionally bounded: keep the universal CPU Portable unchanged; extend only the shared provider infrastructure, add a separate DirectML dependency profile, validate real project ONNX session creation/fallback and final PyInstaller payload entirely in CI, and do not begin background enrichment or the full Settings UI yet.
 
 ## Current objective
 
-1. establish a dedicated portable application-settings store under `_userdata/settings.json`, separate from dataset/cache state;
-2. route ONNX model sessions through one infrastructure-level provider policy with `Auto / GPU / CPU` semantics and mandatory CPU fallback;
-3. keep feature packages independent siblings and strengthen/retain architecture gates against cross-feature imports;
-4. validate the infrastructure slice in Draft PR/CI before exposing it through a full Settings UI;
-5. after this slice is stable, proceed to the real NVIDIA GPU runtime/package integration, then the dependency-aware background Composite → Auto Crop workflow and streaming review.
+1. keep the universal CPU Portable and its existing dependency line unchanged;
+2. extend the shared inference policy so a DirectML-capable ORT distribution can use `DmlExecutionProvider` with mandatory CPU fallback and without feature-specific hardware code;
+3. validate the pinned Python 3.12 DirectML profile against real project ONNX models, source self-test, packaged EXE self-test, and final uncompressed Portable size in CI;
+4. reject the profile if packaging or model compatibility is poor; otherwise retain it as the optional accelerator candidate and defer any target-workstation check to one final performance checkpoint;
+5. only after the accelerator resource model is stable, proceed to dependency-aware background Composite → Auto Crop enrichment and streaming review, then expose controls through the Settings UI.
 
 ## Accepted future directions
 
@@ -88,7 +89,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Optional NVIDIA CUDA acceleration is research only until benchmarked (#55).
+- Accelerator deployment remains under Issue #55: full self-contained CUDA is technically proven but rejected as a default due ~3.3 GB payload; Windows ML is parked after target-machine deployment friction; DirectML is the active bounded packaging/runtime candidate.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -107,10 +108,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. finish automated validation of the settings/inference-runtime infrastructure branch and keep the PR Draft until checks are green;
-2. do not expand this PR into a Settings-page redesign or background scheduler;
-3. next, implement the NVIDIA-capable runtime/package path on top of the shared provider abstraction, with CPU fallback and lightweight real-model integration validation;
-4. only after the resource model is stable, implement background enrichment and streaming review.
+1. finish the DirectML research branch and open/retain it as a Draft PR until the dedicated DirectML workflow and ordinary project gates are green;
+2. record actual installed/runtime payload and uncompressed Portable size, plus real-project-model session/fallback evidence;
+3. if the repository-side result is clean, make the product decision for an optional accelerated profile before any target-workstation performance checkpoint;
+4. do not resume Windows ML launcher experiments; do not start background enrichment or the full Settings UI until the accelerator resource model is settled.
 
 ## Do not repeat
 
@@ -137,7 +138,7 @@ Current:
 - #75 — whole-product UI/UX modernization
 - #59 — UX/quality backlog from accepted v0.3 QA
 - #56 — Text Cleanup review sorting
-- #55 — optional NVIDIA CUDA acceleration research
+- #55 — optional GPU acceleration research / current DirectML profile evaluation
 - #57 — README screenshots
 - #72 — HUMAN UNVERIFIED src-layout migration interactive checkpoint
 
