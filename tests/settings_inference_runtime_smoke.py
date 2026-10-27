@@ -40,10 +40,27 @@ class FakeSession:
         return list(self._providers)
 
 
+class FakeOptions:
+    def __init__(self):
+        self.enable_mem_pattern = True
+        self.execution_mode = "parallel"
+
+
+class FakeExecutionMode:
+    ORT_SEQUENTIAL = "sequential"
+
+
 class FakeOrt:
     available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     fail_cuda = False
+    fail_dml = False
     calls = []
+    options_seen = []
+    ExecutionMode = FakeExecutionMode
+
+    @classmethod
+    def SessionOptions(cls):
+        return FakeOptions()
 
     @classmethod
     def get_available_providers(cls):
@@ -52,8 +69,11 @@ class FakeOrt:
     @classmethod
     def InferenceSession(cls, path, sess_options=None, providers=None, **kwargs):
         cls.calls.append(tuple(providers or ()))
+        cls.options_seen.append(sess_options)
         if cls.fail_cuda and providers and providers[0] == "CUDAExecutionProvider":
             raise RuntimeError("synthetic CUDA failure")
+        if cls.fail_dml and providers and providers[0] == "DmlExecutionProvider":
+            raise RuntimeError("synthetic DirectML failure")
         return FakeSession(providers or ())
 
 
@@ -107,6 +127,32 @@ session = create_ort_session(FakeOrt, "model.onnx")
 assert session.get_providers() == ["CPUExecutionProvider"]
 assert FakeOrt.calls == [
     ("CUDAExecutionProvider", "CPUExecutionProvider"),
+    ("CPUExecutionProvider",),
+]
+snapshot = runtime_snapshot(FakeOrt)
+assert snapshot.last_active_provider == "CPUExecutionProvider"
+assert "CPU fallback" in snapshot.fallback_reason
+
+FakeOrt.available = ["DmlExecutionProvider", "CPUExecutionProvider"]
+FakeOrt.fail_cuda = False
+FakeOrt.fail_dml = False
+FakeOrt.calls = []
+FakeOrt.options_seen = []
+plan = provider_plan(FakeOrt)
+assert plan.providers == ("DmlExecutionProvider", "CPUExecutionProvider")
+session = create_ort_session(FakeOrt, "model.onnx")
+assert session.get_providers()[0] == "DmlExecutionProvider"
+dml_options = FakeOrt.options_seen[0]
+assert dml_options.enable_mem_pattern is False
+assert dml_options.execution_mode == FakeExecutionMode.ORT_SEQUENTIAL
+
+FakeOrt.fail_dml = True
+FakeOrt.calls = []
+FakeOrt.options_seen = []
+session = create_ort_session(FakeOrt, "model.onnx")
+assert session.get_providers() == ["CPUExecutionProvider"]
+assert FakeOrt.calls == [
+    ("DmlExecutionProvider", "CPUExecutionProvider"),
     ("CPUExecutionProvider",),
 ]
 snapshot = runtime_snapshot(FakeOrt)
