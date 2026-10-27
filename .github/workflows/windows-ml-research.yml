@@ -107,6 +107,10 @@ jobs:
         shell: cmd
         run: tools\benchmarks\run-windows-ml-checkpoint.cmd --wrapper-self-test
 
+      - name: Exercise standalone helper end-to-end
+        shell: cmd
+        run: tools\benchmarks\run-windows-ml-checkpoint.cmd
+
       - name: Safe discovery probe
         shell: pwsh
         run: |
