@@ -88,6 +88,23 @@ jobs:
         run: |
           python -m py_compile tools/benchmarks/windows_ml_runtime_probe.py
           python tools/benchmarks/windows_ml_runtime_probe.py --help
+          @'
+          from tools.benchmarks.windows_ml_runtime_probe import _ep_name_matches
+
+          assert _ep_name_matches(
+              "NvTensorRTRTXExecutionProvider",
+              "NvTensorRtRtxExecutionProvider",
+          )
+          assert _ep_name_matches(
+              "NvTensorRtRtxExecutionProvider",
+              "NvTensorRtRtxExecutionProvider",
+          )
+          assert not _ep_name_matches(
+              "OpenVINOExecutionProvider",
+              "NvTensorRtRtxExecutionProvider",
+          )
+          print("EP name normalization regression checks PASS")
+          '@ | python -
 
       - name: Validate workstation helper syntax
         shell: pwsh
