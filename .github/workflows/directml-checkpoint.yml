@@ -1,0 +1,192 @@
+name: DirectML Target Checkpoint
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tools/benchmarks/gpu_runtime_benchmark.py"
+      - "tools/benchmarks/directml_checkpoint.py"
+      - "packaging/directml_checkpoint.spec"
+      - "requirements/runtime-directml.txt"
+      - "src/infrastructure/inference_runtime.py"
+      - ".github/workflows/directml-checkpoint.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: directml-checkpoint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkpoint:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements/runtime-directml.txt
+            requirements/build.txt
+
+      - name: Install checkpoint dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements/runtime-directml.txt -r requirements/build.txt
+
+      - name: Compile checkpoint sources
+        shell: pwsh
+        run: |
+          python -m py_compile tools/benchmarks/gpu_runtime_benchmark.py
+          python -m py_compile tools/benchmarks/directml_checkpoint.py
+          python tools/benchmarks/gpu_runtime_benchmark.py --help
+          python tools/benchmarks/directml_checkpoint.py --help
+
+      - name: Prepare bundled models
+        shell: pwsh
+        run: |
+          python tools/prepare_bundled_models.py --root resources/models
+
+      - name: Create synthetic read-only dataset
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          root = Path("_research_output/checkpoint-dataset")
+          root.mkdir(parents=True, exist_ok=True)
+          for index in range(3):
+              image = Image.new("RGB", (640, 480), (245, 245, 245))
+              draw = ImageDraw.Draw(image)
+              draw.rectangle((120 + index * 10, 70, 500, 420), outline=(40, 40, 40), width=6)
+              draw.ellipse((250, 120, 390, 260), outline=(20, 20, 20), width=6)
+              draw.text((210, 360), f"checkpoint {index}", fill=(0, 0, 0))
+              image.save(root / f"sample-{index}.jpg", quality=92)
+          print(root.resolve())
+          '@ | python -
+
+      - name: Source CPU worker smoke
+        shell: pwsh
+        run: |
+          python tools/benchmarks/directml_checkpoint.py --worker --provider cpu --dataset "_research_output/checkpoint-dataset" --output "_research_output/source-cpu.json" --limit 3
+
+      - name: Source DirectML/fallback worker smoke
+        shell: pwsh
+        run: |
+          python tools/benchmarks/directml_checkpoint.py --worker --provider directml --dataset "_research_output/checkpoint-dataset" --output "_research_output/source-directml.json" --limit 3
+
+          $report = Get-Content "_research_output/source-directml.json" -Raw | ConvertFrom-Json
+          if ($report.environment.expected_execution_provider -ne "DmlExecutionProvider") {
+            throw "DirectML worker did not request DmlExecutionProvider."
+          }
+          if ($report.stages.Count -lt 5) {
+            throw "DirectML worker did not execute the expected stage set."
+          }
+
+      - name: Build checkpoint Portable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/directml_checkpoint.spec
+
+      - name: Validate checkpoint payload
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint"
+          $exe = Join-Path $root "Face LoRA DirectML Checkpoint.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Checkpoint executable missing: $exe"
+          }
+
+          $files = Get-ChildItem $root -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+          $dml = @($files | Where-Object { $_.Name -ieq "DirectML.dll" })
+          if ($dml.Count -ne 1) {
+            throw "Expected exactly one DirectML.dll, found $($dml.Count)."
+          }
+
+          "Uncompressed checkpoint: $totalMB MB" | Tee-Object -FilePath "directml-checkpoint-size-report.txt"
+          "DirectML.dll: $([math]::Round($dml[0].Length / 1MB, 1)) MB" | Tee-Object -FilePath "directml-checkpoint-size-report.txt" -Append
+
+      - name: Packaged CPU worker smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint\Face LoRA DirectML Checkpoint.exe"
+          $arguments = @("--worker", "--provider", "cpu", "--dataset", (Join-Path $PWD "_research_output\checkpoint-dataset"), "--output", (Join-Path $PWD "_research_output\packaged-cpu.json"), "--limit", "3")
+          $p = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            throw "Packaged CPU worker failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Packaged DirectML/fallback worker smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint\Face LoRA DirectML Checkpoint.exe"
+          $output = Join-Path $PWD "_research_output\packaged-directml.json"
+          $arguments = @("--worker", "--provider", "directml", "--dataset", (Join-Path $PWD "_research_output\checkpoint-dataset"), "--output", $output, "--limit", "3")
+          $p = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            throw "Packaged DirectML worker failed with exit code $($p.ExitCode)"
+          }
+
+          $report = Get-Content $output -Raw | ConvertFrom-Json
+          if ($report.environment.expected_execution_provider -ne "DmlExecutionProvider") {
+            throw "Packaged worker did not request DmlExecutionProvider."
+          }
+
+      - name: Build checkpoint ZIP
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint"
+          $readme = @"
+          Face LoRA DirectML Target Checkpoint
+          ====================================
+
+          1. Extract this ZIP to a normal local folder.
+          2. Double-click "Face LoRA DirectML Checkpoint.exe".
+          3. Choose an existing image dataset folder.
+          4. Wait for CPU and DirectML tests to finish.
+          5. Send checkpoint-results\<timestamp>\directml-comparison.json back to ChatGPT.
+          6. After the report is sent, delete this entire checkpoint folder.
+
+          Safety / cleanup:
+          - source images are read-only;
+          - no Python or Conda installation;
+          - no CUDA/cuDNN installation;
+          - no Windows ML or system execution-provider installation;
+          - no AppData project state;
+          - all checkpoint-generated files stay under checkpoint-results in this folder.
+          "@
+          Set-Content -Path (Join-Path $folder "README-CHECKPOINT.txt") -Value $readme -Encoding UTF8
+
+          $zip = Join-Path $PWD "FaceLoRA-DirectML-Checkpoint-Windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$folder\*" -DestinationPath $zip -CompressionLevel Optimal
+
+          $zipMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          "Compressed checkpoint ZIP: $zipMB MB" | Tee-Object -FilePath "directml-checkpoint-size-report.txt" -Append
+
+      - name: Upload checkpoint artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceLoRA-DirectML-Target-Checkpoint
+          path: |
+            FaceLoRA-DirectML-Checkpoint-Windows-x64.zip
+            directml-checkpoint-size-report.txt
+            _research_output/source-cpu.json
+            _research_output/source-directml.json
+            _research_output/packaged-cpu.json
+            _research_output/packaged-directml.json
+          if-no-files-found: error
+          retention-days: 7
