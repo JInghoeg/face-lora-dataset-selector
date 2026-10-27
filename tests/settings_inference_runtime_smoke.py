@@ -54,6 +54,7 @@ class FakeOrt:
     available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     fail_cuda = False
     fail_dml = False
+    silent_fallback = False
     calls = []
     options_seen = []
     ExecutionMode = FakeExecutionMode
@@ -74,6 +75,8 @@ class FakeOrt:
             raise RuntimeError("synthetic CUDA failure")
         if cls.fail_dml and providers and providers[0] == "DmlExecutionProvider":
             raise RuntimeError("synthetic DirectML failure")
+        if cls.silent_fallback and providers and providers[0] != "CPUExecutionProvider":
+            return FakeSession(["CPUExecutionProvider"])
         return FakeSession(providers or ())
 
 
@@ -158,6 +161,18 @@ assert FakeOrt.calls == [
 snapshot = runtime_snapshot(FakeOrt)
 assert snapshot.last_active_provider == "CPUExecutionProvider"
 assert "CPU fallback" in snapshot.fallback_reason
+
+FakeOrt.fail_dml = False
+FakeOrt.silent_fallback = True
+FakeOrt.calls = []
+FakeOrt.options_seen = []
+session = create_ort_session(FakeOrt, "model.onnx")
+assert session.get_providers() == ["CPUExecutionProvider"]
+snapshot = runtime_snapshot(FakeOrt)
+assert snapshot.last_active_provider == "CPUExecutionProvider"
+assert "was requested" in snapshot.fallback_reason
+assert "CPU fallback" in snapshot.fallback_reason
+FakeOrt.silent_fallback = False
 
 FakeOrt.available = ["CPUExecutionProvider"]
 FakeOrt.fail_cuda = False
