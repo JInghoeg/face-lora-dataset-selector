@@ -1,5 +1,5 @@
 param(
-    [string]$Python = "python",
+    [string]$Python = "",
     [string]$Model = "",
     [switch]$EnsureEp,
     [switch]$FixWinrtRuntime
@@ -20,13 +20,113 @@ if ($build -lt 26100) {
     throw "Windows ML catalog-delivered hardware EPs require Windows 11 24H2 / build 26100 or newer."
 }
 
+function Test-PythonExecutable {
+    param([string]$Candidate)
+    if (-not $Candidate) { return $false }
+
+    try {
+        if (-not (Test-Path $Candidate)) {
+            $resolved = Get-Command $Candidate -ErrorAction Stop
+            $Candidate = $resolved.Source
+        }
+
+        $versionOutput = & $Candidate --version 2>&1
+        if ($LASTEXITCODE -ne 0) { return $false }
+        if ($versionOutput -notmatch '^Python\s+3\.') { return $false }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Resolve-ResearchPython {
+    param([string]$Requested)
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($Requested) {
+        $candidates.Add($Requested)
+    }
+
+    if ($env:CONDA_PREFIX) {
+        $candidates.Add((Join-Path $env:CONDA_PREFIX "python.exe"))
+    }
+
+    try {
+        $py = Get-Command "py.exe" -ErrorAction Stop
+        $pyResolved = & $py.Source -3 -c "import sys; print(sys.executable)" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $pyResolved) {
+            $candidates.Add(([string]$pyResolved).Trim())
+        }
+    }
+    catch {
+        # py launcher is optional.
+    }
+
+    foreach ($name in @("python.exe", "python3.exe")) {
+        try {
+            $command = Get-Command $name -ErrorAction Stop
+            if ($command.Source) {
+                $candidates.Add($command.Source)
+            }
+        }
+        catch {
+            # Continue through filesystem candidates.
+        }
+    }
+
+    foreach ($path in @(
+        (Join-Path $env:USERPROFILE "miniconda3\python.exe"),
+        (Join-Path $env:USERPROFILE "anaconda3\python.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\python.exe"),
+        "G:\miniconda3\python.exe",
+        "C:\ProgramData\miniconda3\python.exe",
+        "C:\ProgramData\anaconda3\python.exe"
+    )) {
+        if ($path) {
+            $candidates.Add($path)
+        }
+    }
+
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        $key = $candidate.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+
+        if (Test-PythonExecutable $candidate) {
+            if (Test-Path $candidate) {
+                return (Resolve-Path $candidate).Path
+            }
+            return (Get-Command $candidate -ErrorAction Stop).Source
+        }
+    }
+
+    throw @"
+No usable Python 3 interpreter was found automatically.
+
+The Microsoft Store 'python.exe' execution alias does not count as an installed
+Python runtime. This checkpoint does not require changing that alias.
+
+If Python is installed in a non-standard location, rerun with:
+  run-windows-ml-checkpoint.cmd -Python "<full-path-to-python.exe>"
+"@
+}
+
 New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
 
 if (-not (Test-Path $pythonExe)) {
+    $resolvedPython = Resolve-ResearchPython -Requested $Python
+    $resolvedVersion = & $resolvedPython --version 2>&1
+    Write-Host "Selected Python: $resolvedPython"
+    Write-Host "Python version: $resolvedVersion"
     Write-Host "Creating isolated Python environment: $venvRoot"
-    & $Python -m venv $venvRoot
+    & $resolvedPython -m venv $venvRoot
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create research virtual environment with '$Python'."
+        throw "Failed to create research virtual environment with '$resolvedPython'."
     }
 }
 
