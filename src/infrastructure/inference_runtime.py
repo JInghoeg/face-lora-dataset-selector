@@ -12,7 +12,10 @@ from typing import Optional, Tuple
 
 
 _ALLOWED_PREFERENCES = ("auto", "gpu", "cpu")
-_ACCELERATOR_PROVIDER = "CUDAExecutionProvider"
+_ACCELERATOR_PROVIDERS = (
+    "CUDAExecutionProvider",
+    "DmlExecutionProvider",
+)
 _CPU_PROVIDER = "CPUExecutionProvider"
 
 _LOCK = RLock()
@@ -76,6 +79,13 @@ def _available(ort_module) -> Tuple[str, ...]:
     return tuple(str(value) for value in values)
 
 
+def _select_accelerator(available: Tuple[str, ...]) -> str:
+    for provider in _ACCELERATOR_PROVIDERS:
+        if provider in available:
+            return provider
+    return ""
+
+
 def provider_plan(ort_module, preference: Optional[str] = None) -> ProviderPlan:
     requested = _normalize_preference(
         inference_preference() if preference is None else preference
@@ -88,15 +98,16 @@ def provider_plan(ort_module, preference: Optional[str] = None) -> ProviderPlan:
     if requested == "cpu":
         return ProviderPlan(requested, available, (_CPU_PROVIDER,))
 
-    if _ACCELERATOR_PROVIDER in available:
+    accelerator = _select_accelerator(available)
+    if accelerator:
         return ProviderPlan(
             requested,
             available,
-            (_ACCELERATOR_PROVIDER, _CPU_PROVIDER),
+            (accelerator, _CPU_PROVIDER),
         )
 
     reason = (
-        "CUDAExecutionProvider unavailable; using CPUExecutionProvider"
+        "GPU execution provider unavailable; using CPUExecutionProvider"
         if requested == "gpu"
         else ""
     )
@@ -124,14 +135,35 @@ def create_ort_session(
 ):
     """Create an ORT session using shared policy and safe CPU fallback."""
     plan = provider_plan(ort_module, preference)
+    accelerator_options = sess_options
     try:
+        if plan.providers and plan.providers[0] == "DmlExecutionProvider":
+            if accelerator_options is None:
+                accelerator_options = ort_module.SessionOptions()
+            accelerator_options.enable_mem_pattern = False
+            accelerator_options.execution_mode = ort_module.ExecutionMode.ORT_SEQUENTIAL
+
         session = ort_module.InferenceSession(
             str(model_path),
-            sess_options=sess_options,
+            sess_options=accelerator_options,
             providers=list(plan.providers),
             **kwargs,
         )
-        _record_runtime(session, plan.fallback_reason)
+
+        fallback_reason = plan.fallback_reason
+        if plan.providers and plan.providers[0] != _CPU_PROVIDER:
+            try:
+                active = tuple(session.get_providers())
+            except Exception:
+                active = ()
+            if not active or active[0] != plan.providers[0]:
+                actual = str(active[0]) if active else "unknown"
+                fallback_reason = (
+                    f"{plan.providers[0]} was requested but the session "
+                    f"activated {actual}; using CPU fallback"
+                )
+
+        _record_runtime(session, fallback_reason)
         return session
     except Exception as accelerator_error:
         if (

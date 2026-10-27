@@ -1,0 +1,164 @@
+name: DirectML Runtime Research
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/infrastructure/inference_runtime.py"
+      - "tests/settings_inference_runtime_smoke.py"
+      - "requirements/runtime-directml.txt"
+      - "tools/benchmarks/directml_runtime_probe.py"
+      - "tools/build_portable.ps1"
+      - "packaging/portable.spec"
+      - ".github/workflows/directml-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: directml-research-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  directml-profile:
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements/runtime-directml.txt
+            requirements/build.txt
+
+      - name: Install DirectML runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements/runtime-directml.txt -r requirements/build.txt
+          python tools/install_ui_dependencies.py
+
+      - name: Verify DirectML distribution and shared provider policy
+        shell: pwsh
+        run: |
+          @'
+          from importlib import metadata
+          import onnxruntime as ort
+
+          version = metadata.version("onnxruntime-directml")
+          print("onnxruntime-directml", version)
+          if version != "1.24.4":
+              raise SystemExit(f"Expected onnxruntime-directml 1.24.4, got {version}")
+
+          providers = ort.get_available_providers()
+          print("providers", providers)
+          if "DmlExecutionProvider" not in providers:
+              raise SystemExit("DmlExecutionProvider missing from DirectML profile")
+          if "CPUExecutionProvider" not in providers:
+              raise SystemExit("CPUExecutionProvider missing from DirectML profile")
+          '@ | python -
+
+          python tests/settings_inference_runtime_smoke.py
+
+      - name: Prepare bundled project models
+        shell: pwsh
+        run: |
+          python tools/prepare_bundled_models.py --root resources/models
+
+      - name: Real-model provider and fallback probe
+        shell: pwsh
+        run: |
+          python tools/benchmarks/directml_runtime_probe.py
+
+          $report = Get-Content "_research_output/directml-runtime.json" -Raw | ConvertFrom-Json
+          if ($report.models.Count -lt 7) {
+            throw "DirectML research probe did not cover the expected project models."
+          }
+          foreach ($model in $report.models) {
+            if ($model.providers.Count -lt 1) {
+              throw "Model session reported no active provider: $($model.path)"
+            }
+            if (
+              $model.providers[0] -eq "CPUExecutionProvider" -and
+              [string]::IsNullOrWhiteSpace([string]$model.fallback_reason)
+            ) {
+              throw "CPU fallback was not explained for: $($model.path)"
+            }
+          }
+
+      - name: Source runtime self-test
+        shell: pwsh
+        run: |
+          python app.py --self-test
+
+      - name: Build DirectML portable
+        shell: pwsh
+        run: |
+          .\tools\build_portable.ps1
+
+      - name: Validate packaged runtime and measure payload
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector"
+          if (-not (Test-Path $root)) {
+            throw "Portable output missing: $root"
+          }
+
+          $files = Get-ChildItem $root -Recurse -File
+          $total = ($files | Measure-Object Length -Sum).Sum
+          $totalMB = [math]::Round($total / 1MB, 1)
+
+          $dml = @($files | Where-Object { $_.Name -ieq "DirectML.dll" })
+          if ($dml.Count -eq 0) {
+            throw "DirectML.dll was not packaged."
+          }
+
+          $ortDlls = @($files | Where-Object {
+            $_.Name -match '^onnxruntime.*\.(dll|pyd)$'
+          })
+          if ($ortDlls.Count -eq 0) {
+            throw "Packaged ONNX Runtime binaries were not found."
+          }
+
+          "Uncompressed DirectML portable: $totalMB MB" |
+            Tee-Object -FilePath "directml-portable-size-report.txt"
+          "DirectML.dll count: $($dml.Count)" |
+            Tee-Object -FilePath "directml-portable-size-report.txt" -Append
+
+          $top = $files | Sort-Object Length -Descending | Select-Object -First 40
+          foreach ($file in $top) {
+            $relative = $file.FullName.Substring($root.Length + 1)
+            $line = ("{0,7:N1} MB  {1}" -f ($file.Length / 1MB), $relative)
+            $line | Tee-Object -FilePath "directml-portable-size-report.txt" -Append | Write-Host
+          }
+
+      - name: Packaged executable self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Face-LoRA-Dataset-Selector\Face LoRA Dataset Selector.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path (Split-Path $exe) "startup-error.txt"
+            if (Test-Path $err) {
+              Write-Host "---- startup-error.txt ----"
+              Get-Content $err
+            }
+            throw "DirectML Portable self-test failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Upload DirectML research evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: directml-runtime-research
+          path: |
+            _research_output/directml-runtime.json
+            directml-portable-size-report.txt
+          if-no-files-found: error
