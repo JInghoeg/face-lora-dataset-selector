@@ -24,6 +24,7 @@ from infrastructure.inference_runtime import (
     configure_inference_runtime,
     create_ort_session,
     provider_plan,
+    runtime_snapshot,
 )
 from infrastructure.runtime_tuning import configure_ort_cpu_options
 
@@ -95,10 +96,12 @@ def main() -> int:
             preference="gpu",
         )
         active = tuple(session.get_providers())
+        snapshot = runtime_snapshot(ort)
         report["models"].append(
             {
                 "path": relative,
                 "providers": active,
+                "fallback_reason": snapshot.fallback_reason,
                 "inputs": [
                     {
                         "name": value.name,
