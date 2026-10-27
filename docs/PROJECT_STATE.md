@@ -71,6 +71,7 @@ Local-workspace continuity note:
 - **Active authorized research slice (2026-10-22):** Draft PR #97 (`research/v0.4-windows-ml-runtime`) — Windows ML / system-managed NVIDIA execution-provider feasibility.
 - This slice is intentionally bounded: no feature code changes, no product runtime dependency change, no main Dataset shell redesign, no Settings UI, no background scheduler, and no algorithm/threshold change.
 - Dedicated hosted Windows research CI now proves the matched Python Windows ML stack resolves and exposes the required dynamic-EP APIs on build 26100, while a clean hosted runner without the matching Windows App SDK Runtime fails bootstrap non-interactively with `Package dependency criteria could not be resolved`.
+- Target-workstation discovery on Windows build 26200 successfully bootstrapped Windows ML and exposed the NVIDIA catalog entry as `NvTensorRTRTXExecutionProvider` in `NOT_PRESENT` state. The initial probe misclassified this because it compared the documented `NvTensorRtRtxExecutionProvider` spelling case-sensitively; PR #97 now normalizes EP-name matching and registers the catalog-returned provider name. The next target checkpoint is explicit EP acquisition/preparation, not another discovery pass.
 
 ## Current objective
 
