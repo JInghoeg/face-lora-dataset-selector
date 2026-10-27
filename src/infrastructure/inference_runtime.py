@@ -149,7 +149,21 @@ def create_ort_session(
             providers=list(plan.providers),
             **kwargs,
         )
-        _record_runtime(session, plan.fallback_reason)
+
+        fallback_reason = plan.fallback_reason
+        if plan.providers and plan.providers[0] != _CPU_PROVIDER:
+            try:
+                active = tuple(session.get_providers())
+            except Exception:
+                active = ()
+            if not active or active[0] != plan.providers[0]:
+                actual = str(active[0]) if active else "unknown"
+                fallback_reason = (
+                    f"{plan.providers[0]} was requested but the session "
+                    f"activated {actual}; using CPU fallback"
+                )
+
+        _record_runtime(session, fallback_reason)
         return session
     except Exception as accelerator_error:
         if (
