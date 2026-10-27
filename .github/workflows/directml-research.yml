@@ -75,10 +75,26 @@ jobs:
         run: |
           python tools/prepare_bundled_models.py --root resources/models
 
-      - name: Real-model DirectML session probe
+      - name: Real-model provider and fallback probe
         shell: pwsh
         run: |
           python tools/benchmarks/directml_runtime_probe.py
+
+          $report = Get-Content "_research_output/directml-runtime.json" -Raw | ConvertFrom-Json
+          if ($report.models.Count -lt 7) {
+            throw "DirectML research probe did not cover the expected project models."
+          }
+          foreach ($model in $report.models) {
+            if ($model.providers.Count -lt 1) {
+              throw "Model session reported no active provider: $($model.path)"
+            }
+            if (
+              $model.providers[0] -eq "CPUExecutionProvider" -and
+              [string]::IsNullOrWhiteSpace([string]$model.fallback_reason)
+            ) {
+              throw "CPU fallback was not explained for: $($model.path)"
+            }
+          }
 
       - name: Source runtime self-test
         shell: pwsh
