@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $workRoot = Join-Path $repoRoot "_research_output\windows-ml-runtime"
 $venvRoot = Join-Path $workRoot ".venv"
-$pythonExe = Join-Path $venvRoot "Scripts\python.exe"
+$condaEnvRoot = Join-Path $workRoot ".conda-py312"
 $requirements = Join-Path $repoRoot "tools\benchmarks\requirements-windowsml.txt"
 $probe = Join-Path $repoRoot "tools\benchmarks\windows_ml_runtime_probe.py"
 
@@ -20,27 +20,46 @@ if ($build -lt 26100) {
     throw "Windows ML catalog-delivered hardware EPs require Windows 11 24H2 / build 26100 or newer."
 }
 
-function Test-PythonExecutable {
+function Get-CompatiblePython {
     param([string]$Candidate)
-    if (-not $Candidate) { return $false }
+
+    if (-not $Candidate) { return $null }
 
     try {
-        if (-not (Test-Path $Candidate)) {
+        $path = $Candidate
+        if (-not (Test-Path $path)) {
             $resolved = Get-Command $Candidate -ErrorAction Stop
-            $Candidate = $resolved.Source
+            $path = $resolved.Source
+        }
+        if (-not $path) { return $null }
+
+        $probeOutput = & $path -c "import sys; print(sys.executable); print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" 2>&1
+        if ($LASTEXITCODE -ne 0 -or $probeOutput.Count -lt 2) {
+            return $null
         }
 
-        $versionOutput = & $Candidate --version 2>&1
-        if ($LASTEXITCODE -ne 0) { return $false }
-        if ($versionOutput -notmatch '^Python\s+3\.') { return $false }
-        return $true
+        $actualPath = [string]$probeOutput[-2]
+        $versionText = [string]$probeOutput[-1]
+        $version = [Version]$versionText
+
+        # The pinned Windows ML stack used by this checkpoint is intentionally
+        # constrained to CPython 3.11-3.14. Do not select newer preview/current
+        # interpreters merely because the py launcher makes them the default.
+        if ($version.Major -ne 3 -or $version.Minor -lt 11 -or $version.Minor -gt 14) {
+            return $null
+        }
+
+        [PSCustomObject]@{
+            Path = $actualPath.Trim()
+            Version = $versionText.Trim()
+        }
     }
     catch {
-        return $false
+        return $null
     }
 }
 
-function Resolve-ResearchPython {
+function Resolve-CompatibleSystemPython {
     param([string]$Requested)
 
     $candidates = New-Object System.Collections.Generic.List[string]
@@ -49,19 +68,25 @@ function Resolve-ResearchPython {
         $candidates.Add($Requested)
     }
 
+    if ($env:pythonLocation) {
+        $candidates.Add((Join-Path $env:pythonLocation "python.exe"))
+    }
+
     if ($env:CONDA_PREFIX) {
         $candidates.Add((Join-Path $env:CONDA_PREFIX "python.exe"))
     }
 
     try {
         $py = Get-Command "py.exe" -ErrorAction Stop
-        $pyResolved = & $py.Source -3 -c "import sys; print(sys.executable)" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $pyResolved) {
-            $candidates.Add(([string]$pyResolved).Trim())
+        foreach ($minor in @(12, 13, 11, 14)) {
+            $resolved = & $py.Source "-3.$minor" -c "import sys; print(sys.executable)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $resolved) {
+                $candidates.Add(([string]$resolved).Trim())
+            }
         }
     }
     catch {
-        # py launcher is optional.
+        # Python launcher is optional.
     }
 
     foreach ($name in @("python.exe", "python3.exe")) {
@@ -79,6 +104,8 @@ function Resolve-ResearchPython {
     foreach ($path in @(
         (Join-Path $env:USERPROFILE "miniconda3\python.exe"),
         (Join-Path $env:USERPROFILE "anaconda3\python.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python314\python.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\python.exe"),
         (Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe"),
         (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\python.exe"),
         "G:\miniconda3\python.exe",
@@ -97,38 +124,123 @@ function Resolve-ResearchPython {
         if ($seen.ContainsKey($key)) { continue }
         $seen[$key] = $true
 
-        if (Test-PythonExecutable $candidate) {
-            if (Test-Path $candidate) {
-                return (Resolve-Path $candidate).Path
-            }
-            return (Get-Command $candidate -ErrorAction Stop).Source
+        $compatible = Get-CompatiblePython $candidate
+        if ($compatible) {
+            return $compatible
         }
     }
 
-    throw @"
-No usable Python 3 interpreter was found automatically.
+    return $null
+}
 
-The Microsoft Store 'python.exe' execution alias does not count as an installed
-Python runtime. This checkpoint does not require changing that alias.
+function Resolve-CondaExecutable {
+    $candidates = New-Object System.Collections.Generic.List[string]
 
-If Python is installed in a non-standard location, rerun with:
-  run-windows-ml-checkpoint.cmd -Python "<full-path-to-python.exe>"
-"@
+    if ($env:CONDA_EXE) {
+        $candidates.Add($env:CONDA_EXE)
+    }
+
+    foreach ($path in @(
+        (Join-Path $env:USERPROFILE "miniconda3\Scripts\conda.exe"),
+        (Join-Path $env:USERPROFILE "anaconda3\Scripts\conda.exe"),
+        "G:\miniconda3\Scripts\conda.exe",
+        "C:\ProgramData\miniconda3\Scripts\conda.exe",
+        "C:\ProgramData\anaconda3\Scripts\conda.exe"
+    )) {
+        if ($path) {
+            $candidates.Add($path)
+        }
+    }
+
+    try {
+        $command = Get-Command "conda.exe" -ErrorAction Stop
+        if ($command.Source) {
+            $candidates.Add($command.Source)
+        }
+    }
+    catch {
+        # Continue through explicit paths.
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    return $null
 }
 
 New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
 
-if (-not (Test-Path $pythonExe)) {
-    $resolvedPython = Resolve-ResearchPython -Requested $Python
-    $resolvedVersion = & $resolvedPython --version 2>&1
-    Write-Host "Selected Python: $resolvedPython"
-    Write-Host "Python version: $resolvedVersion"
-    Write-Host "Creating isolated Python environment: $venvRoot"
-    & $resolvedPython -m venv $venvRoot
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create research virtual environment with '$resolvedPython'."
+$venvPython = Join-Path $venvRoot "Scripts\python.exe"
+$condaPython = Join-Path $condaEnvRoot "python.exe"
+$pythonExe = $null
+
+$existingVenv = Get-CompatiblePython $venvPython
+if ($existingVenv) {
+    $pythonExe = $existingVenv.Path
+    Write-Host "Reusing isolated Python environment: $venvRoot"
+}
+else {
+    $existingConda = Get-CompatiblePython $condaPython
+    if ($existingConda) {
+        $pythonExe = $existingConda.Path
+        Write-Host "Reusing isolated Conda environment: $condaEnvRoot"
     }
 }
+
+if (-not $pythonExe) {
+    $systemPython = Resolve-CompatibleSystemPython -Requested $Python
+
+    if ($systemPython) {
+        Write-Host "Selected Python: $($systemPython.Path)"
+        Write-Host "Python version: Python $($systemPython.Version)"
+        Write-Host "Creating isolated Python environment: $venvRoot"
+        & $systemPython.Path -m venv $venvRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create research virtual environment with '$($systemPython.Path)'."
+        }
+        $pythonExe = $venvPython
+    }
+    else {
+        $condaExe = Resolve-CondaExecutable
+        if (-not $condaExe) {
+            throw @"
+No compatible CPython 3.11-3.14 interpreter was found automatically, and no
+Conda executable was available to create an isolated Python 3.12 environment.
+
+The Microsoft Store 'python.exe' execution alias does not count as an installed
+Python runtime. This checkpoint does not require changing that alias.
+
+If a compatible interpreter exists in a non-standard location, rerun with:
+  run-windows-ml-checkpoint.cmd -Python "<full-path-to-python.exe>"
+"@
+        }
+
+        Write-Host "No compatible system Python 3.11-3.14 found."
+        Write-Host "Using Conda to create isolated Python 3.12 environment:"
+        Write-Host "  Conda: $condaExe"
+        Write-Host "  Environment: $condaEnvRoot"
+        & $condaExe create --yes --prefix $condaEnvRoot "python=3.12" pip
+        if ($LASTEXITCODE -ne 0) {
+            throw "Conda failed to create the isolated Python 3.12 research environment."
+        }
+
+        $createdConda = Get-CompatiblePython $condaPython
+        if (-not $createdConda) {
+            throw "Conda reported success but the isolated Python 3.12 interpreter is unavailable."
+        }
+        $pythonExe = $createdConda.Path
+    }
+}
+
+$selected = Get-CompatiblePython $pythonExe
+if (-not $selected) {
+    throw "The isolated checkpoint environment is not using a supported CPython 3.11-3.14 interpreter."
+}
+Write-Host "Checkpoint Python: $($selected.Path)"
+Write-Host "Checkpoint Python version: Python $($selected.Version)"
 
 Write-Host "Installing pinned research dependencies..."
 & $pythonExe -m pip install --upgrade pip
