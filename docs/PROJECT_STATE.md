@@ -54,6 +54,7 @@ Historical repository note:
 - PR #78 merged at `016ff44a799e6ab95046a15a7cbd2f3dce55f631`: the research-only GPU benchmark harness and cost note are now on main. It also includes a continuity-gate bug fix that scopes State impact matching to the full Yes/No state-choice text. No production GPU provider decision was made.
 - PR #95 merged at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable application settings and the shared `Auto / GPU / CPU` ONNX provider policy are now on `main`; feature ONNX sessions route through the infrastructure layer with mandatory CPU fallback.
 - PR #98 merged to `main` at `07342cc337e31ed66184c2a36ff64436c79a3595`: the separate Python 3.12 `onnxruntime-directml==1.24.4` profile builds and packages successfully, all seven project ONNX models pass shared-session/fallback validation, silent ORT-managed GPU→CPU fallback is recorded correctly, and the packaged EXE self-test passes. The universal CPU Portable is 622.3 MB uncompressed versus 647.9 MB for DirectML (+25.6 MB / ~4.1%). This is deployment/fallback evidence, not target-RTX performance evidence.
+- PR #99 prepares the final self-contained DirectML target checkpoint: source CPU/DirectML workers, the dedicated PyInstaller checkpoint, packaged CPU worker, packaged DirectML/fallback worker, and ordinary Portable checks all pass in CI. The disposable checkpoint is 660.6 MB uncompressed / 423.7 MB compressed and installs no Python, Conda, CUDA, Windows ML, or system EP; all generated evidence stays inside its own `checkpoint-results` folder.
 
 ## In progress
 
@@ -64,7 +65,7 @@ Historical repository note:
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in merged PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
-- **Active authorized accelerator slice (2026-10-27):** prepare one self-contained CPU-vs-DirectML target-performance checkpoint on branch `research/v0.4-directml-performance-checkpoint`; no Python/Conda/system-EP installation is allowed on the target workstation.
+- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99; the only remaining accelerator gate is one target-RTX run and review of its `directml-comparison.json` evidence.
 - Background Composite → Auto Crop enrichment and the full Settings UI remain sequenced after the accelerator resource/performance decision.
 
 ## Current objective
@@ -111,10 +112,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. prepare one self-contained DirectML performance checkpoint that uses the merged shared provider policy, runs CPU and DirectML against the same bounded dataset subset, and writes one comparison report;
-2. CI must build and smoke-test the checkpoint artifact before it reaches the target workstation; no Python/Conda/system runtime installation is permitted there;
-3. use that single checkpoint to decide whether DirectML becomes the optional accelerated Portable profile or whether the product stays CPU-only;
-4. then proceed to background enrichment/streaming review before the full Settings UI.
+1. run the already CI-validated self-contained DirectML checkpoint once on the target RTX workstation against an existing representative image dataset and review `directml-comparison.json`;
+2. decide from actual provider activation, output parity, per-stage wall time and overall speedup whether DirectML becomes the optional accelerated Portable profile or the product stays CPU-only;
+3. record the decision in Issue #55 and close/supersede the accelerator research path accordingly;
+4. then proceed to background Composite → Auto Crop enrichment/streaming review before the full Settings UI.
 
 ## Do not repeat
 
