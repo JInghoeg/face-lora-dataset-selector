@@ -1,8 +1,19 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
 
-set "LOGDIR=%~dp0_research_output\windows-ml-runtime"
+set "BASE=%~dp0"
+set "INNER=%BASE%tools\benchmarks\run-windows-ml-checkpoint.cmd"
+if not exist "%INNER%" set "INNER=%BASE%run-windows-ml-checkpoint.cmd"
+
+if not exist "%INNER%" (
+  echo [ERROR] Inner checkpoint launcher not found.
+  echo Checked:
+  echo   %BASE%tools\benchmarks\run-windows-ml-checkpoint.cmd
+  echo   %BASE%run-windows-ml-checkpoint.cmd
+  exit /b 2
+)
+
+set "LOGDIR=%BASE%_research_output\windows-ml-runtime"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 set "LOG=%LOGDIR%\checkpoint-console.log"
 
@@ -14,7 +25,7 @@ echo Console output is also saved to:
 echo   %LOG%
 echo.
 
-call tools\benchmarks\run-windows-ml-checkpoint.cmd %* > "%LOG%" 2>&1
+call "%INNER%" %* > "%LOG%" 2>&1
 set "RC=%ERRORLEVEL%"
 
 type "%LOG%"
