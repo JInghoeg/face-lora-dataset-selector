@@ -125,6 +125,28 @@ python tools/benchmarks/windows_ml_runtime_probe.py --ensure --output .project/q
 python tools/benchmarks/windows_ml_runtime_probe.py --ensure --model "<path-to-existing-project-model.onnx>" --check-cpu-fallback --output .project/qa/windows-ml-session.json
 ```
 
+## Target-workstation discovery evidence (2026-10-27)
+
+The target Windows workstation produced a successful Windows ML catalog discovery
+on Windows build 26200 using the isolated Python 3.12 environment.
+
+Observed facts:
+- Windows ML bootstrap succeeded.
+- ONNX Runtime exposed CPU + DirectML devices before dynamic provider registration.
+- The Windows ML catalog advertised the NVIDIA provider as
+  `NvTensorRTRTXExecutionProvider` with `NOT_PRESENT` state.
+- Microsoft documentation names the same EP
+  `NvTensorRtRtxExecutionProvider`.
+- The original probe compared provider names case-sensitively and therefore
+  misclassified this machine as `target_provider_unavailable`.
+- The probe now matches EP names case-insensitively and uses the catalog-returned
+  provider name for Python ORT registration.
+
+Interpretation: the target machine has passed hardware/catalog discovery far
+enough to proceed to the explicit `EnsureReadyAsync` acquisition checkpoint.
+The NVIDIA EP is not yet installed/prepared, so production feasibility is not
+yet proven.
+
 ## Decision gate
 
 Do **not** integrate Windows ML into `src/infrastructure/inference_runtime.py` until the target-workstation checkpoint answers all of these:
