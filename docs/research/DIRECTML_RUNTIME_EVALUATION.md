@@ -79,6 +79,61 @@ profile is considered viable:
 The hosted runner is not treated as a performance benchmark. If it has no
 useful GPU adapter, successful CPU fallback is valid CI evidence.
 
+
+## CI result — 2026-10-27
+
+The bounded repository-side gate passed.
+
+Measured on the same PR/commit family:
+
+- universal CPU Portable: **622.3 MB** uncompressed;
+- DirectML Portable: **647.9 MB** uncompressed;
+- DirectML increment: **25.6 MB / ~4.1%**;
+- packaged `DirectML.dll`: **17.7 MB**;
+- installed `onnxruntime-directml 1.24.4` distribution footprint in the CI
+  environment: **74,408,109 bytes**;
+- source self-test: PASS;
+- PyInstaller build: PASS;
+- packaged executable self-test: PASS;
+- architecture and feature-boundary workflows: PASS.
+
+The Windows hosted runner exposes `DmlExecutionProvider` and
+`CPUExecutionProvider`, but has no matching DirectML device. All seven real
+project ONNX models therefore exercised the shared provider path and cleanly
+fell back to CPU. The runtime now detects this ORT-managed silent fallback after
+session creation and records an explicit fallback reason.
+
+Models covered by the real-project probe:
+
+- eDifFIQA;
+- 3DDFA MobileNet;
+- PP-OCRv5 detector;
+- Composite person detector;
+- Composite head detector;
+- ISNetIS;
+- MI-GAN.
+
+This proves packaging, model loading, shared provider selection, and CPU
+fallback. It does **not** prove DirectML GPU execution speed on the target RTX
+workstation.
+
+## Current disposition
+
+DirectML passes the repository-side deployment-cost gate and is retained as the
+optional accelerator candidate.
+
+It is materially smaller and operationally simpler than the rejected
+self-contained CUDA profile, while avoiding the framework/system-EP acquisition
+path that blocked the Windows ML candidate.
+
+The remaining decision gate is one real-GPU performance checkpoint. Until that
+evidence exists:
+
+- do not make the DirectML profile the universal/default runtime;
+- do not claim GPU speedup;
+- keep the universal CPU Portable unchanged;
+- keep Issue #55 open.
+
 ## Decision gate
 
 After CI:
