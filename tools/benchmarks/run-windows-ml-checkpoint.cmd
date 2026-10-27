@@ -13,28 +13,16 @@ if not exist "%SCRIPT%" (
   exit /b 2
 )
 
-if /I "%~1"=="--wrapper-self-test" (
-  where pwsh.exe >nul 2>nul
-  if not errorlevel 1 (
-    pwsh.exe -NoLogo -NoProfile -Command "if ($env:POWERSHELL_UPDATECHECK -ne 'Off') { exit 3 }; exit 0"
-    exit /b %ERRORLEVEL%
-  )
-
-  where powershell.exe >nul 2>nul
-  if errorlevel 1 (
-    echo [ERROR] Neither pwsh.exe nor powershell.exe is available.
-    exit /b 4
-  )
-  powershell.exe -NoLogo -NoProfile -Command "if ($env:POWERSHELL_UPDATECHECK -ne 'Off') { exit 3 }; exit 0"
-  exit /b %ERRORLEVEL%
-)
+if /I "%~1"=="--wrapper-self-test" goto selftest
 
 where pwsh.exe >nul 2>nul
-if not errorlevel 1 (
-  pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %*
-  exit /b %ERRORLEVEL%
-)
+if errorlevel 1 goto fallback
 
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %*
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
+
+:fallback
 where powershell.exe >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] Neither pwsh.exe nor powershell.exe is available.
@@ -43,4 +31,22 @@ if errorlevel 1 (
 
 echo [INFO] pwsh.exe not found; falling back to Windows PowerShell.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %*
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
+
+:selftest
+where pwsh.exe >nul 2>nul
+if errorlevel 1 goto selftest_fallback
+pwsh.exe -NoLogo -NoProfile -Command "if ($env:POWERSHELL_UPDATECHECK -ne 'Off') { exit 3 }; exit 0"
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
+
+:selftest_fallback
+where powershell.exe >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] Neither pwsh.exe nor powershell.exe is available.
+  exit /b 4
+)
+powershell.exe -NoLogo -NoProfile -Command "if ($env:POWERSHELL_UPDATECHECK -ne 'Off') { exit 3 }; exit 0"
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
