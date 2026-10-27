@@ -93,6 +93,10 @@ def _restore_conflicting_winrt_dll(change: tuple[Path, Path] | None) -> dict[str
     return result
 
 
+def _ep_name_matches(left: Any, right: Any) -> bool:
+    return str(left or "").casefold() == str(right or "").casefold()
+
+
 def _provider_row(provider: Any) -> dict[str, Any]:
     row = {
         "name": str(getattr(provider, "name", "")),
@@ -236,7 +240,7 @@ def run(args: argparse.Namespace) -> int:
                     (
                         p
                         for p in providers
-                        if str(getattr(p, "name", "")) == TARGET_EP
+                        if _ep_name_matches(getattr(p, "name", ""), TARGET_EP)
                     ),
                     None,
                 )
@@ -248,6 +252,8 @@ def run(args: argparse.Namespace) -> int:
                     )
                     return 4
 
+                actual_target_name = str(getattr(target, "name", "") or TARGET_EP)
+                report["catalog_target_name"] = actual_target_name
                 ready_state = getattr(target, "ready_state", None)
                 report["target_before"] = _provider_row(target)
 
@@ -302,7 +308,7 @@ def run(args: argparse.Namespace) -> int:
                 # Native catalog registration does not populate Python ORT.
                 # Register the library directly into the Python ORT environment.
                 ort.register_execution_provider_library(
-                    TARGET_EP, library_path
+                    actual_target_name, library_path
                 )
                 ep_devices = list(get_ep_devices())
                 report["environment"]["ep_devices_after_registration"] = [
@@ -311,7 +317,9 @@ def run(args: argparse.Namespace) -> int:
                 target_devices = [
                     d
                     for d in ep_devices
-                    if str(getattr(d, "ep_name", "")) == TARGET_EP
+                    if _ep_name_matches(
+                        getattr(d, "ep_name", ""), actual_target_name
+                    )
                 ]
                 if not target_devices:
                     report["status"] = "registration_not_visible"
