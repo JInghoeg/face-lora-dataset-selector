@@ -122,14 +122,21 @@ def _ep_device_row(device: Any) -> dict[str, Any]:
     }
 
 
+def _persist_report(report: dict[str, Any], output: str | None) -> None:
+    if not output:
+        return
+    path = Path(output).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+    path.write_text(payload + "\n", encoding="utf-8")
+
+
 def _write_report(report: dict[str, Any], output: str | None) -> None:
     payload = json.dumps(report, ensure_ascii=False, indent=2, default=str)
     print(payload)
+    _persist_report(report, output)
     if output:
-        path = Path(output).resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload + "\n", encoding="utf-8")
-        print(f"Wrote: {path}")
+        print(f"Wrote: {Path(output).resolve()}")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -276,7 +283,31 @@ def run(args: argparse.Namespace) -> int:
                     return 5
 
                 if ready_state in (not_present, not_ready):
-                    result = target.ensure_ready_async().get()
+                    report["status"] = "ensure_in_progress"
+                    report["ensure_started"] = True
+                    _persist_report(report, args.output)
+
+                    print(
+                        f"Preparing Windows ML EP: {actual_target_name} "
+                        f"(state={_enum_name(ready_state)})",
+                        flush=True,
+                    )
+                    operation = target.ensure_ready_async()
+
+                    def on_progress(async_info: Any, progress_info: Any) -> None:
+                        try:
+                            progress = float(progress_info)
+                            print(f"EP download progress: {progress:.0f}%", flush=True)
+                        except Exception:
+                            print(
+                                f"EP download progress: {progress_info}",
+                                flush=True,
+                            )
+
+                    operation.progress = on_progress
+                    result = operation.get()
+                    print("EnsureReadyAsync completed.", flush=True)
+
                     report["ensure_result"] = {
                         "status": _enum_name(getattr(result, "status", None)),
                         "diagnostic_text": str(
