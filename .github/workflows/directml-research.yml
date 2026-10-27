@@ -12,8 +12,6 @@ on:
       - "tools/build_portable.ps1"
       - "packaging/portable.spec"
       - ".github/workflows/directml-research.yml"
-      - "docs/research/DIRECTML_RUNTIME_EVALUATION.md"
-      - "docs/PROJECT_STATE.md"
   workflow_dispatch:
 
 permissions:
