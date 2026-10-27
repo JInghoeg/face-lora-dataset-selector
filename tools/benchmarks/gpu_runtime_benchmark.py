@@ -106,13 +106,21 @@ class NvidiaSampler:
         }
 
 
-def install_provider_override(provider):
+def install_provider_tracking(provider):
     import onnxruntime as ort
+    import infrastructure.inference_runtime as inference_runtime
 
-    requested = ["CPUExecutionProvider"] if provider == "cpu" else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    expected = {
+        "cpu": "CPUExecutionProvider",
+        "cuda": "CUDAExecutionProvider",
+        "directml": "DmlExecutionProvider",
+    }[provider]
     available = list(ort.get_available_providers())
-    if provider == "cuda" and "CUDAExecutionProvider" not in available:
-        raise RuntimeError(f"CUDAExecutionProvider unavailable; available={available!r}")
+    if expected not in available:
+        raise RuntimeError(
+            f"{expected} unavailable for provider={provider!r}; "
+            f"available={available!r}"
+        )
 
     preload = None
     if provider == "cuda" and hasattr(ort, "preload_dlls"):
@@ -122,29 +130,40 @@ def install_provider_override(provider):
         except Exception as exc:
             preload = f"{type(exc).__name__}: {exc}"
 
-    real_session = ort.InferenceSession
+    preference = "cpu" if provider == "cpu" else "gpu"
+    inference_runtime.configure_inference_runtime(preference)
+
+    real_create = inference_runtime.create_ort_session
     sessions = []
 
-    def patched(path_or_bytes, *args, **kwargs):
-        kwargs["providers"] = list(requested)
-        session = real_session(path_or_bytes, *args, **kwargs)
+    def tracked(ort_module, model_path, *, sess_options=None, preference=None, **kwargs):
+        session = real_create(
+            ort_module,
+            model_path,
+            sess_options=sess_options,
+            preference=preference,
+            **kwargs,
+        )
+        state = inference_runtime.runtime_snapshot(ort_module)
         sessions.append({
-            "model": str(path_or_bytes),
-            "requested": list(requested),
+            "model": str(model_path),
+            "requested_mode": provider,
+            "requested_preference": preference or inference_runtime.inference_preference(),
             "actual": list(session.get_providers()),
+            "fallback_reason": state.fallback_reason,
         })
         return session
 
-    ort.InferenceSession = patched
+    inference_runtime.create_ort_session = tracked
     return sessions, {
         "provider": provider,
-        "provider_order": requested,
+        "expected_execution_provider": expected,
         "available_providers": available,
         "onnxruntime_version": getattr(ort, "__version__", "unknown"),
         "onnxruntime_module": str(getattr(ort, "__file__", "")),
         "preload_dlls": preload,
+        "shared_runtime_preference": inference_runtime.inference_preference(),
     }
-
 
 def measure(name, fn, roots, sessions):
     before = snapshot(roots)
@@ -184,16 +203,23 @@ def measure(name, fn, roots, sessions):
 
 
 def run(args):
-    repo = Path(args.repo_root).resolve()
-    src = repo / "src"
-    if not src.is_dir():
-        raise SystemExit(f"src/ not found under {repo}")
-    sys.path.insert(0, str(src))
+    frozen = bool(getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None))
+    if frozen:
+        repo = Path(sys.executable).resolve().parent
+        resource_root = Path(sys._MEIPASS)
+    else:
+        repo = Path(args.repo_root).resolve()
+        src = repo / "src"
+        if not src.is_dir():
+            raise SystemExit(f"src/ not found under {repo}")
+        if str(src) not in sys.path:
+            sys.path.insert(0, str(src))
+        resource_root = repo / "resources"
     dataset = Path(args.dataset).resolve()
     if not dataset.is_dir():
         raise SystemExit(f"Dataset does not exist: {dataset}")
 
-    sessions, provider = install_provider_override(args.provider)
+    sessions, provider = install_provider_tracking(args.provider)
 
     from core.models import TextPhoto
     from features.auto_crop.service import detect_proposal as auto_detect
@@ -203,10 +229,15 @@ def run(args):
     from features.text_cleanup.service import AI_METHOD, TextCleanupService, _detected, detector_config, suggest
     from infrastructure.filesystem import IMAGE_EXTENSIONS
 
-    resources = repo / "resources"
-    model_cache = Path(args.model_cache or os.environ.get("FACE_LORA_MODEL_CACHE_ROOT") or repo.parent / "_FaceLoRA_ModelCache").resolve()
+    resources = resource_root
+    bundled_models = resources / "models"
+    model_cache = Path(
+        args.model_cache
+        or os.environ.get("FACE_LORA_MODEL_CACHE_ROOT")
+        or bundled_models
+    ).resolve()
     shared_cache = model_cache.parent / "_shared_cache" / "face-lora-dataset-selector"
-    roots = [resources / "models", model_cache, shared_cache]
+    roots = [bundled_models, model_cache, shared_cache]
     auto_cache = model_cache / "auto_crop"
     text_cache = model_cache / "text_cleanup"
     composite_cache = resources / "models" / "composite_split_cache"
@@ -216,8 +247,15 @@ def run(args):
         [p for p in dataset.rglob("*") if p.is_file() and p.suffix.lower() in set(IMAGE_EXTENSIONS)],
         key=lambda p: str(p).casefold(),
     )
-    if args.limit > 0:
-        files = files[: args.limit]
+    if args.limit > 0 and len(files) > args.limit:
+        if args.limit == 1:
+            files = [files[len(files) // 2]]
+        else:
+            indexes = [
+                round(i * (len(files) - 1) / (args.limit - 1))
+                for i in range(args.limit)
+            ]
+            files = [files[i] for i in indexes]
     if not files:
         raise SystemExit("No supported images found.")
 
@@ -385,11 +423,11 @@ def compare(args):
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Research-only CPU/CUDA benchmark for Face LoRA Dataset Selector")
+    p = argparse.ArgumentParser(description="Research-only CPU/GPU benchmark for Face LoRA Dataset Selector")
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
     r.add_argument("--dataset", required=True)
-    r.add_argument("--provider", choices=("cpu", "cuda"), required=True)
+    r.add_argument("--provider", choices=("cpu", "cuda", "directml"), required=True)
     r.add_argument("--limit", type=int, default=50, help="0 means all")
     r.add_argument("--stages", default=",".join(STAGES))
     r.add_argument("--migan-limit", type=int, default=5)
