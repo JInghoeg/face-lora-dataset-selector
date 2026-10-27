@@ -9,6 +9,7 @@ on:
       - "tools/benchmarks/requirements-windowsml.txt"
       - "tools/benchmarks/run-windows-ml-checkpoint.ps1"
       - "tools/benchmarks/run-windows-ml-checkpoint.cmd"
+      - "tools/benchmarks/RUN_CHECKPOINT.cmd"
       - "docs/research/windows-ml-runtime-evaluation.md"
       - ".github/workflows/windows-ml-research.yml"
   workflow_dispatch:
@@ -128,6 +129,12 @@ jobs:
         shell: cmd
         run: tools\benchmarks\run-windows-ml-checkpoint.cmd
 
+      - name: Exercise final interactive launcher
+        shell: cmd
+        env:
+          FACE_LORA_CHECKPOINT_NO_HOLD: "1"
+        run: tools\benchmarks\RUN_CHECKPOINT.cmd --wrapper-self-test
+
       - name: Safe discovery probe
         shell: pwsh
         run: |
@@ -180,37 +187,7 @@ jobs:
           Copy-Item "tools/benchmarks/run-windows-ml-checkpoint.ps1" $target
           Copy-Item "tools/benchmarks/run-windows-ml-checkpoint.cmd" $target
 
-          @'
-          @echo off
-          setlocal
-          cd /d "%~dp0"
-
-          set "LOGDIR=%~dp0_research_output\windows-ml-runtime"
-          if not exist "%LOGDIR%" mkdir "%LOGDIR%"
-          set "LOG=%LOGDIR%\checkpoint-console.log"
-
-          echo ========================================
-          echo   Windows ML Checkpoint
-          echo ========================================
-          echo.
-          echo Console output is also saved to:
-          echo   %LOG%
-          echo.
-
-          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
-            "& { & '%~dp0tools\benchmarks\run-windows-ml-checkpoint.cmd' %* 2^>^&1 ^| Tee-Object -FilePath '%LOG%'; exit $LASTEXITCODE }"
-          set "RC=%ERRORLEVEL%"
-
-          echo.
-          echo ========================================
-          echo   Checkpoint launcher exit code: %RC%
-          echo ========================================
-          echo.
-          echo The window will remain open.
-          echo Use Ctrl+A / Ctrl+C normally, or type EXIT when finished.
-          echo.
-          cmd /k
-          '@ | Set-Content -Encoding ASCII (Join-Path $bundle "RUN_CHECKPOINT.cmd")
+          Copy-Item "tools/benchmarks/RUN_CHECKPOINT.cmd" (Join-Path $bundle "RUN_CHECKPOINT.cmd")
 
           @'
           Windows ML target-workstation checkpoint
