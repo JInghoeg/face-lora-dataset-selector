@@ -53,7 +53,7 @@ Historical repository note:
 - Accepted-plan / execution-authorization continuity hardening is complete via Issue #76 / PR #77: future directions now have canonical status, plan-impact metadata is gated, and product/runtime PRs must record current-user execution authorization.
 - PR #78 merged at `016ff44a799e6ab95046a15a7cbd2f3dce55f631`: the research-only GPU benchmark harness and cost note are now on main. It also includes a continuity-gate bug fix that scopes State impact matching to the full Yes/No state-choice text. No production GPU provider decision was made.
 - PR #95 merged at `2cec63d3aa5d8dc05c73aa23133dc13f7ee05b59`: portable application settings and the shared `Auto / GPU / CPU` ONNX provider policy are now on `main`; feature ONNX sessions route through the infrastructure layer with mandatory CPU fallback.
-- DirectML repository-side accelerator validation is complete in PR #98: the separate Python 3.12 `onnxruntime-directml==1.24.4` profile builds and packages successfully, all seven project ONNX models pass shared-session/fallback validation, silent ORT-managed GPU→CPU fallback is now recorded correctly, and the packaged EXE self-test passes. The universal CPU Portable is 622.3 MB uncompressed versus 647.9 MB for DirectML (+25.6 MB / ~4.1%). This is deployment/fallback evidence, not target-RTX performance evidence.
+- PR #98 merged to `main` at `07342cc337e31ed66184c2a36ff64436c79a3595`: the separate Python 3.12 `onnxruntime-directml==1.24.4` profile builds and packages successfully, all seven project ONNX models pass shared-session/fallback validation, silent ORT-managed GPU→CPU fallback is recorded correctly, and the packaged EXE self-test passes. The universal CPU Portable is 622.3 MB uncompressed versus 647.9 MB for DirectML (+25.6 MB / ~4.1%). This is deployment/fallback evidence, not target-RTX performance evidence.
 
 ## In progress
 
@@ -63,7 +63,8 @@ Historical repository note:
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
-- Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
+- Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in merged PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
+- **Active authorized accelerator slice (2026-10-27):** prepare one self-contained CPU-vs-DirectML target-performance checkpoint on branch `research/v0.4-directml-performance-checkpoint`; no Python/Conda/system-EP installation is allowed on the target workstation.
 - Background Composite → Auto Crop enrichment and the full Settings UI remain sequenced after the accelerator resource/performance decision.
 
 ## Current objective
@@ -103,15 +104,16 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
+- Issue #55 — actual DirectML activation and performance on the target RTX workstation remain HUMAN UNVERIFIED; repository-side deployment/fallback validation is complete.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. merge the bounded DirectML infrastructure/profile baseline after PR #98 gates remain green; keep #55 open because real-GPU performance is still unverified;
-2. prepare the final target-workstation checkpoint as a single self-contained DirectML performance validation rather than another dependency/launcher experiment;
-3. use that checkpoint to decide whether DirectML becomes the optional accelerated Portable profile or whether the product stays CPU-only;
+1. prepare one self-contained DirectML performance checkpoint that uses the merged shared provider policy, runs CPU and DirectML against the same bounded dataset subset, and writes one comparison report;
+2. CI must build and smoke-test the checkpoint artifact before it reaches the target workstation; no Python/Conda/system runtime installation is permitted there;
+3. use that single checkpoint to decide whether DirectML becomes the optional accelerated Portable profile or whether the product stays CPU-only;
 4. then proceed to background enrichment/streaming review before the full Settings UI.
 
 ## Do not repeat
