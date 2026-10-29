@@ -436,7 +436,7 @@ class LegacyCompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -877,6 +877,7 @@ class Window(QMainWindow):
     def invalidate_background_enrichment(self):
         self.background_enrichment_generation += 1
         self.background_refresh_scheduled = False
+        self.background_enrichment_restart_pending = False
         self.background_incremental_deferred = False
         thread = self.background_enrichment_thread
         if thread is not None and thread.isRunning():
@@ -901,8 +902,12 @@ class Window(QMainWindow):
         return None
 
     def start_background_enrichment(self):
-        if not self.records or self.background_enrichment_running():
+        if not self.records:
             return
+        if self.background_enrichment_running():
+            self.background_enrichment_restart_pending = True
+            return
+        self.background_enrichment_restart_pending = False
         if not (
             BACKEND.feature_available('composite')
             or BACKEND.feature_available('auto_crop')
@@ -1000,6 +1005,8 @@ class Window(QMainWindow):
     def _background_refresh(self):
         self.background_refresh_scheduled = False
         if not self.records:
+            return
+        if self.thread is not None and self.thread.isRunning():
             return
         self.update_composite_button()
         self.update_auto_crop_button()
@@ -1111,10 +1118,6 @@ class Window(QMainWindow):
                     errors=errors,
                 )
             )
-        if self.background_incremental_deferred:
-            self.background_incremental_deferred = False
-            QTimer.singleShot(0, self.start_incremental_composite_analysis)
-
     @Slot(int, str)
     def background_enrichment_failed(self, generation, error):
         if generation != self.background_enrichment_generation:
@@ -1146,12 +1149,20 @@ class Window(QMainWindow):
         self._background_refresh()
 
     def background_enrichment_thread_done(self):
+        restart = self.background_enrichment_restart_pending
+        deferred_incremental = self.background_incremental_deferred
         if self.background_enrichment_worker:
             self.background_enrichment_worker.deleteLater()
         if self.background_enrichment_thread:
             self.background_enrichment_thread.deleteLater()
         self.background_enrichment_worker = None
         self.background_enrichment_thread = None
+        self.background_enrichment_restart_pending = False
+        if restart:
+            QTimer.singleShot(0, self.start_background_enrichment)
+        elif deferred_incremental:
+            self.background_incremental_deferred = False
+            QTimer.singleShot(0, self.start_incremental_composite_analysis)
 
     @staticmethod
     def thumb(p):
