@@ -73,7 +73,7 @@ Historical repository note:
 
 1. identify the actual DirectML target-machine failure layer before making any GPU product decision;
 2. replace the whole-workflow checkpoint as the primary diagnostic with a DirectML-only microprobe that isolates adapter index, model, session creation, and first Run in separate watchdog-bounded subprocesses;
-3. verify which DirectML device_id maps to the intended RTX 5080 rather than assuming adapter 0;
+3. verify adapter selection explicitly; ONNX Runtime DirectML 1.24.4 defaults to DXCore high-performance GPU selection when no device_id is supplied, so do not assume either adapter 0 or iGPU mis-selection without evidence;
 4. only after root cause is identified, decide whether to repair DirectML integration or choose another GPU runtime path;
 5. keep merged background-enrichment work intact, but pause Settings UI as the active next slice until the GPU runtime question is actually resolved.
 
