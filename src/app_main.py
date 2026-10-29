@@ -22,7 +22,7 @@ try:
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -436,7 +436,7 @@ class LegacyCompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -726,7 +726,7 @@ class Window(QMainWindow):
         self.cancel_analysis_btn.hide();self.cancel_analysis_btn.setEnabled(True)
 
     def cancel_active_analysis(self):
-        for name in ('thread','composite_thread','auto_crop_thread','incremental_thread'):
+        for name in ('thread','composite_thread','auto_crop_thread','background_enrichment_thread','incremental_thread'):
             thread=getattr(self,name,None)
             if thread is not None and thread.isRunning():
                 runtime_event('analysis_cancel_requested',thread=name)
@@ -850,6 +850,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
+        self.invalidate_background_enrichment()
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.begin_cancellable_analysis(self._tr_main('分析准备中…'));self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.dataset_status,Qt.ConnectionType.QueuedConnection);self.worker.progress.connect(self.dataset_progress,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.done,Qt.ConnectionType.QueuedConnection);self.worker.failed.connect(self.dataset_failed,Qt.ConnectionType.QueuedConnection);self.worker.cancelled.connect(self.dataset_cancelled,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.worker.cancelled.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start(QThread.Priority.LowPriority)
     def done(self,rs):
         self.records=rs
@@ -864,8 +865,305 @@ class Window(QMainWindow):
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
             self.quick_mode='';set_combo_value(self.view_combo,'全部');self.refresh()
-        self.finish_operation_ui();self.save()
+        self.finish_operation_ui();self.save();QTimer.singleShot(0,self.start_background_enrichment)
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
+
+    def background_enrichment_running(self):
+        return bool(
+            self.background_enrichment_thread
+            and self.background_enrichment_thread.isRunning()
+        )
+
+    def invalidate_background_enrichment(self):
+        self.background_enrichment_generation += 1
+        self.background_refresh_scheduled = False
+        self.background_enrichment_restart_pending = False
+        self.background_incremental_deferred = False
+        thread = self.background_enrichment_thread
+        if thread is not None and thread.isRunning():
+            runtime_event(
+                'background_enrichment_cancel_requested',
+                generation=self.background_enrichment_generation,
+            )
+            thread.requestInterruption()
+
+    def _background_record(self, sample_id, path_text):
+        if sample_id:
+            for record in self.records:
+                if record.sample_id == sample_id:
+                    return record
+        try:
+            wanted = key(Path(path_text))
+        except Exception:
+            wanted = str(path_text).casefold()
+        for record in self.records:
+            if key(record.path) == wanted:
+                return record
+        return None
+
+    def start_background_enrichment(self):
+        if not self.records:
+            return
+        if self.background_enrichment_running():
+            self.background_enrichment_restart_pending = True
+            return
+        self.background_enrichment_restart_pending = False
+        if not (
+            BACKEND.feature_available('composite')
+            or BACKEND.feature_available('auto_crop')
+        ):
+            return
+
+        plan = BACKEND.background_enrichment_plan(self.records)
+        if not plan.total:
+            self.update_composite_button()
+            self.update_auto_crop_button()
+            return
+
+        self.background_enrichment_generation += 1
+        generation = self.background_enrichment_generation
+        self.background_enrichment_dirty = 0
+        self.background_incremental_deferred = False
+
+        runtime_event(
+            'background_enrichment_begin',
+            generation=generation,
+            composite=len(plan.composite),
+            auto_crop=len(plan.auto_crop),
+        )
+        self.progress.setText(
+            self._tr_main(
+                '后台预扫已启动：Composite {composite} · Auto Crop {auto_crop}'
+            ).format(
+                composite=len(plan.composite),
+                auto_crop=len(plan.auto_crop),
+            )
+        )
+
+        self.background_enrichment_thread = QThread(self)
+        self.background_enrichment_worker = BackgroundEnrichmentWorker(
+            BACKEND,
+            generation,
+            plan,
+        )
+        self.background_enrichment_worker.moveToThread(
+            self.background_enrichment_thread
+        )
+        self.background_enrichment_thread.started.connect(
+            self.background_enrichment_worker.run
+        )
+        self.background_enrichment_worker.progress.connect(
+            self.background_enrichment_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.composite_ready.connect(
+            self.background_composite_ready,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.auto_crop_ready.connect(
+            self.background_auto_crop_ready,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.item_failed.connect(
+            self.background_enrichment_item_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.finished.connect(
+            self.background_enrichment_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.failed.connect(
+            self.background_enrichment_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.cancelled.connect(
+            self.background_enrichment_cancelled,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.finished.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_worker.failed.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_worker.cancelled.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_thread.finished.connect(
+            self.background_enrichment_thread_done
+        )
+        self.background_enrichment_thread.start(QThread.Priority.LowPriority)
+
+    def _background_mark_dirty(self):
+        self.background_enrichment_dirty += 1
+        if self.background_enrichment_dirty % 5 == 0:
+            self.save()
+        if not self.background_refresh_scheduled:
+            self.background_refresh_scheduled = True
+            QTimer.singleShot(200, self._background_refresh)
+
+    def _background_refresh(self):
+        self.background_refresh_scheduled = False
+        if not self.records:
+            return
+        if self.thread is not None and self.thread.isRunning():
+            return
+        self.update_composite_button()
+        self.update_auto_crop_button()
+        self.refresh()
+
+    @Slot(int, str, str, object)
+    def background_composite_ready(self, generation, sample_id, path_text, proposal):
+        if generation != self.background_enrichment_generation:
+            return
+        record = self._background_record(sample_id, path_text)
+        if record is None or record.status != '推荐':
+            return
+        record.composite_proposal = proposal
+        record.composite_scan_version = BACKEND.composite_proposal_version
+        self._background_mark_dirty()
+
+    @Slot(int, str, str, object)
+    def background_auto_crop_ready(self, generation, sample_id, path_text, proposal):
+        if generation != self.background_enrichment_generation:
+            return
+        record = self._background_record(sample_id, path_text)
+        if record is None or record.status != '推荐':
+            return
+
+        # Re-evaluate policy on the GUI thread. A user may have changed the
+        # record while inference was running.
+        current_plan = BACKEND.background_enrichment_plan([record])
+        if not current_plan.auto_crop:
+            return
+
+        BACKEND.auto_crop_store_scan_result(record, proposal)
+        self._background_mark_dirty()
+
+    @Slot(int, str, int, int, str)
+    def background_enrichment_progress(
+        self,
+        generation,
+        kind,
+        current,
+        total,
+        name,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        if hasattr(self, 'operation_bar') and self.operation_bar.isVisible():
+            return
+        if kind == 'composite':
+            source = '后台预扫 Composite {current}/{total}：{name}'
+        else:
+            source = '后台预扫 Auto Crop {current}/{total}：{name}'
+        self.progress.setText(
+            self._tr_main(source).format(
+                current=current,
+                total=total,
+                name=name,
+            )
+        )
+
+    @Slot(int, str, str, str, str)
+    def background_enrichment_item_failed(
+        self,
+        generation,
+        kind,
+        sample_id,
+        path_text,
+        error,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_item_failed',
+            generation=generation,
+            kind=kind,
+            sample_id=sample_id,
+            path=path_text,
+            error=error,
+        )
+
+    @Slot(int, int, int, int)
+    def background_enrichment_finished(
+        self,
+        generation,
+        composite_done,
+        auto_crop_done,
+        errors,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+        runtime_event(
+            'background_enrichment_complete',
+            generation=generation,
+            composite=composite_done,
+            auto_crop=auto_crop_done,
+            errors=errors,
+        )
+        if not (
+            hasattr(self, 'operation_bar')
+            and self.operation_bar.isVisible()
+        ):
+            self.progress.setText(
+                self._tr_main(
+                    '后台预扫完成：Composite {composite} · Auto Crop {auto_crop} · 错误 {errors}'
+                ).format(
+                    composite=composite_done,
+                    auto_crop=auto_crop_done,
+                    errors=errors,
+                )
+            )
+    @Slot(int, str)
+    def background_enrichment_failed(self, generation, error):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_failed',
+            generation=generation,
+            error=error,
+        )
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+        if not (
+            hasattr(self, 'operation_bar')
+            and self.operation_bar.isVisible()
+        ):
+            self.progress.setText(self._tr_main('后台预扫失败；已保留已完成结果'))
+
+    @Slot(int)
+    def background_enrichment_cancelled(self, generation):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_cancelled',
+            generation=generation,
+        )
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+
+    def background_enrichment_thread_done(self):
+        restart = self.background_enrichment_restart_pending
+        deferred_incremental = self.background_incremental_deferred
+        if self.background_enrichment_worker:
+            self.background_enrichment_worker.deleteLater()
+        if self.background_enrichment_thread:
+            self.background_enrichment_thread.deleteLater()
+        self.background_enrichment_worker = None
+        self.background_enrichment_thread = None
+        self.background_enrichment_restart_pending = False
+        if restart:
+            QTimer.singleShot(0, self.start_background_enrichment)
+        elif deferred_incremental:
+            self.background_incremental_deferred = False
+            QTimer.singleShot(0, self.start_incremental_composite_analysis)
+
     @staticmethod
     def thumb(p):
         r=QImageReader(str(p));r.setAutoTransform(True);z=r.size()
@@ -996,12 +1294,29 @@ class Window(QMainWindow):
         for n,value in enumerate(YAWS):self.stat_button(f'{self._display_value(value)} {yw[value]}','yaw',value,6+n//2,n%2)
         self.stat_layout.addWidget(QLabel(self._tr_main('俯仰（推荐）')),9,0,1,3)
         for n,value in enumerate(PITCHES):self.stat_button(f'{self._display_value(value)} {pt[value]}','pitch',value,10+n//2,n%2)
+    def auto_crop_badge(self, record):
+        if not BACKEND.feature_available('auto_crop') or record.status!='推荐':
+            return ''
+        try:
+            proposal=BACKEND.auto_crop_proposal(record)
+        except Exception:
+            return ''
+        if proposal is None:
+            return ''
+        if proposal.decision=='accepted':
+            return self._tr_main('将裁剪')
+        if proposal.decision=='pending':
+            return self._tr_main('裁剪候选')
+        return ''
+
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);old_page=self.page;scroll=self.grid.verticalScrollBar().value();self.page,pages=clamp_page(self.page,len(visible));self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE];rows=[]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);raw_reason=r.recommendation_reasons[0] if r.recommendation_reasons else '';reason=self._reason_display(r,raw_reason) if raw_reason else self._tr_main('无')
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);raw_reason=r.recommendation_reasons[0] if r.recommendation_reasons else '';reason=self._reason_display(r,raw_reason) if raw_reason else self._tr_main('无');crop_badge=self.auto_crop_badge(r)
             tooltip=self._tr_main('{status} · {eligibility} · AI {ai} · 人脸 {faces} · {scale} · {angle} · eDifFIQA {quality} · 组 {rank}/{size}\n推荐/备选原因：{reason}').format(status=self._display_value(r.status),eligibility=r.eligibility,ai=self._display_value(r.ai_suggestion.decision if r.ai_suggestion else '无'),faces=r.faces,scale=self._display_value(r.person_scale),angle=self._display_value(r.angle_class),quality=f'{r.face_quality:.3f}',rank=gr,size=gs,reason=reason)
-            rows.append(DatasetViewRow(i,r.sample_id,r.path.name,tooltip,QIcon(pix),QColor(COLORS[r.status])))
+            if crop_badge:tooltip+='\n'+self._tr_main('自动裁剪：{state}').format(state=crop_badge)
+            display_text=r.path.name+(f'\n✂ {crop_badge}' if crop_badge else '')
+            rows.append(DatasetViewRow(i,r.sample_id,display_text,tooltip,QIcon(pix),QColor(COLORS[r.status])))
         self.dataset_model.set_rows(rows)
         self.page_label.setText(self._tr_main('第 {page}/{pages} 页').format(page=self.page+1,pages=pages));self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(self._tr_main('当前视图\n{description}\n显示：{visible} / {base} 张').format(description=self.view_description(),visible=len(visible),base=len(base)));self.refresh_stats();self.start_thumbnails(page_indices)
         if self.page==old_page:QTimer.singleShot(0,lambda v=scroll:self.grid.verticalScrollBar().setValue(v))
@@ -1234,6 +1549,21 @@ class Window(QMainWindow):
         if not BACKEND.feature_available('auto_crop'):return
         if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.auto_crop_thread and self.auto_crop_thread.isRunning():return
+        if self.background_enrichment_running():
+            candidates=BACKEND.auto_crop_review_records(self.records)
+            if not candidates:
+                self.progress.setText(self._tr_main('后台 Auto Crop 预扫仍在进行；候选完成后即可复核'))
+                return
+            AutoCropReviewDialog(
+                BACKEND,
+                self.records,
+                self.auto_crop_review_changed,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+            ).exec()
+            self.update_auto_crop_button()
+            return
         composite_pending=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if composite_pending:
             QMessageBox.warning(self,self._tr_main('请先完成组合图拆分'),self._tr_main('还有 {count} 张推荐图等待组合图拆分复核。\n\n自动裁剪只处理组合图拆分之后的单主体推荐图。').format(count=len(composite_pending)));return
@@ -1318,6 +1648,23 @@ class Window(QMainWindow):
         if not BACKEND.feature_available('composite'):return
         if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.composite_thread and self.composite_thread.isRunning():return
+        if self.background_enrichment_running():
+            candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
+            if not candidates:
+                self.progress.setText(self._tr_main('后台 Composite 预扫仍在进行；候选完成后即可复核'))
+                return
+            CompositeSplitReviewDialog(
+                BACKEND,
+                self.records,
+                self.composite_review_changed,
+                self.materialize_composite,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+                redetect_current=self.redetect_composite_record,
+            ).exec()
+            self.after_composite_review()
+            return
         todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
@@ -1407,7 +1754,12 @@ class Window(QMainWindow):
         if self.incremental_thread:self.incremental_thread.deleteLater()
         self.incremental_worker=None;self.incremental_thread=None
     def after_composite_review(self):
-        self.update_composite_button();self.start_incremental_composite_analysis()
+        self.update_composite_button()
+        if self.background_enrichment_running():
+            self.background_incremental_deferred=True
+            self.save()
+            return
+        self.start_incremental_composite_analysis()
     def composite_review_changed(self):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):

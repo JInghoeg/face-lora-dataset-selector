@@ -1,4 +1,5 @@
 from .auto_crop_review import AutoCropROIWidget, AutoCropReviewDialog
+from .background_enrichment import BackgroundEnrichmentWorker
 from .composite_split_review import CompositeSplitReviewDialog
 from .dataset_view import DatasetListModel, DatasetListView, DatasetViewRow
 from .duplicate_review import DuplicateReviewDialog
@@ -9,6 +10,7 @@ from .thumbnail import ThumbnailWorker
 __all__ = [
     "AutoCropROIWidget",
     "AutoCropReviewDialog",
+    "BackgroundEnrichmentWorker",
     "CompositeSplitReviewDialog",
     "DatasetListModel",
     "DatasetListView",

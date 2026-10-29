@@ -67,6 +67,7 @@ Historical repository note:
 - Issue #55 is closed with the v0.4 accelerator decision: keep the active product runtime CPU-oriented. DirectML passed repository-side packaging/fallback validation, but two real RTX 5080 target runs hung when entering the DirectML phase. Windows ML remains rejected for the current true-Portable goal, and the multi-GB self-contained CUDA packaging route remains rejected on payload cost.
 - The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. PR #100 and PR #101 repaired its unbounded-wait diagnostics after real target hangs. Those harness fixes are retained as research tooling, but the product decision no longer depends on another target rerun: repeated DirectML hangs on the RTX 5080 are sufficient negative deployment evidence for the current v0.4 cycle.
 - Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
+- PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
 
 ## Current objective
 
@@ -107,18 +108,18 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
 - Issue #55 accelerator research is closed; no further human GPU checkpoint is required for v0.4.
+- PR #103 background enrichment is HUMAN UNVERIFIED. Non-destructive automated coverage should land first; do not interrupt the user for per-fix QA unless automation exposes a blocker.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. implement the background enrichment coordinator without merging Composite/Auto Crop feature internals;
-2. after Dataset Analysis completes, enqueue only current 推荐 records that need Composite scanning;
-3. as Composite results become available, keep pending Composite candidates out of Auto Crop, but allow Composite-clear / explicitly rejected records to enter Auto Crop crop-needed pre-scan without waiting for every Composite review;
-4. persist background scan state/results incrementally so completed items are reviewable before the whole queue finishes;
-5. expose lightweight crop-needed state in Dataset Review and keep manual Auto Crop review authoritative;
-6. then build the real Settings UI and move runtime/background controls out of the crowded main screen.
+1. merge PR #103 with background enrichment HUMAN UNVERIFIED and carry it into the next coherent v0.4 QA checkpoint rather than stopping for per-fix manual QA;
+2. build the real Settings UI as the next active slice;
+3. move runtime/device and background-workflow controls out of the crowded main screen while keeping safe defaults;
+4. preserve background Composite → Auto Crop orchestration in the application/UI layer rather than coupling sibling feature modules;
+5. after Settings is stable, choose the next v0.4 slice from the accepted backlog / UI modernization plan.
 
 ## Do not repeat
 

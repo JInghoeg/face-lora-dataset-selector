@@ -9,9 +9,13 @@ on:
       - "app.py"
       - "src/app_main.py"
       - "src/ui/qt/dataset_view.py"
+      - "src/ui/qt/background_enrichment.py"
+      - "src/application/background_enrichment.py"
+      - "src/features/auto_crop/service.py"
       - "tests/dataset_view_ui_smoke.py"
       - "tests/app_shutdown_smoke.py"
       - "tests/operation_control_smoke.py"
+      - "tests/background_enrichment_smoke.py"
       - "tools/qa-portable.ps1"
       - "src/core/cancellation.py"
       - "src/infrastructure/runtime_tuning.py"
@@ -126,6 +130,11 @@ jobs:
         shell: pwsh
         run: |
           python tests/operation_control_smoke.py
+
+      - name: Background enrichment smoke
+        shell: pwsh
+        run: |
+          python tests/background_enrichment_smoke.py
 
       - name: QA helper smoke
         shell: pwsh

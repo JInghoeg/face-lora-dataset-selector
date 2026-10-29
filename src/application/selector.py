@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend, recommendation_qualified
@@ -20,6 +21,7 @@ from infrastructure.inference_runtime import (
     runtime_snapshot,
 )
 from infrastructure.settings_store import JsonSettingsStore
+from .background_enrichment import build_background_enrichment_plan
 from .dataset_refresh import DatasetRefreshService
 from .settings import SettingsService
 
@@ -250,8 +252,15 @@ class SelectorApplication:
         modules = self._composite_modules(required=False)
         return modules[1].proposal_from_dict(value) if modules else None
 
-    def composite_detect_proposal(self, image, model_cache: Path):
-        return self._composite_modules(required=True)[1].detect_proposal(image, model_cache)
+    @property
+    def composite_model_cache(self):
+        return self.bundled_models_root / "composite_split_cache"
+
+    def composite_detect_proposal(self, image, model_cache: Optional[Path] = None):
+        return self._composite_modules(required=True)[1].detect_proposal(
+            image,
+            model_cache or self.composite_model_cache,
+        )
 
     def composite_proposal_from_detections(self, image_size, people, heads):
         return self._composite_modules(required=True)[1].proposal_from_detections(
@@ -416,6 +425,32 @@ class SelectorApplication:
     @property
     def auto_crop_model_cache(self):
         return self.bundled_models_root / "auto_crop"
+
+    def background_enrichment_plan(self, records):
+        auto_crop = self._auto_crop_module(required=False)
+        return build_background_enrichment_plan(
+            records,
+            composite_proposal_version=self.composite_proposal_version,
+            auto_crop_state_current=(
+                auto_crop.scan_state_current
+                if auto_crop is not None
+                else (lambda _record: True)
+            ),
+            composite_available=self._composite_modules(required=False) is not None,
+            auto_crop_available=auto_crop is not None,
+        )
+
+    def auto_crop_detect_proposal(self, path: Path):
+        return self._auto_crop_module(required=True).detect_proposal(
+            path,
+            self.auto_crop_model_cache,
+        )
+
+    def auto_crop_store_scan_result(self, photo, proposal):
+        return self._auto_crop_module(required=True).store_scan_result(
+            photo,
+            proposal,
+        )
 
     def scan_auto_crop(
         self,
