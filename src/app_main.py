@@ -1283,12 +1283,29 @@ class Window(QMainWindow):
         for n,value in enumerate(YAWS):self.stat_button(f'{self._display_value(value)} {yw[value]}','yaw',value,6+n//2,n%2)
         self.stat_layout.addWidget(QLabel(self._tr_main('俯仰（推荐）')),9,0,1,3)
         for n,value in enumerate(PITCHES):self.stat_button(f'{self._display_value(value)} {pt[value]}','pitch',value,10+n//2,n%2)
+    def auto_crop_badge(self, record):
+        if not BACKEND.feature_available('auto_crop') or record.status!='推荐':
+            return ''
+        try:
+            proposal=BACKEND.auto_crop_proposal(record)
+        except Exception:
+            return ''
+        if proposal is None:
+            return ''
+        if proposal.decision=='accepted':
+            return self._tr_main('将裁剪')
+        if proposal.decision=='pending':
+            return self._tr_main('裁剪候选')
+        return ''
+
     def refresh(self):
         base=self.indices(False);visible=self.indices(True);old_page=self.page;scroll=self.grid.verticalScrollBar().value();self.page,pages=clamp_page(self.page,len(visible));self.thumb_generation+=1;start=self.page*PAGE;page_indices=visible[start:start+PAGE];rows=[]
         for i in page_indices:
-            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);raw_reason=r.recommendation_reasons[0] if r.recommendation_reasons else '';reason=self._reason_display(r,raw_reason) if raw_reason else self._tr_main('无')
+            r=self.records[i];gr,gs=self.group_rank(r);pix=self.cached_thumbnail(r) or self.placeholder();pix=self.decorated_thumbnail(r,pix);raw_reason=r.recommendation_reasons[0] if r.recommendation_reasons else '';reason=self._reason_display(r,raw_reason) if raw_reason else self._tr_main('无');crop_badge=self.auto_crop_badge(r)
             tooltip=self._tr_main('{status} · {eligibility} · AI {ai} · 人脸 {faces} · {scale} · {angle} · eDifFIQA {quality} · 组 {rank}/{size}\n推荐/备选原因：{reason}').format(status=self._display_value(r.status),eligibility=r.eligibility,ai=self._display_value(r.ai_suggestion.decision if r.ai_suggestion else '无'),faces=r.faces,scale=self._display_value(r.person_scale),angle=self._display_value(r.angle_class),quality=f'{r.face_quality:.3f}',rank=gr,size=gs,reason=reason)
-            rows.append(DatasetViewRow(i,r.sample_id,r.path.name,tooltip,QIcon(pix),QColor(COLORS[r.status])))
+            if crop_badge:tooltip+='\n'+self._tr_main('自动裁剪：{state}').format(state=crop_badge)
+            display_text=r.path.name+(f'\n✂ {crop_badge}' if crop_badge else '')
+            rows.append(DatasetViewRow(i,r.sample_id,display_text,tooltip,QIcon(pix),QColor(COLORS[r.status])))
         self.dataset_model.set_rows(rows)
         self.page_label.setText(self._tr_main('第 {page}/{pages} 页').format(page=self.page+1,pages=pages));self.prev.setEnabled(self.page>0);self.next.setEnabled(self.page+1<pages);self.current_view_label.setText(self._tr_main('当前视图\n{description}\n显示：{visible} / {base} 张').format(description=self.view_description(),visible=len(visible),base=len(base)));self.refresh_stats();self.start_thumbnails(page_indices)
         if self.page==old_page:QTimer.singleShot(0,lambda v=scroll:self.grid.verticalScrollBar().setValue(v))
