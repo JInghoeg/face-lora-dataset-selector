@@ -66,6 +66,7 @@ Historical repository note:
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 is reopened. Two real RTX 5080 target runs hung in the DirectML path, but that evidence does not prove GPU acceleration is unsuitable. The previous closure was premature because the checkpoint did not isolate adapter selection, DirectML session creation, first inference, or the specific model that blocks.
 - The self-contained CPU-vs-DirectML target-performance checkpoint from PR #99/#100/#101 is retained as research tooling, but its diagnostics are now known to be insufficient for root cause: it emitted “provider setup finished” before creating any DirectML session, and it did not distinguish session creation from first Run for individual models.
+- PR #105 completes the repository-side DirectML root-cause probe: per-model/per-phase subprocess isolation, raw ORT vs shared-runtime comparisons, targeted metacommand/graph-optimization retries, explicit adapter trials only when the small sanity model fails, and a dual-session Ranking scenario that keeps eDifFIQA alive while creating/running 3DDFA. The diagnostic build/feed/drop-in automation is green. Actual RTX 5080 behavior remains HUMAN UNVERIFIED until the bounded probe is run once on the target workstation.
 - Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
 - PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
 
@@ -114,7 +115,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. build a bounded DirectML root-cause microprobe that does not rerun the CPU baseline and does not require Python/Conda/system installs;
+1. run the CI-validated PR #105 root-cause probe once on the RTX 5080 and inspect `directml-root-cause.json`;
 2. probe DirectML device_id candidates in separate processes and identify the adapter that actually executes on the RTX 5080;
 3. for each bundled ONNX model, record session-create start/end and first-Run start/end with short watchdogs so a native hang produces exact evidence;
 4. use that result to repair the GPU path, then return to Settings UI;
