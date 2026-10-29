@@ -70,6 +70,9 @@ class FakeBackend:
         self.composite_calls = []
         self.auto_calls = []
 
+    def feature_available(self, feature_id):
+        return feature_id in {"composite", "auto_crop"}
+
     def composite_detect_proposal(self, image):
         self.composite_calls.append(image.size)
         return None
