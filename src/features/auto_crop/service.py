@@ -144,6 +144,11 @@ def _state_is_current(state):
     return proposal_from_dict(proposal) is not None
 
 
+def scan_state_current(photo) -> bool:
+    """Return whether this photo already has a current Auto Crop scan state."""
+    return _state_is_current(_state(photo))
+
+
 def current_proposal(photo) -> Optional[AutoCropProposal]:
     state = _state(photo)
     if not _state_is_current(state):
@@ -161,6 +166,15 @@ def _write_state(photo, proposal=None, state_kind="scanned"):
         "state": state_kind,
         "proposal": proposal.to_dict() if proposal is not None else None,
     }
+
+
+def store_scan_result(photo, proposal):
+    """Persist one completed model scan without running inference here."""
+    if proposal is None:
+        _write_state(photo, None, state_kind="no_candidate")
+        return None
+    _write_state(photo, proposal, state_kind="candidate")
+    return proposal
 
 
 def _threshold_bbox(mask: np.ndarray, alpha_min: float):
@@ -286,11 +300,10 @@ def scan_records(
         proposal = detect_proposal(record.path, model_cache)
         check_cancelled(cancelled)
         result.scanned += 1
+        store_scan_result(record, proposal)
         if proposal is None:
-            _write_state(record, None, state_kind="no_candidate")
             result.no_candidate += 1
         else:
-            _write_state(record, proposal, state_kind="candidate")
             result.candidates += 1
         progress(index, len(targets), record.path.name)
 
