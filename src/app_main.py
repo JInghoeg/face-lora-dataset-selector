@@ -22,7 +22,7 @@ try:
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -436,7 +436,7 @@ class LegacyCompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -850,6 +850,7 @@ class Window(QMainWindow):
             self.pending_last_view=view_spec_from_dict(d.get('last_view')) if isinstance(d.get('last_view'),dict) else None;self.update_saved_view_combo();self.custom.setValue(self.target);self.sync_target_mode_ui();self.folder_label.setText(x);self.start()
     def start(self):
         if not self.folder or self.thread and self.thread.isRunning():return
+        self.invalidate_background_enrichment()
         self.pick.setEnabled(False);self.rescan.setEnabled(False);self.export.setEnabled(False);self.composite_btn.setEnabled(False);self.auto_crop_btn.setEnabled(False);self.organizer_btn.setEnabled(False);self.dataset_model.clear();self.begin_cancellable_analysis(self._tr_main('分析准备中…'));self.thread=QThread(self);self.worker=Analyzer(self.folder);self.worker.moveToThread(self.thread);self.thread.started.connect(self.worker.run);self.worker.status.connect(self.dataset_status,Qt.ConnectionType.QueuedConnection);self.worker.progress.connect(self.dataset_progress,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.done,Qt.ConnectionType.QueuedConnection);self.worker.failed.connect(self.dataset_failed,Qt.ConnectionType.QueuedConnection);self.worker.cancelled.connect(self.dataset_cancelled,Qt.ConnectionType.QueuedConnection);self.worker.finished.connect(self.thread.quit);self.worker.failed.connect(self.thread.quit);self.worker.cancelled.connect(self.thread.quit);self.thread.finished.connect(self.thread_done);self.thread.start(QThread.Priority.LowPriority)
     def done(self,rs):
         self.records=rs
@@ -864,7 +865,7 @@ class Window(QMainWindow):
             spec=self.pending_last_view;self.pending_last_view=None;self.apply_view_spec(spec)
         else:
             self.quick_mode='';set_combo_value(self.view_combo,'全部');self.refresh()
-        self.finish_operation_ui();self.save()
+        self.finish_operation_ui();self.save();QTimer.singleShot(0,self.start_background_enrichment)
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
     @staticmethod
     def thumb(p):
