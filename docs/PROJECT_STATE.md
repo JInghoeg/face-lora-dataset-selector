@@ -64,19 +64,18 @@ Historical repository note:
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
-- Issue #55 is closed with the v0.4 accelerator decision: keep the active product runtime CPU-oriented. DirectML passed repository-side packaging/fallback validation, but two real RTX 5080 target runs hung when entering the DirectML phase. Windows ML remains rejected for the current true-Portable goal, and the multi-GB self-contained CUDA packaging route remains rejected on payload cost.
-- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. PR #100 and PR #101 repaired its unbounded-wait diagnostics after real target hangs. Those harness fixes are retained as research tooling, but the product decision no longer depends on another target rerun: repeated DirectML hangs on the RTX 5080 are sufficient negative deployment evidence for the current v0.4 cycle.
+- Issue #55 is reopened. Two real RTX 5080 target runs hung in the DirectML path, but that evidence does not prove GPU acceleration is unsuitable. The previous closure was premature because the checkpoint did not isolate adapter selection, DirectML session creation, first inference, or the specific model that blocks.
+- The self-contained CPU-vs-DirectML target-performance checkpoint from PR #99/#100/#101 is retained as research tooling, but its diagnostics are now known to be insufficient for root cause: it emitted “provider setup finished” before creating any DirectML session, and it did not distinguish session creation from first Run for individual models.
 - Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
 - PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
 
 ## Current objective
 
-1. keep the production/runtime dependency line CPU-oriented for v0.4; do not ship a DirectML, Windows ML, or self-contained CUDA accelerator profile in the active product path;
-2. retain the shared inference-runtime abstraction and research harness as dormant groundwork only; no further target-machine accelerator debugging is required in this cycle;
-3. implement dependency-aware background enrichment after initial Dataset Analysis: background Composite scan first, then Auto Crop crop-needed pre-scan for eligible recommended images;
-4. preserve feature sibling independence: Composite and Auto Crop remain separate modules, with sequencing/orchestration owned by the application/UI layer rather than cross-feature imports;
-5. let review begin as soon as completed candidates exist, show lightweight per-image “will be cropped / crop candidate” state instead of adding an unrelated “show crop box” main-screen control;
-6. after background enrichment is stable, move overdue runtime/workflow controls into the Settings UI.
+1. identify the actual DirectML target-machine failure layer before making any GPU product decision;
+2. replace the whole-workflow checkpoint as the primary diagnostic with a DirectML-only microprobe that isolates adapter index, model, session creation, and first Run in separate watchdog-bounded subprocesses;
+3. verify adapter selection explicitly; ONNX Runtime DirectML 1.24.4 defaults to DXCore high-performance GPU selection when no device_id is supplied, so do not assume either adapter 0 or iGPU mis-selection without evidence;
+4. only after root cause is identified, decide whether to repair DirectML integration or choose another GPU runtime path;
+5. keep merged background-enrichment work intact, but pause Settings UI as the active next slice until the GPU runtime question is actually resolved.
 
 ## Accepted future directions
 
@@ -94,7 +93,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Accelerator research is closed for the current v0.4 cycle under Issue #55: CUDA payload cost, Windows ML portability friction, and repeated DirectML target hangs all outweigh the current product value. Reopen only with a materially different runtime/deployment option, not another checkpoint iteration.
+- Accelerator research under Issue #55 is active again. Do not infer that DirectML itself failed merely because the previous integrated checkpoint hung; first isolate adapter/model/phase and distinguish our integration defects from runtime defects.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -107,7 +106,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
-- Issue #55 accelerator research is closed; no further human GPU checkpoint is required for v0.4.
+- Issue #55 accelerator research is active. The next target-machine interaction must be a bounded DirectML-only root-cause probe, not another long CPU-vs-GPU benchmark.
 - PR #103 background enrichment is HUMAN UNVERIFIED. Non-destructive automated coverage should land first; do not interrupt the user for per-fix QA unless automation exposes a blocker.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
@@ -115,11 +114,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. merge PR #103 with background enrichment HUMAN UNVERIFIED and carry it into the next coherent v0.4 QA checkpoint rather than stopping for per-fix manual QA;
-2. build the real Settings UI as the next active slice;
-3. move runtime/device and background-workflow controls out of the crowded main screen while keeping safe defaults;
-4. preserve background Composite → Auto Crop orchestration in the application/UI layer rather than coupling sibling feature modules;
-5. after Settings is stable, choose the next v0.4 slice from the accepted backlog / UI modernization plan.
+1. build a bounded DirectML root-cause microprobe that does not rerun the CPU baseline and does not require Python/Conda/system installs;
+2. probe DirectML device_id candidates in separate processes and identify the adapter that actually executes on the RTX 5080;
+3. for each bundled ONNX model, record session-create start/end and first-Run start/end with short watchdogs so a native hang produces exact evidence;
+4. use that result to repair the GPU path, then return to Settings UI;
+5. keep PR #103 background enrichment as merged/HUMAN UNVERIFIED work; it is not rolled back by reopening GPU research.
 
 ## Do not repeat
 
