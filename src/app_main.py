@@ -1521,6 +1521,21 @@ class Window(QMainWindow):
         if not BACKEND.feature_available('auto_crop'):return
         if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.auto_crop_thread and self.auto_crop_thread.isRunning():return
+        if self.background_enrichment_running():
+            candidates=BACKEND.auto_crop_review_records(self.records)
+            if not candidates:
+                self.progress.setText(self._tr_main('后台 Auto Crop 预扫仍在进行；候选完成后即可复核'))
+                return
+            AutoCropReviewDialog(
+                BACKEND,
+                self.records,
+                self.auto_crop_review_changed,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+            ).exec()
+            self.update_auto_crop_button()
+            return
         composite_pending=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None and r.composite_proposal.decision=='pending']
         if composite_pending:
             QMessageBox.warning(self,self._tr_main('请先完成组合图拆分'),self._tr_main('还有 {count} 张推荐图等待组合图拆分复核。\n\n自动裁剪只处理组合图拆分之后的单主体推荐图。').format(count=len(composite_pending)));return
@@ -1605,6 +1620,23 @@ class Window(QMainWindow):
         if not BACKEND.feature_available('composite'):return
         if not self.records:QMessageBox.information(self,self._tr_main('没有数据'),self._tr_main('请先完成图片分析。'));return
         if self.composite_thread and self.composite_thread.isRunning():return
+        if self.background_enrichment_running():
+            candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
+            if not candidates:
+                self.progress.setText(self._tr_main('后台 Composite 预扫仍在进行；候选完成后即可复核'))
+                return
+            CompositeSplitReviewDialog(
+                BACKEND,
+                self.records,
+                self.composite_review_changed,
+                self.materialize_composite,
+                THUMB_CACHE,
+                self,
+                event_logger=runtime_event,
+                redetect_current=self.redetect_composite_record,
+            ).exec()
+            self.after_composite_review()
+            return
         todo=sum(r.status=='推荐' and r.composite_scan_version!=BACKEND.composite_proposal_version for r in self.records)
         if not todo:
             candidates=[r for r in self.records if r.status=='推荐' and r.composite_proposal is not None]
@@ -1694,7 +1726,12 @@ class Window(QMainWindow):
         if self.incremental_thread:self.incremental_thread.deleteLater()
         self.incremental_worker=None;self.incremental_thread=None
     def after_composite_review(self):
-        self.update_composite_button();self.start_incremental_composite_analysis()
+        self.update_composite_button()
+        if self.background_enrichment_running():
+            self.background_incremental_deferred=True
+            self.save()
+            return
+        self.start_incremental_composite_analysis()
     def composite_review_changed(self):
         self.save();self.update_composite_button()
     def open_duplicate_review(self):
