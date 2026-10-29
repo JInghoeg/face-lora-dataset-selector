@@ -64,17 +64,18 @@ Historical repository note:
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
-- Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in merged PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
-- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. The first real RTX target run exposed a checkpoint-harness blocker: once the CPU baseline completed and the DirectML worker entered the GPU phase, the GUI could wait indefinitely with only “正在测试 DirectML GPU…” because the wrapper used blocking `subprocess.run()`, buffered worker output, and no timeout. PR #100 replaced that wrapper with per-stage progress and bounded child-process control, but the first hotfix target rerun exposed a second harness bug: the startup-timeout guard incorrectly treated the early `worker_started` progress event as proof that a benchmark stage had begun, so a hang during DirectML provider initialization could still evade the 90-second pre-stage timeout. The active follow-up fixes that guard and records provider initialization explicitly before any benchmark stage.
-- Background Composite → Auto Crop enrichment and the full Settings UI remain sequenced after the accelerator resource/performance decision.
+- Issue #55 is closed with the v0.4 accelerator decision: keep the active product runtime CPU-oriented. DirectML passed repository-side packaging/fallback validation, but two real RTX 5080 target runs hung when entering the DirectML phase. Windows ML remains rejected for the current true-Portable goal, and the multi-GB self-contained CUDA packaging route remains rejected on payload cost.
+- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. PR #100 and PR #101 repaired its unbounded-wait diagnostics after real target hangs. Those harness fixes are retained as research tooling, but the product decision no longer depends on another target rerun: repeated DirectML hangs on the RTX 5080 are sufficient negative deployment evidence for the current v0.4 cycle.
+- Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
 
 ## Current objective
 
-1. keep the universal CPU Portable and its existing dependency line unchanged;
-2. retain DirectML as the optional accelerator candidate now that repository-side packaging/model/fallback validation is green and its measured Portable overhead is small;
-3. reduce the remaining GPU decision to one coherent target-workstation performance checkpoint that validates actual DirectML activation and real workflow wall-time value without system-level runtime/EP installation;
-4. do not resume Windows ML launcher experiments or the rejected multi-GB self-contained CUDA packaging route;
-5. only after the accelerator performance decision is stable, proceed to dependency-aware background Composite → Auto Crop enrichment and streaming review, then expose controls through the Settings UI.
+1. keep the production/runtime dependency line CPU-oriented for v0.4; do not ship a DirectML, Windows ML, or self-contained CUDA accelerator profile in the active product path;
+2. retain the shared inference-runtime abstraction and research harness as dormant groundwork only; no further target-machine accelerator debugging is required in this cycle;
+3. implement dependency-aware background enrichment after initial Dataset Analysis: background Composite scan first, then Auto Crop crop-needed pre-scan for eligible recommended images;
+4. preserve feature sibling independence: Composite and Auto Crop remain separate modules, with sequencing/orchestration owned by the application/UI layer rather than cross-feature imports;
+5. let review begin as soon as completed candidates exist, show lightweight per-image “will be cropped / crop candidate” state instead of adding an unrelated “show crop box” main-screen control;
+6. after background enrichment is stable, move overdue runtime/workflow controls into the Settings UI.
 
 ## Accepted future directions
 
@@ -92,7 +93,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Accelerator deployment remains under Issue #55: full self-contained CUDA is technically proven but rejected as a default due ~3.3 GB payload; Windows ML is parked after target-machine deployment friction; DirectML is the active bounded packaging/runtime candidate.
+- Accelerator research is closed for the current v0.4 cycle under Issue #55: CUDA payload cost, Windows ML portability friction, and repeated DirectML target hangs all outweigh the current product value. Reopen only with a materially different runtime/deployment option, not another checkpoint iteration.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -105,19 +106,19 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
-- Issue #55 — actual DirectML activation and performance on the target RTX workstation remain HUMAN UNVERIFIED; repository-side deployment/fallback validation is complete.
-- PR #100 checkpoint-harness repair remains HUMAN UNVERIFIED until the bounded replacement EXE is rerun on the target RTX workstation; automation validates packaging/drop-in behavior, not real GPU execution.
+- Issue #55 accelerator research is closed; no further human GPU checkpoint is required for v0.4.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. complete the startup-timeout follow-up to PR #100 and deploy its new drop-in checkpoint EXE over the already-extracted #99 checkpoint payload;
-2. rerun the bounded target RTX checkpoint once; provider initialization must either complete and enter a named benchmark stage or terminate automatically after the pre-stage timeout with explicit evidence;
-3. decide from actual provider activation, output parity, per-stage wall time and overall speedup whether DirectML becomes the optional accelerated Portable profile or the product stays CPU-only;
-4. record the decision in Issue #55 and close/supersede the accelerator research path accordingly;
-5. then proceed to background Composite → Auto Crop enrichment/streaming review before the full Settings UI.
+1. implement the background enrichment coordinator without merging Composite/Auto Crop feature internals;
+2. after Dataset Analysis completes, enqueue only current 推荐 records that need Composite scanning;
+3. as Composite results become available, keep pending Composite candidates out of Auto Crop, but allow Composite-clear / explicitly rejected records to enter Auto Crop crop-needed pre-scan without waiting for every Composite review;
+4. persist background scan state/results incrementally so completed items are reviewable before the whole queue finishes;
+5. expose lightweight crop-needed state in Dataset Review and keep manual Auto Crop review authoritative;
+6. then build the real Settings UI and move runtime/background controls out of the crowded main screen.
 
 ## Do not repeat
 
