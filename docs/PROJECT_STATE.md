@@ -106,6 +106,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
 - Issue #55 — actual DirectML activation and performance on the target RTX workstation remain HUMAN UNVERIFIED; repository-side deployment/fallback validation is complete.
+- PR #100 checkpoint-harness repair remains HUMAN UNVERIFIED until the bounded replacement EXE is rerun on the target RTX workstation; automation validates packaging/drop-in behavior, not real GPU execution.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
