@@ -33,7 +33,7 @@ DEFAULT_MIGAN_LIMIT = 3
 CPU_STAGE_TIMEOUT_SECONDS = 15 * 60
 DIRECTML_STAGE_TIMEOUT_SECONDS = 4 * 60
 PROVIDER_STARTUP_TIMEOUT_SECONDS = 90
-PROVIDER_TOTAL_TIMEOUT_SECONDS = 35 * 60
+PROVIDER_TOTAL_TIMEOUT_SECONDS = 12 * 60
 
 STAGE_LABELS = {
     "ranking": "Ranking",
@@ -314,6 +314,7 @@ class CheckpointWorker(QObject):
         current_stage = None
         stage_started = None
         seen_events = 0
+        first_stage_seen = False
         last_status_second = -1
 
         def terminate(reason: str) -> None:
@@ -346,7 +347,20 @@ class CheckpointWorker(QObject):
 
             for event in events:
                 kind = event.get("event")
-                if kind == "stage_started":
+                if kind == "provider_setup_started":
+                    self.status.emit(f"{provider_label}：初始化执行提供程序…")
+                    log.write("PROVIDER SETUP START\n")
+                    log.flush()
+                elif kind == "provider_setup_finished":
+                    self.status.emit(f"{provider_label}：执行提供程序初始化完成")
+                    log.write(
+                        "PROVIDER SETUP END: "
+                        f"expected={event.get('expected_execution_provider')} "
+                        f"available={event.get('available_providers')}\n"
+                    )
+                    log.flush()
+                elif kind == "stage_started":
+                    first_stage_seen = True
                     current_stage = str(event.get("stage") or "unknown")
                     stage_started = now
                     last_status_second = -1
@@ -377,10 +391,10 @@ class CheckpointWorker(QObject):
                 )
 
             if current_stage is None:
-                if seen_events == 0 and provider_elapsed > PROVIDER_STARTUP_TIMEOUT_SECONDS:
+                if (not first_stage_seen) and provider_elapsed > PROVIDER_STARTUP_TIMEOUT_SECONDS:
                     terminate(
                         f"{provider_label} 在 {PROVIDER_STARTUP_TIMEOUT_SECONDS} 秒内"
-                        "没有进入任何测试阶段，已自动终止。"
+                        "没有完成初始化并进入任何测试阶段，已自动终止。"
                     )
             elif stage_started is not None:
                 stage_elapsed = now - stage_started

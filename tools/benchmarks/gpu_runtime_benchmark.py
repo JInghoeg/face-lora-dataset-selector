@@ -236,6 +236,7 @@ def measure(name, fn, roots, sessions):
 def run(args):
     configure_progress(getattr(args, "progress", None))
     emit_progress("worker_started", provider=args.provider)
+    emit_progress("provider_setup_started", provider=args.provider)
     frozen = bool(getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None))
     if frozen:
         repo = Path(sys.executable).resolve().parent
@@ -253,6 +254,12 @@ def run(args):
         raise SystemExit(f"Dataset does not exist: {dataset}")
 
     sessions, provider = install_provider_tracking(args.provider)
+    emit_progress(
+        "provider_setup_finished",
+        provider=args.provider,
+        expected_execution_provider=provider.get("expected_execution_provider"),
+        available_providers=provider.get("available_providers"),
+    )
 
     from core.models import TextPhoto
     from features.auto_crop.service import detect_proposal as auto_detect

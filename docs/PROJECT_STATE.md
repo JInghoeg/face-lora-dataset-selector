@@ -65,7 +65,7 @@ Historical repository note:
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in merged PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
-- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. The first real RTX target run exposed a checkpoint-harness blocker: once the CPU baseline completed and the DirectML worker entered the GPU phase, the GUI could wait indefinitely with only “正在测试 DirectML GPU…” because the wrapper used blocking `subprocess.run()`, buffered worker output, and no timeout. PR #100 repairs that harness with per-stage progress, bounded worker timeouts, automatic child-process termination, preserved failure evidence, and a CI-validated drop-in replacement EXE so the already-downloaded model payload can be reused.
+- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. The first real RTX target run exposed a checkpoint-harness blocker: once the CPU baseline completed and the DirectML worker entered the GPU phase, the GUI could wait indefinitely with only “正在测试 DirectML GPU…” because the wrapper used blocking `subprocess.run()`, buffered worker output, and no timeout. PR #100 replaced that wrapper with per-stage progress and bounded child-process control, but the first hotfix target rerun exposed a second harness bug: the startup-timeout guard incorrectly treated the early `worker_started` progress event as proof that a benchmark stage had begun, so a hang during DirectML provider initialization could still evade the 90-second pre-stage timeout. The active follow-up fixes that guard and records provider initialization explicitly before any benchmark stage.
 - Background Composite → Auto Crop enrichment and the full Settings UI remain sequenced after the accelerator resource/performance decision.
 
 ## Current objective
@@ -113,8 +113,8 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. complete PR #100 and deploy its CI-validated drop-in checkpoint EXE over the already-extracted #99 checkpoint payload;
-2. rerun the bounded target RTX checkpoint once; if DirectML blocks again, use the generated stage/progress/error evidence rather than manual debugging or an indefinite wait;
+1. complete the startup-timeout follow-up to PR #100 and deploy its new drop-in checkpoint EXE over the already-extracted #99 checkpoint payload;
+2. rerun the bounded target RTX checkpoint once; provider initialization must either complete and enter a named benchmark stage or terminate automatically after the pre-stage timeout with explicit evidence;
 3. decide from actual provider activation, output parity, per-stage wall time and overall speedup whether DirectML becomes the optional accelerated Portable profile or the product stays CPU-only;
 4. record the decision in Issue #55 and close/supersede the accelerator research path accordingly;
 5. then proceed to background Composite → Auto Crop enrichment/streaming review before the full Settings UI.
