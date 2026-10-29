@@ -36,6 +36,8 @@ PROBE_KEYS = (
     "isnetis",
     "migan",
 )
+SCENARIO_KEYS = ("ranking_pair",)
+ALL_KEYS = PROBE_KEYS + SCENARIO_KEYS
 
 MODEL_PATHS = {
     "yunet": "yunet_2023mar.onnx",
@@ -208,9 +210,100 @@ def create_session(model, args):
     )
 
 
+def child_ranking_pair(args, progress: Path, result_path: Path) -> int:
+    if args.route != "shared" or args.variant != "default" or args.device_id is not None:
+        raise ValueError("ranking_pair requires shared/default/automatic device selection")
+
+    _ensure_src_path()
+    from infrastructure import inference_runtime
+    from infrastructure.runtime_tuning import configure_ort_cpu_options
+
+    inference_runtime.configure_inference_runtime("gpu")
+    root = models_root()
+    models = (
+        ("ediffiqa", root / MODEL_PATHS["ediffiqa"]),
+        ("3ddfa_with_ediff_alive", root / MODEL_PATHS["3ddfa"]),
+    )
+    sessions = []
+    result = {
+        "schema_version": 1,
+        "model": "ranking_pair",
+        "variant": args.variant,
+        "device_id": args.device_id,
+        "provider": args.provider,
+        "route": args.route,
+        "available_providers": list(ort.get_available_providers()),
+        "steps": [],
+        "status": "started",
+    }
+    try:
+        for label, model in models:
+            append_event(progress, "session_create_started", label=label, route="shared", model_path=str(model))
+            t0 = time.perf_counter()
+            session = inference_runtime.create_ort_session(
+                ort,
+                str(model),
+                sess_options=configure_ort_cpu_options(ort),
+            )
+            create_seconds = time.perf_counter() - t0
+            append_event(
+                progress,
+                "session_create_finished",
+                label=label,
+                seconds=round(create_seconds, 6),
+                providers=list(session.get_providers()),
+                provider_options=session.get_provider_options(),
+            )
+            feed_key = "ediffiqa" if label == "ediffiqa" else "3ddfa"
+            feeds = make_feeds(session, feed_key)
+            append_event(
+                progress,
+                "first_run_started",
+                label=label,
+                feeds={name: list(value.shape) for name, value in feeds.items()},
+            )
+            t1 = time.perf_counter()
+            outputs = session.run(None, feeds)
+            run_seconds = time.perf_counter() - t1
+            append_event(
+                progress,
+                "first_run_finished",
+                label=label,
+                seconds=round(run_seconds, 6),
+                output_shapes=[list(np.asarray(value).shape) for value in outputs],
+            )
+            result["steps"].append(
+                {
+                    "label": label,
+                    "session_create_seconds": round(create_seconds, 6),
+                    "first_run_seconds": round(run_seconds, 6),
+                    "providers": list(session.get_providers()),
+                }
+            )
+            sessions.append(session)
+
+        result["status"] = "pass"
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        append_event(progress, "child_finished", status="pass")
+        return 0
+    except Exception as exc:
+        result["status"] = "error"
+        result["error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        append_event(progress, "child_finished", status="error", error=str(exc))
+        return 2
+
+
 def child_probe(args) -> int:
     progress = Path(args.progress).resolve()
     result_path = Path(args.output).resolve()
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    if args.model == "ranking_pair":
+        return child_ranking_pair(args, progress, result_path)
     model = models_root() / MODEL_PATHS[args.model]
 
     result = {
@@ -247,6 +340,7 @@ def child_probe(args) -> int:
         append_event(
             progress,
             "session_create_started",
+            label=args.model,
             route=args.route,
             providers=provider_description,
         )
@@ -257,6 +351,7 @@ def child_probe(args) -> int:
         append_event(
             progress,
             "session_create_finished",
+            label=args.model,
             seconds=round(session_seconds, 6),
             providers=list(session.get_providers()),
             provider_options=provider_options,
@@ -274,13 +369,14 @@ def child_probe(args) -> int:
         result["feed_shapes"] = {name: list(value.shape) for name, value in feeds.items()}
         result["feed_dtypes"] = {name: str(value.dtype) for name, value in feeds.items()}
 
-        append_event(progress, "first_run_started", feeds=result["feed_shapes"])
+        append_event(progress, "first_run_started", label=args.model, feeds=result["feed_shapes"])
         t1 = time.perf_counter()
         outputs = session.run(None, feeds)
         run_seconds = time.perf_counter() - t1
         append_event(
             progress,
             "first_run_finished",
+            label=args.model,
             seconds=round(run_seconds, 6),
             output_shapes=[list(np.asarray(value).shape) for value in outputs],
         )
@@ -390,7 +486,7 @@ def run_bounded_probe(root: Path, model: str, variant: str = "default", device_i
                 for event in events[last_event_count:]:
                     kind = event.get("event")
                     if kind == "session_create_started":
-                        phase = "session_create"
+                        phase = "session_create:" + str(event.get("label") or model)
                         phase_started = time.monotonic()
                         timeout = SESSION_TIMEOUT_SECONDS
                     elif kind == "session_create_finished":
@@ -398,7 +494,7 @@ def run_bounded_probe(root: Path, model: str, variant: str = "default", device_i
                         phase_started = time.monotonic()
                         timeout = BOOT_TIMEOUT_SECONDS
                     elif kind == "first_run_started":
-                        phase = "first_run"
+                        phase = "first_run:" + str(event.get("label") or model)
                         phase_started = time.monotonic()
                         timeout = RUN_TIMEOUT_SECONDS
                     elif kind in ("first_run_finished", "child_finished"):
@@ -526,6 +622,10 @@ def run_parent(gui_status=None):
             # not a raw ORT session. Probe both layers before moving on.
             run_one(model, route="shared")
 
+    # Reproduce the actual Ranking lifetime: keep eDifFIQA alive while the
+    # 3DDFA DirectML session is created and run in the same process.
+    run_one("ranking_pair", route="shared")
+
     summary = {
         "schema_version": 1,
         "kind": "face-lora-directml-root-cause",
@@ -638,7 +738,7 @@ def run_gui():
 def parser():
     p = argparse.ArgumentParser(description="Bounded DirectML root-cause probe")
     p.add_argument("--probe-child", action="store_true")
-    p.add_argument("--model", choices=PROBE_KEYS)
+    p.add_argument("--model", choices=ALL_KEYS)
     p.add_argument("--variant", choices=("default", "metacommands_off", "graphopt_off"), default="default")
     p.add_argument("--device-id", type=int, default=None)
     p.add_argument("--provider", choices=("directml", "cpu"), default="directml")
