@@ -30,6 +30,18 @@ import gpu_runtime_benchmark as benchmark
 DEFAULT_LIMIT = 30
 DEFAULT_STAGES = ",".join(benchmark.STAGES)
 DEFAULT_MIGAN_LIMIT = 3
+CPU_STAGE_TIMEOUT_SECONDS = 15 * 60
+DIRECTML_STAGE_TIMEOUT_SECONDS = 4 * 60
+PROVIDER_STARTUP_TIMEOUT_SECONDS = 90
+PROVIDER_TOTAL_TIMEOUT_SECONDS = 35 * 60
+
+STAGE_LABELS = {
+    "ranking": "Ranking",
+    "auto_crop": "Auto Crop",
+    "composite": "Composite Split",
+    "text_scan": "Text Scan",
+    "migan": "MI-GAN",
+}
 
 
 def app_dir() -> Path:
@@ -48,6 +60,7 @@ def worker_command(
     provider: str,
     dataset: Path,
     output: Path,
+    progress: Path,
     limit: int,
 ) -> list[str]:
     args = [
@@ -58,6 +71,8 @@ def worker_command(
         str(dataset),
         "--output",
         str(output),
+        "--progress",
+        str(progress),
         "--limit",
         str(limit),
     ]
@@ -76,6 +91,7 @@ def run_worker(args: argparse.Namespace) -> int:
         migan_limit=DEFAULT_MIGAN_LIMIT,
         model_cache=str(resource_models_root()),
         output=str(Path(args.output).resolve()),
+        progress=str(Path(args.progress).resolve()) if args.progress else None,
     )
     return int(benchmark.run(ns))
 
@@ -267,36 +283,134 @@ class CheckpointWorker(QObject):
         self.limit = int(limit)
 
     def _run_provider(self, provider: str, output: Path, log) -> None:
-        self.status.emit(
-            "正在测试 CPU 基线…" if provider == "cpu"
-            else "正在测试 DirectML GPU…"
-        )
+        provider_label = "CPU" if provider == "cpu" else "DirectML GPU"
+        self.status.emit(f"正在启动 {provider_label} 测试…")
+        progress_path = output.with_suffix(".progress.jsonl")
+        if progress_path.exists():
+            progress_path.unlink()
         command = worker_command(
             provider,
             self.dataset,
             output,
+            progress_path,
             self.limit,
         )
         creationflags = 0
         if os.name == "nt":
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        cp = subprocess.run(
+
+        log.write(f"\n===== {provider.upper()} =====\n")
+        log.write("COMMAND: " + " ".join(command) + "\n")
+        log.flush()
+
+        process = subprocess.Popen(
             command,
             cwd=str(app_dir()),
-            stdout=subprocess.PIPE,
+            stdout=log,
             stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             creationflags=creationflags,
         )
-        log.write(f"\n===== {provider.upper()} =====\n")
-        log.write(cp.stdout or "")
-        log.flush()
-        if cp.returncode != 0:
+        provider_started = time.monotonic()
+        current_stage = None
+        stage_started = None
+        seen_events = 0
+        last_status_second = -1
+
+        def terminate(reason: str) -> None:
+            log.write(f"\nTIMEOUT: {reason}\n")
+            log.flush()
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+            raise RuntimeError(reason)
+
+        while True:
+            now = time.monotonic()
+            events = []
+            if progress_path.exists():
+                try:
+                    lines = progress_path.read_text(encoding="utf-8").splitlines()
+                    for raw in lines[seen_events:]:
+                        try:
+                            events.append(json.loads(raw))
+                        except json.JSONDecodeError:
+                            continue
+                    seen_events = len(lines)
+                except OSError:
+                    pass
+
+            for event in events:
+                kind = event.get("event")
+                if kind == "stage_started":
+                    current_stage = str(event.get("stage") or "unknown")
+                    stage_started = now
+                    last_status_second = -1
+                    label = STAGE_LABELS.get(current_stage, current_stage)
+                    self.status.emit(f"{provider_label}：{label}…")
+                    log.write(f"STAGE START: {current_stage}\n")
+                    log.flush()
+                elif kind == "stage_finished":
+                    stage = str(event.get("stage") or current_stage or "unknown")
+                    log.write(
+                        f"STAGE END: {stage} status={event.get('status')} "
+                        f"wall={event.get('wall_seconds')}\n"
+                    )
+                    log.flush()
+                    if stage == current_stage:
+                        current_stage = None
+                        stage_started = None
+
+            returncode = process.poll()
+            if returncode is not None:
+                break
+
+            provider_elapsed = now - provider_started
+            if provider_elapsed > PROVIDER_TOTAL_TIMEOUT_SECONDS:
+                terminate(
+                    f"{provider_label} 整体运行超过 "
+                    f"{PROVIDER_TOTAL_TIMEOUT_SECONDS // 60} 分钟，已自动终止。"
+                )
+
+            if current_stage is None:
+                if seen_events == 0 and provider_elapsed > PROVIDER_STARTUP_TIMEOUT_SECONDS:
+                    terminate(
+                        f"{provider_label} 在 {PROVIDER_STARTUP_TIMEOUT_SECONDS} 秒内"
+                        "没有进入任何测试阶段，已自动终止。"
+                    )
+            elif stage_started is not None:
+                stage_elapsed = now - stage_started
+                timeout = (
+                    CPU_STAGE_TIMEOUT_SECONDS
+                    if provider == "cpu"
+                    else DIRECTML_STAGE_TIMEOUT_SECONDS
+                )
+                second = int(stage_elapsed)
+                if second != last_status_second:
+                    last_status_second = second
+                    label = STAGE_LABELS.get(current_stage, current_stage)
+                    self.status.emit(
+                        f"{provider_label}：{label}（{second}s）"
+                    )
+                if stage_elapsed > timeout:
+                    label = STAGE_LABELS.get(current_stage, current_stage)
+                    terminate(
+                        f"{provider_label} 的 {label} 阶段超过 "
+                        f"{timeout // 60} 分钟无结果，已自动终止。"
+                    )
+
+            time.sleep(0.25)
+
+        if process.returncode != 0:
             raise RuntimeError(
-                f"{provider} benchmark failed with exit code {cp.returncode}"
+                f"{provider} benchmark failed with exit code {process.returncode}"
             )
+        if not output.exists():
+            raise RuntimeError(f"{provider} benchmark exited without report: {output}")
 
     @Slot()
     def run(self) -> None:
@@ -443,6 +557,7 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--dataset")
     p.add_argument("--output")
+    p.add_argument("--progress")
     p.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     return p
 
