@@ -33,7 +33,7 @@ DEFAULT_MIGAN_LIMIT = 3
 CPU_STAGE_TIMEOUT_SECONDS = 15 * 60
 DIRECTML_STAGE_TIMEOUT_SECONDS = 4 * 60
 PROVIDER_STARTUP_TIMEOUT_SECONDS = 90
-PROVIDER_TOTAL_TIMEOUT_SECONDS = 35 * 60
+PROVIDER_TOTAL_TIMEOUT_SECONDS = 12 * 60
 
 STAGE_LABELS = {
     "ranking": "Ranking",
@@ -314,6 +314,7 @@ class CheckpointWorker(QObject):
         current_stage = None
         stage_started = None
         seen_events = 0
+        first_stage_seen = False
         last_status_second = -1
 
         def terminate(reason: str) -> None:
@@ -347,6 +348,7 @@ class CheckpointWorker(QObject):
             for event in events:
                 kind = event.get("event")
                 if kind == "stage_started":
+                    first_stage_seen = True
                     current_stage = str(event.get("stage") or "unknown")
                     stage_started = now
                     last_status_second = -1
@@ -377,7 +379,7 @@ class CheckpointWorker(QObject):
                 )
 
             if current_stage is None:
-                if seen_events == 0 and provider_elapsed > PROVIDER_STARTUP_TIMEOUT_SECONDS:
+                if (not first_stage_seen) and provider_elapsed > PROVIDER_STARTUP_TIMEOUT_SECONDS:
                     terminate(
                         f"{provider_label} 在 {PROVIDER_STARTUP_TIMEOUT_SECONDS} 秒内"
                         "没有进入任何测试阶段，已自动终止。"
