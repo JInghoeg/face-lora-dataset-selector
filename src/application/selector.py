@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional
 
 from core.contracts import ExportResult
 from features.ranking.service import recommend, recommendation_qualified
@@ -255,7 +256,7 @@ class SelectorApplication:
     def composite_model_cache(self):
         return self.bundled_models_root / "composite_split_cache"
 
-    def composite_detect_proposal(self, image, model_cache: Path | None = None):
+    def composite_detect_proposal(self, image, model_cache: Optional[Path] = None):
         return self._composite_modules(required=True)[1].detect_proposal(
             image,
             model_cache or self.composite_model_cache,
