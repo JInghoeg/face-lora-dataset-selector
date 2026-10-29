@@ -205,6 +205,16 @@ Source images were not modified.</translation></message>
     <message><source>自动裁剪 {current}/{total}：{name}</source><translation>Auto Crop {current}/{total}: {name}</translation></message>
     <message><source>自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}</source><translation>Auto Crop scan complete: Scanned {scanned} · Candidates {candidates} · No crop needed {no_candidate} · Cached {cached}</translation></message>
     <message><source>自动裁剪扫描失败</source><translation>Auto Crop Scan Failed</translation></message>
+    <message><source>后台预扫已启动：Composite {composite} · Auto Crop {auto_crop}</source><translation>Background pre-scan started: Composite {composite} · Auto Crop {auto_crop}</translation></message>
+    <message><source>后台预扫 Composite {current}/{total}：{name}</source><translation>Background Composite {current}/{total}: {name}</translation></message>
+    <message><source>后台预扫 Auto Crop {current}/{total}：{name}</source><translation>Background Auto Crop {current}/{total}: {name}</translation></message>
+    <message><source>后台预扫完成：Composite {composite} · Auto Crop {auto_crop} · 错误 {errors}</source><translation>Background pre-scan complete: Composite {composite} · Auto Crop {auto_crop} · Errors {errors}</translation></message>
+    <message><source>后台预扫失败；已保留已完成结果</source><translation>Background pre-scan failed; completed results were preserved</translation></message>
+    <message><source>后台 Composite 预扫仍在进行；候选完成后即可复核</source><translation>Background Composite pre-scan is still running; completed candidates can be reviewed as soon as they appear</translation></message>
+    <message><source>后台 Auto Crop 预扫仍在进行；候选完成后即可复核</source><translation>Background Auto Crop pre-scan is still running; completed candidates can be reviewed as soon as they appear</translation></message>
+    <message><source>裁剪候选</source><translation>Crop Candidate</translation></message>
+    <message><source>将裁剪</source><translation>Will Crop</translation></message>
+    <message><source>自动裁剪：{state}</source><translation>Auto Crop: {state}</translation></message>
     <message><source>还有自动裁剪未扫描</source><translation>Auto Crop Scan Incomplete</translation></message>
     <message><source>推荐图片中还有 {count} 张未完成自动裁剪扫描。
 
