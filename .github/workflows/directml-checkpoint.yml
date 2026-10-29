@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -123,10 +124,18 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint\Face LoRA DirectML Checkpoint.exe"
-          $arguments = @("--worker", "--provider", "cpu", "--dataset", (Join-Path $PWD "_research_output\checkpoint-dataset"), "--output", (Join-Path $PWD "_research_output\packaged-cpu.json"), "--limit", "3")
+          $progress = Join-Path $PWD "_research_output\packaged-cpu-progress.jsonl"
+          $arguments = @("--worker", "--provider", "cpu", "--dataset", (Join-Path $PWD "_research_output\checkpoint-dataset"), "--output", (Join-Path $PWD "_research_output\packaged-cpu.json"), "--progress", $progress, "--limit", "3")
           $p = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru
           if ($p.ExitCode -ne 0) {
             throw "Packaged CPU worker failed with exit code $($p.ExitCode)"
+          }
+          if (-not (Test-Path $progress)) {
+            throw "Packaged CPU worker did not write progress evidence."
+          }
+          $progressText = Get-Content $progress -Raw
+          if ($progressText -notmatch '"event": "stage_started"') {
+            throw "Packaged CPU worker progress did not include stage_started."
           }
 
       - name: Packaged DirectML/fallback worker smoke
@@ -144,6 +153,65 @@ jobs:
           if ($report.environment.expected_execution_provider -ne "DmlExecutionProvider") {
             throw "Packaged worker did not request DmlExecutionProvider."
           }
+
+      - name: Validate drop-in hotfix EXE against previous checkpoint payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $outerZip = Join-Path $PWD "_research_output\previous-checkpoint-artifact.zip"
+          $outerDir = Join-Path $PWD "_research_output\previous-checkpoint-artifact"
+          $baseDir = Join-Path $PWD "_research_output\drop-in-base"
+          Invoke-WebRequest -Headers $headers -Uri "https://api.github.com/repos/JInghoeg/face-lora-dataset-selector/actions/artifacts/12732422906/zip" -OutFile $outerZip
+          Expand-Archive -Path $outerZip -DestinationPath $outerDir -Force
+          $inner = Get-ChildItem $outerDir -Recurse -File | Where-Object { $_.Name -eq "FaceLoRA-DirectML-Checkpoint-Windows-x64.zip" } | Select-Object -First 1
+          if (-not $inner) { throw "Previous checkpoint inner ZIP not found." }
+          Expand-Archive -Path $inner.FullName -DestinationPath $baseDir -Force
+
+          $oldExe = Get-ChildItem $baseDir -Recurse -File | Where-Object { $_.Name -eq "Face LoRA DirectML Checkpoint.exe" } | Select-Object -First 1
+          $newExe = Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint\Face LoRA DirectML Checkpoint.exe"
+          if (-not $oldExe) { throw "Previous checkpoint EXE not found." }
+          Copy-Item $newExe $oldExe.FullName -Force
+
+          $output = Join-Path $PWD "_research_output\drop-in-cpu.json"
+          $progress = Join-Path $PWD "_research_output\drop-in-cpu-progress.jsonl"
+          $arguments = @("--worker", "--provider", "cpu", "--dataset", (Join-Path $PWD "_research_output\checkpoint-dataset"), "--output", $output, "--progress", $progress, "--limit", "3")
+          $p = Start-Process -FilePath $oldExe.FullName -ArgumentList $arguments -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Drop-in hotfix EXE failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path $output)) { throw "Drop-in hotfix EXE did not write benchmark report." }
+          if (-not (Test-Path $progress)) { throw "Drop-in hotfix EXE did not write progress file." }
+
+      - name: Build hotfix-only ZIP
+        shell: pwsh
+        run: |
+          $hotfixDir = Join-Path $PWD "_research_output\hotfix-exe"
+          New-Item -ItemType Directory -Force -Path $hotfixDir | Out-Null
+          Copy-Item (Join-Path $PWD "dist\FaceLoRA-DirectML-Checkpoint\Face LoRA DirectML Checkpoint.exe") $hotfixDir
+          @'
+          DirectML Checkpoint Hang Hotfix
+          ==============================
+
+          This ZIP contains only the replacement EXE.
+          Replace the existing "Face LoRA DirectML Checkpoint.exe" inside your already-extracted checkpoint folder.
+          Keep the existing _internal folder and models unchanged.
+          The new EXE adds per-stage progress plus bounded timeouts and automatic failure evidence.
+          '@ | Set-Content -Path (Join-Path $hotfixDir "README-HOTFIX.txt") -Encoding UTF8
+          Compress-Archive -Path "$hotfixDir\*" -DestinationPath "FaceLoRA-DirectML-Checkpoint-Hotfix-EXE.zip" -CompressionLevel Optimal -Force
+          $mb = [math]::Round((Get-Item "FaceLoRA-DirectML-Checkpoint-Hotfix-EXE.zip").Length / 1MB, 1)
+          Write-Host "Hotfix ZIP: $mb MB"
+
+      - name: Upload hotfix-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceLoRA-DirectML-Checkpoint-Hotfix-EXE
+          path: FaceLoRA-DirectML-Checkpoint-Hotfix-EXE.zip
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Build checkpoint ZIP
         shell: pwsh

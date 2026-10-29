@@ -22,6 +22,30 @@ import traceback
 from pathlib import Path
 
 STAGES = ("ranking", "auto_crop", "composite", "text_scan", "migan")
+_PROGRESS_PATH = None
+
+
+def configure_progress(path):
+    global _PROGRESS_PATH
+    if not path:
+        _PROGRESS_PATH = None
+        return
+    _PROGRESS_PATH = Path(path).resolve()
+    _PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _PROGRESS_PATH.write_text("", encoding="utf-8")
+
+
+def emit_progress(event, **payload):
+    if _PROGRESS_PATH is None:
+        return
+    record = {
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "event": event,
+        **payload,
+    }
+    with _PROGRESS_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        handle.flush()
 
 
 def sig(value):
@@ -166,6 +190,7 @@ def install_provider_tracking(provider):
     }
 
 def measure(name, fn, roots, sessions):
+    emit_progress("stage_started", stage=name)
     before = snapshot(roots)
     session_start = len(sessions)
     sampler = NvidiaSampler()
@@ -199,10 +224,18 @@ def measure(name, fn, roots, sessions):
         result["warning"] = "Model cache changed during timing; prime caches and rerun for a fair provider comparison."
     if error:
         result["error"] = error
+    emit_progress(
+        "stage_finished",
+        stage=name,
+        status=result["status"],
+        wall_seconds=result["wall_seconds"],
+    )
     return result
 
 
 def run(args):
+    configure_progress(getattr(args, "progress", None))
+    emit_progress("worker_started", provider=args.provider)
     frozen = bool(getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None))
     if frozen:
         repo = Path(sys.executable).resolve().parent
@@ -398,6 +431,7 @@ def run(args):
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    emit_progress("worker_finished", provider=args.provider, output=str(output))
     print(f"Wrote: {output}")
     print(f"Provider={args.provider} ORT={provider['onnxruntime_version']} images={len(files)}")
     for row in results:
@@ -434,6 +468,7 @@ def parser():
     r.add_argument("--repo-root", default=str(Path(__file__).resolve().parents[2]))
     r.add_argument("--model-cache", default=None)
     r.add_argument("--output", required=True)
+    r.add_argument("--progress", default=None, help="optional JSONL progress file")
     c = sub.add_parser("compare")
     c.add_argument("baseline")
     c.add_argument("candidate")

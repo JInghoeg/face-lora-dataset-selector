@@ -65,7 +65,7 @@ Historical repository note:
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 remains open for the final accelerator decision. DirectML has passed the repository-side deployment/fallback gate in merged PR #98 with only ~25.6 MB / 4.1% uncompressed Portable overhead; actual DirectML execution and workflow speedup on the target RTX workstation remain HUMAN UNVERIFIED.
-- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99; the only remaining accelerator gate is one target-RTX run and review of its `directml-comparison.json` evidence.
+- The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. The first real RTX target run exposed a checkpoint-harness blocker: once the CPU baseline completed and the DirectML worker entered the GPU phase, the GUI could wait indefinitely with only “正在测试 DirectML GPU…” because the wrapper used blocking `subprocess.run()`, buffered worker output, and no timeout. PR #100 repairs that harness with per-stage progress, bounded worker timeouts, automatic child-process termination, preserved failure evidence, and a CI-validated drop-in replacement EXE so the already-downloaded model payload can be reused.
 - Background Composite → Auto Crop enrichment and the full Settings UI remain sequenced after the accelerator resource/performance decision.
 
 ## Current objective
@@ -106,16 +106,18 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
 - Issue #55 — actual DirectML activation and performance on the target RTX workstation remain HUMAN UNVERIFIED; repository-side deployment/fallback validation is complete.
+- PR #100 checkpoint-harness repair remains HUMAN UNVERIFIED until the bounded replacement EXE is rerun on the target RTX workstation; automation validates packaging/drop-in behavior, not real GPU execution.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
 - Process/docs-only changes may use HUMAN NOT REQUIRED when they cannot change runtime/user behavior.
 
 ## Next action
 
-1. run the already CI-validated self-contained DirectML checkpoint once on the target RTX workstation against an existing representative image dataset and review `directml-comparison.json`;
-2. decide from actual provider activation, output parity, per-stage wall time and overall speedup whether DirectML becomes the optional accelerated Portable profile or the product stays CPU-only;
-3. record the decision in Issue #55 and close/supersede the accelerator research path accordingly;
-4. then proceed to background Composite → Auto Crop enrichment/streaming review before the full Settings UI.
+1. complete PR #100 and deploy its CI-validated drop-in checkpoint EXE over the already-extracted #99 checkpoint payload;
+2. rerun the bounded target RTX checkpoint once; if DirectML blocks again, use the generated stage/progress/error evidence rather than manual debugging or an indefinite wait;
+3. decide from actual provider activation, output parity, per-stage wall time and overall speedup whether DirectML becomes the optional accelerated Portable profile or the product stays CPU-only;
+4. record the decision in Issue #55 and close/supersede the accelerator research path accordingly;
+5. then proceed to background Composite → Auto Crop enrichment/streaming review before the full Settings UI.
 
 ## Do not repeat
 
