@@ -1,0 +1,192 @@
+name: DirectML Root Cause Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tools/benchmarks/directml_root_cause_probe.py"
+      - "packaging/directml_root_cause_probe.spec"
+      - "requirements/runtime-directml.txt"
+      - ".github/workflows/directml-root-cause.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: directml-root-cause-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements/runtime-directml.txt
+            requirements/build.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements/runtime-directml.txt -r requirements/build.txt
+
+      - name: Compile diagnostic
+        shell: pwsh
+        run: |
+          python -m py_compile tools/benchmarks/directml_root_cause_probe.py
+          python tools/benchmarks/directml_root_cause_probe.py --help
+
+      - name: Prepare bundled models
+        shell: pwsh
+        run: |
+          python tools/prepare_bundled_models.py --root resources/models
+
+      - name: CPU model-input smoke
+        shell: pwsh
+        run: |
+          $models = @("yunet","ediffiqa","3ddfa","composite_person","composite_head","ocr","isnetis","migan")
+          foreach ($model in $models) {
+            Write-Host "CPU probe $model"
+            python tools/benchmarks/directml_root_cause_probe.py --probe-child --provider cpu --route raw --model $model --output "_research_output/cpu-$model.json" --progress "_research_output/cpu-$model.progress.jsonl"
+            if ($LASTEXITCODE -ne 0) { throw "CPU probe failed for $model" }
+          }
+
+      - name: Build root-cause Portable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/directml_root_cause_probe.spec
+
+      - name: Validate root-cause payload
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist\FaceLoRA-DirectML-Root-Cause"
+          $exe = Join-Path $root "Face LoRA DirectML Root Cause.exe"
+          if (-not (Test-Path $exe)) { throw "Diagnostic EXE missing: $exe" }
+
+          $required = @(
+            "models\yunet_2023mar.onnx",
+            "models\ediffiqa_t.onnx",
+            "models\mb1_120x120.onnx",
+            "models\ppocrv5_mobile_det\inference.onnx",
+            "models\composite_split_cache\person_detect_v1.3_s\model.onnx",
+            "models\composite_split_cache\head_detect_v2.0_s\model.onnx",
+            "models\auto_crop\skytnt_anime_seg_isnetis\isnetis.onnx",
+            "models\text_cleanup\migan\migan_pipeline_v2.onnx"
+          )
+          foreach ($rel in $required) {
+            if (-not (Test-Path (Join-Path $root "_internal\$rel"))) {
+              throw "Missing packaged model: $rel"
+            }
+          }
+
+      - name: Packaged CPU child smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\FaceLoRA-DirectML-Root-Cause\Face LoRA DirectML Root Cause.exe"
+          $out = Join-Path $PWD "_research_output\packaged-ediff-cpu.json"
+          $progress = Join-Path $PWD "_research_output\packaged-ediff-cpu.progress.jsonl"
+          $args = @("--probe-child","--provider","cpu","--route","raw","--model","ediffiqa","--output",$out,"--progress",$progress)
+          $p = Start-Process -FilePath $exe -ArgumentList $args -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Packaged CPU child failed: $($p.ExitCode)" }
+          $events = Get-Content $progress -Raw
+          if ($events -notmatch "session_create_started") { throw "Missing session-create evidence" }
+          if ($events -notmatch "first_run_finished") { throw "Missing first-run evidence" }
+
+      - name: Validate drop-in EXE against previous checkpoint payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $outerZip = Join-Path $PWD "_research_output\previous-checkpoint-artifact.zip"
+          $outerDir = Join-Path $PWD "_research_output\previous-checkpoint-artifact"
+          $baseDir = Join-Path $PWD "_research_output\drop-in-base"
+          Invoke-WebRequest -Headers $headers -Uri "https://api.github.com/repos/JInghoeg/face-lora-dataset-selector/actions/artifacts/12889766078/zip" -OutFile $outerZip
+          Expand-Archive -Path $outerZip -DestinationPath $outerDir -Force
+          $inner = Get-ChildItem $outerDir -Recurse -File | Where-Object { $_.Name -eq "FaceLoRA-DirectML-Checkpoint-Windows-x64.zip" } | Select-Object -First 1
+          if (-not $inner) { throw "Previous checkpoint inner ZIP not found." }
+          Expand-Archive -Path $inner.FullName -DestinationPath $baseDir -Force
+
+          $oldExe = Get-ChildItem $baseDir -Recurse -File | Where-Object { $_.Name -eq "Face LoRA DirectML Checkpoint.exe" } | Select-Object -First 1
+          if (-not $oldExe) { throw "Previous checkpoint EXE not found." }
+          $targetDir = $oldExe.Directory.FullName
+          $newExe = Join-Path $PWD "dist\FaceLoRA-DirectML-Root-Cause\Face LoRA DirectML Root Cause.exe"
+          Copy-Item $newExe (Join-Path $targetDir "Face LoRA DirectML Root Cause.exe") -Force
+
+          $probeExe = Join-Path $targetDir "Face LoRA DirectML Root Cause.exe"
+          $out = Join-Path $PWD "_research_output\drop-in-ediff-cpu.json"
+          $progress = Join-Path $PWD "_research_output\drop-in-ediff-cpu.progress.jsonl"
+          $args = @("--probe-child","--provider","cpu","--route","raw","--model","ediffiqa","--output",$out,"--progress",$progress)
+          $p = Start-Process -FilePath $probeExe -ArgumentList $args -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Drop-in diagnostic EXE failed: $($p.ExitCode)" }
+          if (-not (Test-Path $out)) { throw "Drop-in diagnostic did not write result." }
+
+      - name: Build EXE-only diagnostic ZIP
+        shell: pwsh
+        run: |
+          $dir = Join-Path $PWD "_research_output\diagnostic-exe"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item (Join-Path $PWD "dist\FaceLoRA-DirectML-Root-Cause\Face LoRA DirectML Root Cause.exe") $dir
+          @'
+          Face LoRA DirectML Root Cause Probe
+          ===================================
+
+          If you still have the previous FaceLoRA-DirectML-Checkpoint folder:
+          1. Extract this ZIP.
+          2. Copy "Face LoRA DirectML Root Cause.exe" beside the old checkpoint EXE.
+          3. Double-click the new Root Cause EXE.
+          4. It does NOT run the CPU benchmark or read your dataset.
+          5. Send directml-diagnostic-results\<timestamp>\directml-root-cause.json back to ChatGPT.
+
+          The probe runs each ONNX model in its own child process and automatically
+          terminates a child that hangs in session creation or first inference.
+          '@ | Set-Content -Path (Join-Path $dir "README-ROOT-CAUSE.txt") -Encoding UTF8
+          Compress-Archive -Path "$dir\*" -DestinationPath "FaceLoRA-DirectML-Root-Cause-EXE.zip" -CompressionLevel Optimal -Force
+
+      - name: Upload EXE-only diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceLoRA-DirectML-Root-Cause-EXE
+          path: FaceLoRA-DirectML-Root-Cause-EXE.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build full diagnostic ZIP
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD "dist\FaceLoRA-DirectML-Root-Cause"
+          @'
+          Face LoRA DirectML Root Cause Probe
+          ===================================
+
+          Double-click "Face LoRA DirectML Root Cause.exe".
+          No dataset selection is required.
+          It does not run the CPU baseline.
+          Send directml-diagnostic-results\<timestamp>\directml-root-cause.json back to ChatGPT.
+          '@ | Set-Content -Path (Join-Path $folder "README-ROOT-CAUSE.txt") -Encoding UTF8
+          Compress-Archive -Path "$folder\*" -DestinationPath "FaceLoRA-DirectML-Root-Cause-Windows-x64.zip" -CompressionLevel Optimal -Force
+
+      - name: Upload full diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceLoRA-DirectML-Root-Cause-Full
+          path: FaceLoRA-DirectML-Root-Cause-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 7
