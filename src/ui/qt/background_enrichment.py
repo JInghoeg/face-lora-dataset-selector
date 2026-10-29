@@ -20,6 +20,7 @@ class BackgroundEnrichmentWorker(QObject):
     auto_crop_ready = Signal(int, str, str, object)
     item_failed = Signal(int, str, str, str, str)
     finished = Signal(int, int, int, int)
+    failed = Signal(int, str)
     cancelled = Signal(int)
 
     def __init__(self, backend, generation: int, plan):
@@ -149,3 +150,5 @@ class BackgroundEnrichmentWorker(QObject):
             )
         except InterruptedError:
             self.cancelled.emit(self.generation)
+        except Exception:
+            self.failed.emit(self.generation, traceback.format_exc())
