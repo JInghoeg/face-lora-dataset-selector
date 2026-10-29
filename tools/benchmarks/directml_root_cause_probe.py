@@ -174,6 +174,40 @@ def dml_provider(variant: str, device_id):
     return ("DmlExecutionProvider", options) if options else "DmlExecutionProvider"
 
 
+def _ensure_src_path():
+    if getattr(sys, "frozen", False):
+        return
+    src = app_dir() / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+
+
+def create_session(model, args):
+    if args.route == "shared":
+        if args.variant != "default" or args.device_id is not None:
+            raise ValueError("shared route only supports default variant/automatic device selection")
+        _ensure_src_path()
+        from infrastructure import inference_runtime
+        from infrastructure.runtime_tuning import configure_ort_cpu_options
+
+        inference_runtime.configure_inference_runtime("gpu")
+        return inference_runtime.create_ort_session(
+            ort,
+            str(model),
+            sess_options=configure_ort_cpu_options(ort),
+        )
+
+    options = session_options(args.variant)
+    providers = ["CPUExecutionProvider"]
+    if args.provider == "directml":
+        providers = [dml_provider(args.variant, args.device_id), "CPUExecutionProvider"]
+    return ort.InferenceSession(
+        str(model),
+        sess_options=options,
+        providers=providers,
+    )
+
+
 def child_probe(args) -> int:
     progress = Path(args.progress).resolve()
     result_path = Path(args.output).resolve()
@@ -186,6 +220,7 @@ def child_probe(args) -> int:
         "variant": args.variant,
         "device_id": args.device_id,
         "provider": args.provider,
+        "route": args.route,
         "platform": platform.platform(),
         "python": sys.version,
         "onnxruntime_version": getattr(ort, "__version__", "unknown"),
@@ -200,18 +235,23 @@ def child_probe(args) -> int:
         if not model.is_file():
             raise FileNotFoundError(model)
 
-        options = session_options(args.variant)
-        providers = ["CPUExecutionProvider"]
-        if args.provider == "directml":
-            providers = [dml_provider(args.variant, args.device_id), "CPUExecutionProvider"]
-
-        append_event(progress, "session_create_started", providers=providers)
-        t0 = time.perf_counter()
-        session = ort.InferenceSession(
-            str(model),
-            sess_options=options,
-            providers=providers,
+        provider_description = (
+            "shared_runtime"
+            if args.route == "shared"
+            else [
+                dml_provider(args.variant, args.device_id),
+                "CPUExecutionProvider",
+            ] if args.provider == "directml" else ["CPUExecutionProvider"]
         )
+
+        append_event(
+            progress,
+            "session_create_started",
+            route=args.route,
+            providers=provider_description,
+        )
+        t0 = time.perf_counter()
+        session = create_session(model, args)
         session_seconds = time.perf_counter() - t0
         provider_options = session.get_provider_options()
         append_event(
@@ -264,7 +304,7 @@ def child_probe(args) -> int:
         return 2
 
 
-def child_command(model, variant, device_id, output, progress, provider="directml"):
+def child_command(model, variant, device_id, output, progress, provider="directml", route="raw"):
     args = [
         "--probe-child",
         "--model",
@@ -273,6 +313,8 @@ def child_command(model, variant, device_id, output, progress, provider="directm
         variant,
         "--provider",
         provider,
+        "--route",
+        route,
         "--output",
         str(output),
         "--progress",
@@ -319,12 +361,12 @@ def kill_tree(process):
         pass
 
 
-def run_bounded_probe(root: Path, model: str, variant: str = "default", device_id=None, provider="directml"):
-    suffix = f"{model}__{variant}__device-{device_id if device_id is not None else 'auto'}__{provider}"
+def run_bounded_probe(root: Path, model: str, variant: str = "default", device_id=None, provider="directml", route="raw"):
+    suffix = f"{model}__{route}__{variant}__device-{device_id if device_id is not None else 'auto'}__{provider}"
     output = root / f"{suffix}.json"
     progress = root / f"{suffix}.progress.jsonl"
     log = root / f"{suffix}.log"
-    command = child_command(model, variant, device_id, output, progress, provider)
+    command = child_command(model, variant, device_id, output, progress, provider, route)
 
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     with log.open("w", encoding="utf-8") as handle:
@@ -372,6 +414,8 @@ def run_bounded_probe(root: Path, model: str, variant: str = "default", device_i
                     "variant": variant,
                     "device_id": device_id,
                     "provider": provider,
+                "route": route,
+                    "route": route,
                     "status": "timeout",
                     "timeout_phase": phase,
                     "timeout_seconds": timeout,
@@ -449,9 +493,9 @@ def run_parent(gui_status=None):
     status = gui_status or (lambda _text: None)
     rows = []
 
-    def run_one(model, variant="default", device_id=None):
-        status(f"DirectML 诊断：{model} / {variant} / device={device_id if device_id is not None else 'auto'}")
-        result = run_bounded_probe(root, model, variant, device_id, "directml")
+    def run_one(model, variant="default", device_id=None, route="raw"):
+        status(f"DirectML 诊断：{model} / {route} / {variant} / device={device_id if device_id is not None else 'auto'}")
+        result = run_bounded_probe(root, model, variant, device_id, "directml", route)
         rows.append(result)
         return result
 
@@ -469,12 +513,18 @@ def run_parent(gui_status=None):
             if not failed(trial):
                 break
 
+    shared_first_models = {"ediffiqa", "3ddfa"}
+
     for model in PROBE_KEYS[1:]:
         primary = run_one(model)
         if failed(primary):
             retry = run_one(model, "metacommands_off")
             if failed(retry):
                 run_one(model, "graphopt_off")
+        elif model in shared_first_models:
+            # The integrated Ranking path uses the project's shared runtime,
+            # not a raw ORT session. Probe both layers before moving on.
+            run_one(model, route="shared")
 
     summary = {
         "schema_version": 1,
@@ -592,6 +642,7 @@ def parser():
     p.add_argument("--variant", choices=("default", "metacommands_off", "graphopt_off"), default="default")
     p.add_argument("--device-id", type=int, default=None)
     p.add_argument("--provider", choices=("directml", "cpu"), default="directml")
+    p.add_argument("--route", choices=("raw", "shared"), default="raw")
     p.add_argument("--output")
     p.add_argument("--progress")
     p.add_argument("--headless", action="store_true")
