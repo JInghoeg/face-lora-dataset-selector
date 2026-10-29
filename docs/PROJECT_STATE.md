@@ -67,7 +67,7 @@ Historical repository note:
 - Issue #55 is closed with the v0.4 accelerator decision: keep the active product runtime CPU-oriented. DirectML passed repository-side packaging/fallback validation, but two real RTX 5080 target runs hung when entering the DirectML phase. Windows ML remains rejected for the current true-Portable goal, and the multi-GB self-contained CUDA packaging route remains rejected on payload cost.
 - The self-contained CPU-vs-DirectML target-performance checkpoint is repository-side complete in PR #99. PR #100 and PR #101 repaired its unbounded-wait diagnostics after real target hangs. Those harness fixes are retained as research tooling, but the product decision no longer depends on another target rerun: repeated DirectML hangs on the RTX 5080 are sufficient negative deployment evidence for the current v0.4 cycle.
 - Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
-- Draft PR #103 implements the first production slice: application-owned background enrichment planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. It remains HUMAN UNVERIFIED until automation is green and a later coherent v0.4 checkpoint is chosen.
+- PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
 
 ## Current objective
 
@@ -115,12 +115,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. complete Draft PR #103 background enrichment with green Python 3.9/3.12, architecture and Portable automation;
-2. after Dataset Analysis completes, enqueue only current 推荐 records that need Composite scanning;
-3. as Composite results become available, keep pending Composite candidates out of Auto Crop, but allow Composite-clear / explicitly rejected records to enter Auto Crop crop-needed pre-scan without waiting for every Composite review;
-4. persist background scan state/results incrementally so completed items are reviewable before the whole queue finishes;
-5. expose lightweight crop-needed state in Dataset Review and keep manual Auto Crop review authoritative;
-6. then build the real Settings UI and move runtime/background controls out of the crowded main screen.
+1. merge PR #103 with background enrichment HUMAN UNVERIFIED and carry it into the next coherent v0.4 QA checkpoint rather than stopping for per-fix manual QA;
+2. build the real Settings UI as the next active slice;
+3. move runtime/device and background-workflow controls out of the crowded main screen while keeping safe defaults;
+4. preserve background Composite → Auto Crop orchestration in the application/UI layer rather than coupling sibling feature modules;
+5. after Settings is stable, choose the next v0.4 slice from the accepted backlog / UI modernization plan.
 
 ## Do not repeat
 
