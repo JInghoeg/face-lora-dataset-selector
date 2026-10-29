@@ -68,6 +68,7 @@ class BackgroundEnrichmentWorker(QObject):
         auto_crop_done = 0
         errors = 0
         discovered_auto = list(self.plan.auto_crop)
+        auto_crop_enabled = self.backend.feature_available("auto_crop")
 
         try:
             composite_total = len(self.plan.composite)
@@ -96,7 +97,7 @@ class BackgroundEnrichmentWorker(QObject):
 
                     # Composite-clear images can immediately continue to Auto
                     # Crop; pending Composite candidates stop here.
-                    if proposal is None:
+                    if proposal is None and auto_crop_enabled:
                         discovered_auto.append(job)
                 except InterruptedError:
                     raise
