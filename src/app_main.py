@@ -726,7 +726,7 @@ class Window(QMainWindow):
         self.cancel_analysis_btn.hide();self.cancel_analysis_btn.setEnabled(True)
 
     def cancel_active_analysis(self):
-        for name in ('thread','composite_thread','auto_crop_thread','incremental_thread'):
+        for name in ('thread','composite_thread','auto_crop_thread','background_enrichment_thread','incremental_thread'):
             thread=getattr(self,name,None)
             if thread is not None and thread.isRunning():
                 runtime_event('analysis_cancel_requested',thread=name)
