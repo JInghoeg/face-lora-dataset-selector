@@ -867,6 +867,292 @@ class Window(QMainWindow):
             self.quick_mode='';set_combo_value(self.view_combo,'全部');self.refresh()
         self.finish_operation_ui();self.save();QTimer.singleShot(0,self.start_background_enrichment)
     def thread_done(self):self.worker=None;self.thread.deleteLater();self.thread=None
+
+    def background_enrichment_running(self):
+        return bool(
+            self.background_enrichment_thread
+            and self.background_enrichment_thread.isRunning()
+        )
+
+    def invalidate_background_enrichment(self):
+        self.background_enrichment_generation += 1
+        self.background_refresh_scheduled = False
+        self.background_incremental_deferred = False
+        thread = self.background_enrichment_thread
+        if thread is not None and thread.isRunning():
+            runtime_event(
+                'background_enrichment_cancel_requested',
+                generation=self.background_enrichment_generation,
+            )
+            thread.requestInterruption()
+
+    def _background_record(self, sample_id, path_text):
+        if sample_id:
+            for record in self.records:
+                if record.sample_id == sample_id:
+                    return record
+        try:
+            wanted = key(Path(path_text))
+        except Exception:
+            wanted = str(path_text).casefold()
+        for record in self.records:
+            if key(record.path) == wanted:
+                return record
+        return None
+
+    def start_background_enrichment(self):
+        if not self.records or self.background_enrichment_running():
+            return
+        if not (
+            BACKEND.feature_available('composite')
+            or BACKEND.feature_available('auto_crop')
+        ):
+            return
+
+        plan = BACKEND.background_enrichment_plan(self.records)
+        if not plan.total:
+            self.update_composite_button()
+            self.update_auto_crop_button()
+            return
+
+        self.background_enrichment_generation += 1
+        generation = self.background_enrichment_generation
+        self.background_enrichment_dirty = 0
+        self.background_incremental_deferred = False
+
+        runtime_event(
+            'background_enrichment_begin',
+            generation=generation,
+            composite=len(plan.composite),
+            auto_crop=len(plan.auto_crop),
+        )
+        self.progress.setText(
+            self._tr_main(
+                '后台预扫已启动：Composite {composite} · Auto Crop {auto_crop}'
+            ).format(
+                composite=len(plan.composite),
+                auto_crop=len(plan.auto_crop),
+            )
+        )
+
+        self.background_enrichment_thread = QThread(self)
+        self.background_enrichment_worker = BackgroundEnrichmentWorker(
+            BACKEND,
+            generation,
+            plan,
+        )
+        self.background_enrichment_worker.moveToThread(
+            self.background_enrichment_thread
+        )
+        self.background_enrichment_thread.started.connect(
+            self.background_enrichment_worker.run
+        )
+        self.background_enrichment_worker.progress.connect(
+            self.background_enrichment_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.composite_ready.connect(
+            self.background_composite_ready,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.auto_crop_ready.connect(
+            self.background_auto_crop_ready,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.item_failed.connect(
+            self.background_enrichment_item_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.finished.connect(
+            self.background_enrichment_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.failed.connect(
+            self.background_enrichment_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.cancelled.connect(
+            self.background_enrichment_cancelled,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.background_enrichment_worker.finished.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_worker.failed.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_worker.cancelled.connect(
+            self.background_enrichment_thread.quit
+        )
+        self.background_enrichment_thread.finished.connect(
+            self.background_enrichment_thread_done
+        )
+        self.background_enrichment_thread.start(QThread.Priority.LowPriority)
+
+    def _background_mark_dirty(self):
+        self.background_enrichment_dirty += 1
+        if self.background_enrichment_dirty % 5 == 0:
+            self.save()
+        if not self.background_refresh_scheduled:
+            self.background_refresh_scheduled = True
+            QTimer.singleShot(200, self._background_refresh)
+
+    def _background_refresh(self):
+        self.background_refresh_scheduled = False
+        if not self.records:
+            return
+        self.update_composite_button()
+        self.update_auto_crop_button()
+        self.refresh()
+
+    @Slot(int, str, str, object)
+    def background_composite_ready(self, generation, sample_id, path_text, proposal):
+        if generation != self.background_enrichment_generation:
+            return
+        record = self._background_record(sample_id, path_text)
+        if record is None or record.status != '推荐':
+            return
+        record.composite_proposal = proposal
+        record.composite_scan_version = BACKEND.composite_proposal_version
+        self._background_mark_dirty()
+
+    @Slot(int, str, str, object)
+    def background_auto_crop_ready(self, generation, sample_id, path_text, proposal):
+        if generation != self.background_enrichment_generation:
+            return
+        record = self._background_record(sample_id, path_text)
+        if record is None or record.status != '推荐':
+            return
+
+        # Re-evaluate policy on the GUI thread. A user may have changed the
+        # record while inference was running.
+        current_plan = BACKEND.background_enrichment_plan([record])
+        if not current_plan.auto_crop:
+            return
+
+        BACKEND.auto_crop_store_scan_result(record, proposal)
+        self._background_mark_dirty()
+
+    @Slot(int, str, int, int, str)
+    def background_enrichment_progress(
+        self,
+        generation,
+        kind,
+        current,
+        total,
+        name,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        if hasattr(self, 'operation_bar') and self.operation_bar.isVisible():
+            return
+        if kind == 'composite':
+            source = '后台预扫 Composite {current}/{total}：{name}'
+        else:
+            source = '后台预扫 Auto Crop {current}/{total}：{name}'
+        self.progress.setText(
+            self._tr_main(source).format(
+                current=current,
+                total=total,
+                name=name,
+            )
+        )
+
+    @Slot(int, str, str, str, str)
+    def background_enrichment_item_failed(
+        self,
+        generation,
+        kind,
+        sample_id,
+        path_text,
+        error,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_item_failed',
+            generation=generation,
+            kind=kind,
+            sample_id=sample_id,
+            path=path_text,
+            error=error,
+        )
+
+    @Slot(int, int, int, int)
+    def background_enrichment_finished(
+        self,
+        generation,
+        composite_done,
+        auto_crop_done,
+        errors,
+    ):
+        if generation != self.background_enrichment_generation:
+            return
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+        runtime_event(
+            'background_enrichment_complete',
+            generation=generation,
+            composite=composite_done,
+            auto_crop=auto_crop_done,
+            errors=errors,
+        )
+        if not (
+            hasattr(self, 'operation_bar')
+            and self.operation_bar.isVisible()
+        ):
+            self.progress.setText(
+                self._tr_main(
+                    '后台预扫完成：Composite {composite} · Auto Crop {auto_crop} · 错误 {errors}'
+                ).format(
+                    composite=composite_done,
+                    auto_crop=auto_crop_done,
+                    errors=errors,
+                )
+            )
+        if self.background_incremental_deferred:
+            self.background_incremental_deferred = False
+            QTimer.singleShot(0, self.start_incremental_composite_analysis)
+
+    @Slot(int, str)
+    def background_enrichment_failed(self, generation, error):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_failed',
+            generation=generation,
+            error=error,
+        )
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+        if not (
+            hasattr(self, 'operation_bar')
+            and self.operation_bar.isVisible()
+        ):
+            self.progress.setText(self._tr_main('后台预扫失败；已保留已完成结果'))
+
+    @Slot(int)
+    def background_enrichment_cancelled(self, generation):
+        if generation != self.background_enrichment_generation:
+            return
+        runtime_event(
+            'background_enrichment_cancelled',
+            generation=generation,
+        )
+        if self.background_enrichment_dirty:
+            self.save()
+        self._background_refresh()
+
+    def background_enrichment_thread_done(self):
+        if self.background_enrichment_worker:
+            self.background_enrichment_worker.deleteLater()
+        if self.background_enrichment_thread:
+            self.background_enrichment_thread.deleteLater()
+        self.background_enrichment_worker = None
+        self.background_enrichment_thread = None
+
     @staticmethod
     def thumb(p):
         r=QImageReader(str(p));r.setAutoTransform(True);z=r.size()
