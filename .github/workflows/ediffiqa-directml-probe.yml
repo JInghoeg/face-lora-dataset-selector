@@ -78,7 +78,7 @@ jobs:
               $delta = [math]::Abs($a[$j] - $b[$j])
               $limit = 1e-7 + 1e-6 * [math]::Abs($a[$j])
               if ($delta -gt $limit) {
-                throw "CPU outputs differ at sample $i value $j: delta=$delta limit=$limit"
+                throw "CPU outputs differ at sample $i value ${j}: delta=$delta limit=$limit"
               }
             }
           }
