@@ -36,6 +36,7 @@ from infrastructure.runtime_tuning import (
     configure_opencv_threads,
     configure_ort_cpu_options,
 )
+from features.ranking.runtime import configure_ediffiqa_session_options
 
 if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
     PROJECT_ROOT = Path(sys._MEIPASS)
@@ -259,7 +260,7 @@ class QualityModels:
         self.fq = create_ort_session(
             ort,
             str(EDIFF),
-            sess_options=configure_ort_cpu_options(ort),
+            sess_options=configure_ediffiqa_session_options(ort),
         )
         self.fqin = self.fq.get_inputs()[0].name
         self.pose = create_ort_session(
