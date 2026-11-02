@@ -57,12 +57,16 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest().lower()
 
 
-def session_options(batch1: bool):
+def session_options(batch1: bool, strict_dml: bool = False):
     options = ort.SessionOptions()
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     options.enable_mem_pattern = False
     if batch1:
         options.add_free_dimension_override_by_name("batch", 1)
+    if strict_dml:
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        options.log_severity_level = 0
+        options.log_verbosity_level = 1
     return options
 
 
@@ -99,28 +103,40 @@ def child(args) -> int:
         "available_providers": list(ort.get_available_providers()),
         "provider": args.provider,
         "batch1_override": bool(args.batch1),
+        "strict_dml": bool(args.strict_dml),
         "status": "started",
     }
 
     try:
         providers = ["CPUExecutionProvider"]
         if args.provider == "directml":
-            providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+            providers = (
+                ["DmlExecutionProvider"]
+                if args.strict_dml
+                else ["DmlExecutionProvider", "CPUExecutionProvider"]
+            )
 
         event(
             "session_create_started",
             provider=args.provider,
             batch1_override=bool(args.batch1),
+            strict_dml=bool(args.strict_dml),
         )
         t0 = time.perf_counter()
         session = ort.InferenceSession(
             str(model),
-            sess_options=session_options(args.batch1),
+            sess_options=session_options(args.batch1, args.strict_dml),
             providers=providers,
+            enable_fallback=0 if args.strict_dml else 1,
         )
         result["session_create_seconds"] = round(time.perf_counter() - t0, 6)
         result["session_providers"] = list(session.get_providers())
         result["input_shape"] = list(session.get_inputs()[0].shape)
+        if args.provider == "directml" and "DmlExecutionProvider" not in result["session_providers"]:
+            raise RuntimeError(
+                "DirectML was requested but the session fell back to "
+                + repr(result["session_providers"])
+            )
         event(
             "session_create_finished",
             seconds=result["session_create_seconds"],
@@ -165,7 +181,7 @@ def child(args) -> int:
         return 2
 
 
-def command(provider: str, batch1: bool, output: Path, progress: Path):
+def command(provider: str, batch1: bool, output: Path, progress: Path, strict_dml: bool = False):
     args = [
         "--child",
         "--provider",
@@ -177,13 +193,16 @@ def command(provider: str, batch1: bool, output: Path, progress: Path):
     ]
     if batch1:
         args.append("--batch1")
+    if strict_dml:
+        args.append("--strict-dml")
     if getattr(sys, "frozen", False):
         return [sys.executable, *args]
     return [sys.executable, str(Path(__file__).resolve()), *args]
 
 
-def run_bounded(root: Path, provider: str, batch1: bool):
-    label = f"{provider}-{'batch1' if batch1 else 'dynamic'}"
+def run_bounded(root: Path, provider: str, batch1: bool, strict_dml: bool = False):
+    strict_suffix = "-strict" if strict_dml else ""
+    label = f"{provider}-{'batch1' if batch1 else 'dynamic'}{strict_suffix}"
     output = root / f"{label}.json"
     progress = root / f"{label}.progress.jsonl"
     log = root / f"{label}.log"
@@ -191,7 +210,7 @@ def run_bounded(root: Path, provider: str, batch1: bool):
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     with log.open("w", encoding="utf-8") as handle:
         process = subprocess.Popen(
-            command(provider, batch1, output, progress),
+            command(provider, batch1, output, progress, strict_dml),
             cwd=str(app_dir()),
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -217,6 +236,7 @@ def run_bounded(root: Path, provider: str, batch1: bool):
             return {
                 "provider": provider,
                 "batch1_override": batch1,
+                "strict_dml": strict_dml,
                 "status": "timeout",
                 "timeout_seconds": TIMEOUT_SECONDS,
                 "progress": progress.read_text(encoding="utf-8") if progress.exists() else "",
@@ -265,8 +285,11 @@ def run_parent(status=lambda _text: None):
     status("DirectML：复现动态 batch 路径…")
     dml_dynamic = run_bounded(root, "directml", False)
 
-    status("DirectML：测试 batch=1 override…")
+    status("DirectML：测试 batch=1 override（允许 fallback，用于复现）…")
     dml_batch1 = run_bounded(root, "directml", True)
+
+    status("DirectML：严格测试 batch=1，不允许 CPU fallback…")
+    dml_batch1_strict = run_bounded(root, "directml", True, strict_dml=True)
 
     report = {
         "schema_version": 1,
@@ -278,9 +301,15 @@ def run_parent(status=lambda _text: None):
         "cpu_equivalence": equivalence,
         "directml_dynamic": dml_dynamic,
         "directml_batch1": dml_batch1,
+        "directml_batch1_strict": dml_batch1_strict,
+        "batch1_keeps_directml": bool(
+            dml_batch1.get("status") == "pass"
+            and "DmlExecutionProvider" in dml_batch1.get("session_providers", [])
+        ),
         "hypothesis_supported": bool(
             equivalence.get("allclose")
-            and dml_batch1.get("status") == "pass"
+            and dml_batch1_strict.get("status") == "pass"
+            and "DmlExecutionProvider" in dml_batch1_strict.get("session_providers", [])
             and dml_dynamic.get("status") != "pass"
         ),
     }
@@ -330,7 +359,7 @@ def run_gui():
 
     def done(path, report):
         progress.close()
-        fixed = report.get("directml_batch1", {})
+        fixed = report.get("directml_batch1_strict", {})
         equivalent = report.get("cpu_equivalence", {}).get("allclose")
         QMessageBox.information(
             None,
@@ -366,6 +395,7 @@ def parser():
     p.add_argument("--child", action="store_true")
     p.add_argument("--provider", choices=("cpu", "directml"), default="cpu")
     p.add_argument("--batch1", action="store_true")
+    p.add_argument("--strict-dml", action="store_true")
     p.add_argument("--output")
     p.add_argument("--progress")
     p.add_argument("--headless", action="store_true")
