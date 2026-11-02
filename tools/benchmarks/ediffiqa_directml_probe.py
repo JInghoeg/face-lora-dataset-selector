@@ -357,31 +357,38 @@ def run_gui():
     worker = Worker()
     worker.moveToThread(thread)
 
-    def done(path, report):
-        progress.close()
-        fixed = report.get("directml_batch1_strict", {})
-        equivalent = report.get("cpu_equivalence", {}).get("allclose")
-        QMessageBox.information(
-            None,
-            "eDifFIQA 定向诊断完成",
-            "CPU 输出等价：{}\nDirectML batch=1：{}\n\n报告：\n{}".format(
-                "PASS" if equivalent else "FAIL",
-                str(fixed.get("status", "unknown")).upper(),
-                path,
-            ),
-        )
-        thread.quit()
+    class UiBridge(QObject):
+        @Slot(str, object)
+        def done(self, path, report):
+            progress.close()
+            fixed = report.get("directml_batch1_strict", {})
+            equivalent = report.get("cpu_equivalence", {}).get("allclose")
+            providers = fixed.get("session_providers", [])
+            QMessageBox.information(
+                None,
+                "eDifFIQA 定向诊断完成",
+                "CPU 输出等价：{}\n严格 DirectML batch=1：{}\nProvider：{}\n\n报告：\n{}".format(
+                    "PASS" if equivalent else "FAIL",
+                    str(fixed.get("status", "unknown")).upper(),
+                    ", ".join(providers) if providers else "无",
+                    path,
+                ),
+            )
+            thread.quit()
 
-    def fail(details):
-        progress.close()
-        path = app_dir() / "ediffiqa-directml-probe-error.txt"
-        path.write_text(details, encoding="utf-8")
-        QMessageBox.critical(None, "诊断失败", "请把这个文件发回：\n" + str(path))
-        thread.quit()
+        @Slot(str)
+        def fail(self, details):
+            progress.close()
+            path = app_dir() / "ediffiqa-directml-probe-error.txt"
+            path.write_text(details, encoding="utf-8")
+            QMessageBox.critical(None, "诊断失败", "请把这个文件发回：\n" + str(path))
+            thread.quit()
+
+    bridge = UiBridge()
 
     worker.status.connect(progress.setLabelText)
-    worker.finished.connect(done)
-    worker.failed.connect(fail)
+    worker.finished.connect(bridge.done)
+    worker.failed.connect(bridge.fail)
     thread.started.connect(worker.run)
     thread.finished.connect(app.quit)
     thread.start()
