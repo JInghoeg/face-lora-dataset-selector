@@ -143,10 +143,11 @@ jobs:
           $candidates = Join-Path $targetDir "ediffiqa-candidates"
           New-Item -ItemType Directory -Force $candidates | Out-Null
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $candidates -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_optimized.onnx" $candidates -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static.onnx" $candidates -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static_optimized.onnx" $candidates -Force
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $candidates -Force
 
-          foreach ($candidate in @("legacy_fixed","legacy_fixed_optimized","upstream_current")) {
+          foreach ($candidate in @("legacy_fully_static","upstream_current","legacy_fully_static_optimized","legacy_fixed_control")) {
             $out = Join-Path $PWD "_research_output\dropin-$candidate-cpu.json"
             $progress = Join-Path $PWD "_research_output\dropin-$candidate-cpu.progress.jsonl"
             $args = @("--child","--candidate",$candidate,"--provider","cpu","--output",$out,"--progress",$progress)
@@ -165,7 +166,8 @@ jobs:
 
           Copy-Item (Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe\Face LoRA eDifFIQA Candidate Probe.exe") $dir
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $models -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_optimized.onnx" $models -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static.onnx" $models -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static_optimized.onnx" $models -Force
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $models -Force
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa-graph-lab.json" $dir -Force
 
@@ -176,7 +178,7 @@ jobs:
           Extract this package into the existing DirectML checkpoint folder.
           It adds:
           - Face LoRA eDifFIQA Candidate Probe.exe
-          - ediffiqa-candidates\ (3 candidate ONNX files)
+          - ediffiqa-candidates\ (4 candidate ONNX files)
           - ediffiqa-graph-lab.json
 
           The target probe runs ONLY these eDifFIQA candidates.
