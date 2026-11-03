@@ -100,6 +100,9 @@ jobs:
           Write-Host "Upstream reshape paths:" ($report.candidates.upstream_current.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
 
           Write-Host "Upstream max abs diff:" $report.candidates.upstream_current.cpu_equivalence.max_abs_diff
+          Write-Host "Upstream large initializer multiset identical:" $report.candidates.upstream_current.large_initializer_equivalence.identical_multiset
+          Write-Host "Upstream large initializer reference count:" $report.candidates.upstream_current.large_initializer_equivalence.reference_count
+          Write-Host "Upstream large initializer candidate count:" $report.candidates.upstream_current.large_initializer_equivalence.candidate_count
 
       - name: Build candidate probe
         shell: pwsh
