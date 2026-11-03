@@ -5,9 +5,8 @@ on:
     branches:
       - main
     paths:
-      - "src/features/ranking/runtime.py"
-      - "src/features/ranking/analysis.py"
       - "tools/benchmarks/ediffiqa_directml_probe.py"
+      - "tools/benchmarks/ediffiqa_graph_lab.py"
       - "packaging/ediffiqa_directml_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
   workflow_dispatch:
@@ -43,14 +42,55 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements/runtime-directml.txt -r requirements/build.txt
+          python -m pip install "onnx>=1.16,<2"
 
       - name: Compile targeted probe
         shell: pwsh
         run: |
-          python -m py_compile src/features/ranking/runtime.py
           python -m py_compile tools/benchmarks/ediffiqa_directml_probe.py
+          python -m py_compile tools/benchmarks/ediffiqa_graph_lab.py
           python tools/benchmarks/ediffiqa_directml_probe.py --help
 
+      - name: Analyze legacy vs upstream eDifFIQA graphs
+        shell: pwsh
+        run: |
+          $lab = Join-Path $PWD "_research_output\ediffiqa-graph-lab"
+          New-Item -ItemType Directory -Force $lab | Out-Null
+
+          $upstream = Join-Path $lab "ediffiqa_t_upstream.onnx"
+          Invoke-WebRequest -Uri "https://github.com/yakhyo/face-image-quality-assessment/releases/download/weights/ediffiqa_t.onnx" -OutFile $upstream
+
+          $hash = (Get-FileHash $upstream -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") { throw "Unexpected upstream SHA256: $hash" }
+
+          python tools/benchmarks/ediffiqa_graph_lab.py --legacy resources/models/ediffiqa_t.onnx --upstream $upstream --out-dir $lab
+
+          $report = Get-Content (Join-Path $lab "ediffiqa-graph-lab.json") -Raw | ConvertFrom-Json
+          if (-not $report.candidates.legacy_fixed.cpu_equivalence.allclose) { throw "Fixed legacy model is not CPU-equivalent." }
+          if (-not $report.candidates.legacy_fixed_optimized.cpu_equivalence.allclose) { throw "Optimized fixed legacy model is not CPU-equivalent." }
+
+          Write-Host "Legacy input:" ($report.legacy.inputs | ConvertTo-Json -Compress)
+          Write-Host "Fixed input:" ($report.candidates.legacy_fixed.summary.inputs | ConvertTo-Json -Compress)
+          Write-Host "Optimized input:" ($report.candidates.legacy_fixed_optimized.summary.inputs | ConvertTo-Json -Compress)
+          Write-Host "Upstream input:" ($report.candidates.upstream_current.summary.inputs | ConvertTo-Json -Compress)
+          Write-Host "Legacy shape ops:" $report.legacy.shape_related_count
+          Write-Host "Fixed shape ops:" $report.candidates.legacy_fixed.summary.shape_related_count
+          Write-Host "Optimized shape ops:" $report.candidates.legacy_fixed_optimized.summary.shape_related_count
+          Write-Host "Upstream shape ops:" $report.candidates.upstream_current.summary.shape_related_count
+          Write-Host "Upstream CPU equivalent:" $report.candidates.upstream_current.cpu_equivalence.allclose
+          Write-Host "Upstream max abs diff:" $report.candidates.upstream_current.cpu_equivalence.max_abs_diff
+
+      - name: Upload eDifFIQA graph lab
+        uses: actions/upload-artifact@v4
+        with:
+          name: eDifFIQA-Graph-Lab
+          path: |
+            _research_output/ediffiqa-graph-lab/ediffiqa-graph-lab.json
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_fixed.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_optimized.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_upstream.onnx
+          if-no-files-found: error
+          retention-days: 7
       - name: CPU semantic equivalence
         shell: pwsh
         run: |
