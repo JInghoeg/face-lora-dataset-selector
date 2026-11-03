@@ -1,13 +1,14 @@
-name: eDifFIQA DirectML Batch1 Probe
+name: eDifFIQA DirectML Candidate Probe
 
 on:
   pull_request:
     branches:
       - main
     paths:
-      - "tools/benchmarks/ediffiqa_directml_probe.py"
       - "tools/benchmarks/ediffiqa_graph_lab.py"
-      - "packaging/ediffiqa_directml_probe.spec"
+      - "tools/benchmarks/ediffiqa_candidate_probe.py"
+      - "tools/benchmarks/ediffiqa_directml_probe.py"
+      - "packaging/ediffiqa_candidate_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
   workflow_dispatch:
 
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   probe:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -44,12 +45,12 @@ jobs:
           python -m pip install -r requirements/runtime-directml.txt -r requirements/build.txt
           python -m pip install "onnx>=1.16,<2"
 
-      - name: Compile targeted probe
+      - name: Compile research tools
         shell: pwsh
         run: |
-          python -m py_compile tools/benchmarks/ediffiqa_directml_probe.py
           python -m py_compile tools/benchmarks/ediffiqa_graph_lab.py
-          python tools/benchmarks/ediffiqa_directml_probe.py --help
+          python -m py_compile tools/benchmarks/ediffiqa_candidate_probe.py
+          python tools/benchmarks/ediffiqa_candidate_probe.py --help
 
       - name: Analyze legacy vs upstream eDifFIQA graphs
         shell: pwsh
@@ -61,75 +62,47 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/yakhyo/face-image-quality-assessment/releases/download/weights/ediffiqa_t.onnx" -OutFile $upstream
 
           $hash = (Get-FileHash $upstream -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") { throw "Unexpected upstream SHA256: $hash" }
+          if ($hash -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
+            throw "Unexpected upstream SHA256: $hash"
+          }
 
           python tools/benchmarks/ediffiqa_graph_lab.py --legacy resources/models/ediffiqa_t.onnx --upstream $upstream --out-dir $lab
 
           $report = Get-Content (Join-Path $lab "ediffiqa-graph-lab.json") -Raw | ConvertFrom-Json
-          if (-not $report.candidates.legacy_fixed.cpu_equivalence.allclose) { throw "Fixed legacy model is not CPU-equivalent." }
-          if (-not $report.candidates.legacy_fixed_optimized.cpu_equivalence.allclose) { throw "Optimized fixed legacy model is not CPU-equivalent." }
+
+          if (-not $report.candidates.legacy_fixed.cpu_equivalence.allclose) {
+            throw "Fixed legacy model is not CPU-equivalent."
+          }
+          if (-not $report.candidates.legacy_fixed_optimized.cpu_equivalence.allclose) {
+            throw "Optimized fixed legacy model is not CPU-equivalent."
+          }
+          if (-not $report.candidates.upstream_current.cpu_equivalence.allclose) {
+            throw "Current upstream model is not CPU-equivalent."
+          }
 
           Write-Host "Legacy input:" ($report.legacy.inputs | ConvertTo-Json -Compress)
           Write-Host "Fixed input:" ($report.candidates.legacy_fixed.summary.inputs | ConvertTo-Json -Compress)
           Write-Host "Optimized input:" ($report.candidates.legacy_fixed_optimized.summary.inputs | ConvertTo-Json -Compress)
           Write-Host "Upstream input:" ($report.candidates.upstream_current.summary.inputs | ConvertTo-Json -Compress)
-          Write-Host "Legacy shape ops:" $report.legacy.shape_related_count
-          Write-Host "Fixed shape ops:" $report.candidates.legacy_fixed.summary.shape_related_count
-          Write-Host "Optimized shape ops:" $report.candidates.legacy_fixed_optimized.summary.shape_related_count
-          Write-Host "Upstream shape ops:" $report.candidates.upstream_current.summary.shape_related_count
-          Write-Host "Upstream CPU equivalent:" $report.candidates.upstream_current.cpu_equivalence.allclose
+
+          Write-Host "Legacy shape nodes:" ($report.legacy.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Fixed shape nodes:" ($report.candidates.legacy_fixed.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Optimized shape nodes:" ($report.candidates.legacy_fixed_optimized.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Upstream shape nodes:" ($report.candidates.upstream_current.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+
+          Write-Host "Legacy reshape paths:" ($report.legacy_reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Fixed reshape paths:" ($report.candidates.legacy_fixed.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Optimized reshape paths:" ($report.candidates.legacy_fixed_optimized.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Upstream reshape paths:" ($report.candidates.upstream_current.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+
           Write-Host "Upstream max abs diff:" $report.candidates.upstream_current.cpu_equivalence.max_abs_diff
 
-      - name: Upload eDifFIQA graph lab
-        uses: actions/upload-artifact@v4
-        with:
-          name: eDifFIQA-Graph-Lab
-          path: |
-            _research_output/ediffiqa-graph-lab/ediffiqa-graph-lab.json
-            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_fixed.onnx
-            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_optimized.onnx
-            _research_output/ediffiqa-graph-lab/ediffiqa_t_upstream.onnx
-          if-no-files-found: error
-          retention-days: 7
-      - name: CPU semantic equivalence
+      - name: Build candidate probe
         shell: pwsh
         run: |
-          $root = Join-Path $PWD "_research_output\ediffiqa-cpu"
-          New-Item -ItemType Directory -Force $root | Out-Null
+          python -m PyInstaller --noconfirm --clean packaging/ediffiqa_candidate_probe.spec
 
-          python tools/benchmarks/ediffiqa_directml_probe.py --child --provider cpu --output "$root\dynamic.json" --progress "$root\dynamic.progress.jsonl"
-          if ($LASTEXITCODE -ne 0) { throw "CPU dynamic eDifFIQA failed." }
-
-          python tools/benchmarks/ediffiqa_directml_probe.py --child --provider cpu --batch1 --output "$root\batch1.json" --progress "$root\batch1.progress.jsonl"
-          if ($LASTEXITCODE -ne 0) { throw "CPU batch1 eDifFIQA failed." }
-
-          $dynamic = Get-Content "$root\dynamic.json" -Raw | ConvertFrom-Json
-          $fixed = Get-Content "$root\batch1.json" -Raw | ConvertFrom-Json
-
-          if (($dynamic.outputs | Measure-Object).Count -ne ($fixed.outputs | Measure-Object).Count) {
-            throw "CPU comparison output count mismatch."
-          }
-
-          for ($i = 0; $i -lt $dynamic.outputs.Count; $i++) {
-            $a = [double[]]$dynamic.outputs[$i].value
-            $b = [double[]]$fixed.outputs[$i].value
-            if ($a.Count -ne $b.Count) { throw "CPU output shape mismatch at sample $i." }
-            for ($j = 0; $j -lt $a.Count; $j++) {
-              $delta = [math]::Abs($a[$j] - $b[$j])
-              $limit = 1e-7 + 1e-6 * [math]::Abs($a[$j])
-              if ($delta -gt $limit) {
-                throw "CPU outputs differ at sample $i value ${j}: delta=$delta limit=$limit"
-              }
-            }
-          }
-          Write-Host "PASS: batch=1 override is CPU-semantic-equivalent for deterministic inputs."
-
-      - name: Build targeted probe
-        shell: pwsh
-        run: |
-          python -m PyInstaller --noconfirm --clean packaging/ediffiqa_directml_probe.spec
-
-      - name: Validate EXE drop-in against checkpoint payload
+      - name: Validate candidate probe as checkpoint drop-in
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,55 +126,82 @@ jobs:
           if (-not $inner) { throw "Checkpoint inner ZIP not found." }
 
           Expand-Archive -Path $inner.FullName -DestinationPath $baseDir -Force
-
           $checkpointExe = Get-ChildItem $baseDir -Recurse -File |
             Where-Object { $_.Name -eq "Face LoRA DirectML Checkpoint.exe" } |
             Select-Object -First 1
           if (-not $checkpointExe) { throw "Checkpoint EXE not found." }
 
           $targetDir = $checkpointExe.Directory.FullName
-          $newExe = Join-Path $PWD "dist\FaceLoRA-eDifFIQA-DirectML-Probe\Face LoRA eDifFIQA DirectML Probe.exe"
-          $targetExe = Join-Path $targetDir "Face LoRA eDifFIQA DirectML Probe.exe"
-          Copy-Item $newExe $targetExe -Force
+          $probeExe = Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe\Face LoRA eDifFIQA Candidate Probe.exe"
+          $targetExe = Join-Path $targetDir "Face LoRA eDifFIQA Candidate Probe.exe"
+          Copy-Item $probeExe $targetExe -Force
 
-          $out = Join-Path $PWD "_research_output\packaged-batch1-cpu.json"
-          $progress = Join-Path $PWD "_research_output\packaged-batch1-cpu.progress.jsonl"
-          $args = @("--child","--provider","cpu","--batch1","--output",$out,"--progress",$progress)
-          $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Drop-in targeted probe failed: $($p.ExitCode)" }
+          $candidates = Join-Path $targetDir "ediffiqa-candidates"
+          New-Item -ItemType Directory -Force $candidates | Out-Null
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $candidates -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_optimized.onnx" $candidates -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $candidates -Force
 
-          $result = Get-Content $out -Raw | ConvertFrom-Json
-          if ($result.status -ne "pass") { throw "Drop-in targeted CPU probe did not pass." }
-          if ($result.input_shape[0] -ne 1) { throw "Batch override did not resolve input shape to 1." }
+          foreach ($candidate in @("legacy_fixed","legacy_fixed_optimized","upstream_current")) {
+            $out = Join-Path $PWD "_research_output\dropin-$candidate-cpu.json"
+            $progress = Join-Path $PWD "_research_output\dropin-$candidate-cpu.progress.jsonl"
+            $args = @("--child","--candidate",$candidate,"--provider","cpu","--output",$out,"--progress",$progress)
+            $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Drop-in CPU probe failed for $candidate: $($p.ExitCode)" }
+            $result = Get-Content $out -Raw | ConvertFrom-Json
+            if ($result.status -ne "pass") { throw "Drop-in candidate did not pass CPU: $candidate" }
+          }
 
-      - name: Build EXE-only artifact
+      - name: Build candidate artifact
         shell: pwsh
         run: |
-          $dir = Join-Path $PWD "_research_output\ediffiqa-probe-exe"
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item (Join-Path $PWD "dist\FaceLoRA-eDifFIQA-DirectML-Probe\Face LoRA eDifFIQA DirectML Probe.exe") $dir
+          $dir = Join-Path $PWD "_research_output\ediffiqa-candidate-package"
+          $models = Join-Path $dir "ediffiqa-candidates"
+          New-Item -ItemType Directory -Force $models | Out-Null
+
+          Copy-Item (Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe\Face LoRA eDifFIQA Candidate Probe.exe") $dir
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $models -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_optimized.onnx" $models -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $models -Force
+          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa-graph-lab.json" $dir -Force
 
           @'
-          eDifFIQA DirectML Batch=1 Targeted Probe
-          ========================================
+          eDifFIQA DirectML Candidate Probe
+          =================================
 
-          Copy "Face LoRA eDifFIQA DirectML Probe.exe" beside the existing
-          "Face LoRA DirectML Checkpoint.exe" in the checkpoint folder.
+          Extract this package into the existing DirectML checkpoint folder.
+          It adds:
+          - Face LoRA eDifFIQA Candidate Probe.exe
+          - ediffiqa-candidates\ (3 candidate ONNX files)
+          - ediffiqa-graph-lab.json
 
-          Double-click the new probe.
-          It does not read a dataset and does not benchmark other models.
+          The target probe runs ONLY these eDifFIQA candidates.
+          DirectML Python fallback and CPU EP fallback are disabled.
+          A PASS therefore requires a real DmlExecutionProvider session.
 
           Send:
-          ediffiqa-directml-results\<timestamp>\ediffiqa-directml-batch1.json
+          ediffiqa-candidate-results\<timestamp>\ediffiqa-directml-candidates.json
           back to ChatGPT.
           '@ | Set-Content -Path (Join-Path $dir "README.txt") -Encoding UTF8
 
-          Compress-Archive -Path "$dir\*" -DestinationPath "FaceLoRA-eDifFIQA-DirectML-Probe-EXE.zip" -CompressionLevel Optimal -Force
+          Compress-Archive -Path "$dir\*" -DestinationPath "FaceLoRA-eDifFIQA-Candidate-Probe.zip" -CompressionLevel Optimal -Force
 
-      - name: Upload targeted EXE
+      - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FaceLoRA-eDifFIQA-DirectML-Probe-EXE
-          path: FaceLoRA-eDifFIQA-DirectML-Probe-EXE.zip
+          name: FaceLoRA-eDifFIQA-Candidate-Probe
+          path: FaceLoRA-eDifFIQA-Candidate-Probe.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload graph lab evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eDifFIQA-Graph-Lab
+          path: |
+            _research_output/ediffiqa-graph-lab/ediffiqa-graph-lab.json
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_fixed.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_optimized.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_upstream.onnx
           if-no-files-found: error
           retention-days: 7
