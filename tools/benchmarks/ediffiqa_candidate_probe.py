@@ -22,9 +22,10 @@ import onnxruntime as ort
 
 
 CANDIDATES = (
-    ("legacy_fixed", "ediffiqa_t_legacy_batch1_fixed.onnx"),
-    ("legacy_fixed_optimized", "ediffiqa_t_legacy_batch1_optimized.onnx"),
+    ("legacy_fully_static", "ediffiqa_t_legacy_fully_static.onnx"),
     ("upstream_current", "ediffiqa_t_upstream.onnx"),
+    ("legacy_fully_static_optimized", "ediffiqa_t_legacy_fully_static_optimized.onnx"),
+    ("legacy_fixed_control", "ediffiqa_t_legacy_batch1_fixed.onnx"),
 )
 TIMEOUT_SECONDS = 45
 
