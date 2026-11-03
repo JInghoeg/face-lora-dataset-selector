@@ -11,6 +11,7 @@ This tool does not make a production selection and does not require DirectML.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -52,6 +53,49 @@ def iter_graphs(graph):
             elif attr.graphs:
                 for subgraph in attr.graphs:
                     yield from iter_graphs(subgraph)
+
+
+
+def initializer_fingerprint(path: Path, min_elements: int = 32):
+    model = onnx.load(str(path), load_external_data=False)
+    rows = []
+    for initializer in model.graph.initializer:
+        try:
+            array = np.asarray(numpy_helper.to_array(initializer))
+        except Exception:
+            continue
+        if array.size < min_elements:
+            continue
+        digest = hashlib.sha256()
+        digest.update(str(array.dtype).encode("utf-8"))
+        digest.update(json.dumps(list(array.shape)).encode("utf-8"))
+        digest.update(np.ascontiguousarray(array).tobytes())
+        rows.append({
+            "name": initializer.name,
+            "shape": list(array.shape),
+            "dtype": str(array.dtype),
+            "elements": int(array.size),
+            "sha256": digest.hexdigest(),
+        })
+    rows.sort(key=lambda row: (row["sha256"], row["elements"], row["name"]))
+    return rows
+
+
+def compare_initializer_multisets(reference_path: Path, candidate_path: Path, min_elements: int = 32):
+    reference = initializer_fingerprint(reference_path, min_elements)
+    candidate = initializer_fingerprint(candidate_path, min_elements)
+    ref_counts = Counter(row["sha256"] for row in reference)
+    cand_counts = Counter(row["sha256"] for row in candidate)
+    missing = list((ref_counts - cand_counts).elements())
+    extra = list((cand_counts - ref_counts).elements())
+    return {
+        "min_elements": min_elements,
+        "reference_count": len(reference),
+        "candidate_count": len(candidate),
+        "identical_multiset": not missing and not extra,
+        "missing_hashes": missing,
+        "extra_hashes": extra,
+    }
 
 
 def graph_summary(path: Path):
@@ -308,6 +352,11 @@ def main():
             "summary": graph_summary(path),
             "reshape_paths": reshape_producer_paths(path),
             "cpu_equivalence": compare_outputs(reference, outputs),
+            "large_initializer_equivalence": compare_initializer_multisets(
+                args.legacy,
+                path,
+                min_elements=32,
+            ),
         }
 
     report_path = args.out_dir / "ediffiqa-graph-lab.json"
