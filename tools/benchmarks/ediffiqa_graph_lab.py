@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 import onnxruntime as ort
+from onnx import numpy_helper
 from onnxruntime.tools.onnx_model_utils import (
     fix_output_shapes,
     make_dim_param_fixed,
@@ -59,6 +60,15 @@ def graph_summary(path: Path):
     shape_nodes = []
     dynamic_values = []
     initializer_names = set()
+    initializer_values = {}
+    for graph in iter_graphs(model.graph):
+        for initializer in graph.initializer:
+            try:
+                array = numpy_helper.to_array(initializer)
+                if array.size <= 16:
+                    initializer_values[initializer.name] = array.reshape(-1).tolist()
+            except Exception:
+                pass
 
     for graph in iter_graphs(model.graph):
         initializer_names.update(x.name for x in graph.initializer)
@@ -70,6 +80,11 @@ def graph_summary(path: Path):
                     "op_type": node.op_type,
                     "inputs": list(node.input),
                     "outputs": list(node.output),
+                    "small_initializer_inputs": {
+                        name: initializer_values[name]
+                        for name in node.input
+                        if name in initializer_values
+                    },
                 })
         for value in list(graph.input) + list(graph.value_info) + list(graph.output):
             shape = shape_of(value)
@@ -100,6 +115,60 @@ def make_fixed_legacy(source: Path, output: Path):
     model = onnx.shape_inference.infer_shapes(model)
     onnx.checker.check_model(model)
     onnx.save(model, str(output))
+
+
+def _fixed_shape_map(model):
+    inferred = onnx.shape_inference.infer_shapes(model)
+    result = {}
+    for value in list(inferred.graph.input) + list(inferred.graph.value_info) + list(inferred.graph.output):
+        shape = shape_of(value)
+        if shape and all(isinstance(dim, int) and dim > 0 for dim in shape):
+            result[value.name] = shape
+    return result
+
+
+def make_fully_static_legacy(source: Path, output: Path):
+    model = onnx.load(str(source))
+    make_dim_param_fixed(model.graph, "batch", 1)
+    fix_output_shapes(model)
+    model = onnx.shape_inference.infer_shapes(model)
+    fixed_shapes = _fixed_shape_map(model)
+
+    initializers = {item.name: item for item in model.graph.initializer}
+    patched = []
+    for node in model.graph.node:
+        if node.op_type != "Reshape" or len(node.input) < 2 or not node.output:
+            continue
+        shape_name = node.input[1]
+        initializer = initializers.get(shape_name)
+        output_shape = fixed_shapes.get(node.output[0])
+        if initializer is None or not output_shape:
+            continue
+        array = numpy_helper.to_array(initializer)
+        if array.ndim != 1 or array.size != len(output_shape):
+            continue
+        if not any(int(value) <= 0 for value in array.tolist()):
+            continue
+
+        replacement = numpy_helper.from_array(
+            np.asarray(output_shape, dtype=array.dtype),
+            name=shape_name,
+        )
+        initializer.CopyFrom(replacement)
+        patched.append({
+            "node": node.name,
+            "shape_initializer": shape_name,
+            "old": array.reshape(-1).tolist(),
+            "new": output_shape,
+        })
+
+    if not patched:
+        raise RuntimeError("No dynamic Reshape shape initializer was concretized.")
+
+    model = onnx.shape_inference.infer_shapes(model)
+    onnx.checker.check_model(model)
+    onnx.save(model, str(output))
+    return patched
 
 
 def optimize_cpu(source: Path, output: Path):
@@ -208,14 +277,20 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
     fixed = args.out_dir / "ediffiqa_t_legacy_batch1_fixed.onnx"
     optimized = args.out_dir / "ediffiqa_t_legacy_batch1_optimized.onnx"
+    fully_static = args.out_dir / "ediffiqa_t_legacy_fully_static.onnx"
+    fully_static_optimized = args.out_dir / "ediffiqa_t_legacy_fully_static_optimized.onnx"
 
     make_fixed_legacy(args.legacy, fixed)
     optimize_cpu(fixed, optimized)
+    fully_static_patches = make_fully_static_legacy(args.legacy, fully_static)
+    optimize_cpu(fully_static, fully_static_optimized)
 
     reference = cpu_outputs(args.legacy)
     candidates = {
         "legacy_fixed": fixed,
         "legacy_fixed_optimized": optimized,
+        "legacy_fully_static": fully_static,
+        "legacy_fully_static_optimized": fully_static_optimized,
         "upstream_current": args.upstream,
     }
 
@@ -223,6 +298,7 @@ def main():
         "schema_version": 1,
         "legacy": graph_summary(args.legacy),
         "legacy_reshape_paths": reshape_producer_paths(args.legacy),
+        "fully_static_patches": fully_static_patches,
         "candidates": {},
     }
 
