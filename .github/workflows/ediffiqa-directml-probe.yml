@@ -82,17 +82,21 @@ jobs:
 
           Write-Host "Legacy input:" ($report.legacy.inputs | ConvertTo-Json -Compress)
           Write-Host "Fixed input:" ($report.candidates.legacy_fixed.summary.inputs | ConvertTo-Json -Compress)
-          Write-Host "Optimized input:" ($report.candidates.legacy_fixed_optimized.summary.inputs | ConvertTo-Json -Compress)
+          Write-Host "Fully static input:" ($report.candidates.legacy_fully_static.summary.inputs | ConvertTo-Json -Compress)
+          Write-Host "Fully static optimized input:" ($report.candidates.legacy_fully_static_optimized.summary.inputs | ConvertTo-Json -Compress)
           Write-Host "Upstream input:" ($report.candidates.upstream_current.summary.inputs | ConvertTo-Json -Compress)
 
           Write-Host "Legacy shape nodes:" ($report.legacy.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
           Write-Host "Fixed shape nodes:" ($report.candidates.legacy_fixed.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
-          Write-Host "Optimized shape nodes:" ($report.candidates.legacy_fixed_optimized.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Fully static shape nodes:" ($report.candidates.legacy_fully_static.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Fully static optimized shape nodes:" ($report.candidates.legacy_fully_static_optimized.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
           Write-Host "Upstream shape nodes:" ($report.candidates.upstream_current.summary.shape_related_nodes | ConvertTo-Json -Depth 8 -Compress)
 
           Write-Host "Legacy reshape paths:" ($report.legacy_reshape_paths | ConvertTo-Json -Depth 10 -Compress)
           Write-Host "Fixed reshape paths:" ($report.candidates.legacy_fixed.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
-          Write-Host "Optimized reshape paths:" ($report.candidates.legacy_fixed_optimized.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Fully static reshape paths:" ($report.candidates.legacy_fully_static.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Fully static optimized reshape paths:" ($report.candidates.legacy_fully_static_optimized.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
+          Write-Host "Fully static patches:" ($report.fully_static_patches | ConvertTo-Json -Depth 10 -Compress)
           Write-Host "Upstream reshape paths:" ($report.candidates.upstream_current.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
 
           Write-Host "Upstream max abs diff:" $report.candidates.upstream_current.cpu_equivalence.max_abs_diff
@@ -147,7 +151,7 @@ jobs:
             $progress = Join-Path $PWD "_research_output\dropin-$candidate-cpu.progress.jsonl"
             $args = @("--child","--candidate",$candidate,"--provider","cpu","--output",$out,"--progress",$progress)
             $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Drop-in CPU probe failed for $candidate: $($p.ExitCode)" }
+            if ($p.ExitCode -ne 0) { throw "Drop-in CPU probe failed for ${candidate}: $($p.ExitCode)" }
             $result = Get-Content $out -Raw | ConvertFrom-Json
             if ($result.status -ne "pass") { throw "Drop-in candidate did not pass CPU: $candidate" }
           }
@@ -201,7 +205,8 @@ jobs:
           path: |
             _research_output/ediffiqa-graph-lab/ediffiqa-graph-lab.json
             _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_fixed.onnx
-            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_batch1_optimized.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_fully_static.onnx
+            _research_output/ediffiqa-graph-lab/ediffiqa_t_legacy_fully_static_optimized.onnx
             _research_output/ediffiqa-graph-lab/ediffiqa_t_upstream.onnx
           if-no-files-found: error
           retention-days: 7
