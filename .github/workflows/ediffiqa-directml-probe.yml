@@ -58,6 +58,16 @@ jobs:
           $lab = Join-Path $PWD "_research_output\ediffiqa-graph-lab"
           New-Item -ItemType Directory -Force $lab | Out-Null
 
+          # The research branch now vendors the current official model at the
+          # production path. Preserve main's legacy binary as the immutable
+          # comparison baseline instead of accidentally comparing upstream to itself.
+          git fetch origin main --quiet
+          $legacy = Join-Path $lab "ediffiqa_t_legacy_main.onnx"
+          cmd /c "git show origin/main:resources/models/ediffiqa_t.onnx > \"$legacy\""
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $legacy)) {
+            throw "Unable to extract legacy eDifFIQA model from origin/main."
+          }
+
           $upstream = Join-Path $lab "ediffiqa_t_upstream.onnx"
           Invoke-WebRequest -Uri "https://github.com/yakhyo/face-image-quality-assessment/releases/download/weights/ediffiqa_t.onnx" -OutFile $upstream
 
@@ -66,7 +76,7 @@ jobs:
             throw "Unexpected upstream SHA256: $hash"
           }
 
-          python tools/benchmarks/ediffiqa_graph_lab.py --legacy resources/models/ediffiqa_t.onnx --upstream $upstream --out-dir $lab
+          python tools/benchmarks/ediffiqa_graph_lab.py --legacy $legacy --upstream $upstream --out-dir $lab
 
           $report = Get-Content (Join-Path $lab "ediffiqa-graph-lab.json") -Raw | ConvertFrom-Json
 
