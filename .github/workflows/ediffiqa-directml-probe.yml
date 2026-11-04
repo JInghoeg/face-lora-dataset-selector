@@ -1,4 +1,4 @@
-name: eDifFIQA DirectML Candidate Probe
+name: eDifFIQA DirectML Final Probe
 
 on:
   pull_request:
@@ -7,7 +7,6 @@ on:
     paths:
       - "tools/benchmarks/ediffiqa_graph_lab.py"
       - "tools/benchmarks/ediffiqa_candidate_probe.py"
-      - "tools/benchmarks/ediffiqa_directml_probe.py"
       - "packaging/ediffiqa_candidate_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
   workflow_dispatch:
