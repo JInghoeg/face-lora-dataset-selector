@@ -279,7 +279,7 @@ def run_gui():
     QMessageBox.information(
         None,
         "eDifFIQA DirectML 候选模型诊断",
-        "这次只测试 3 个已经在 CI 验证 CPU 等价/结构的 eDifFIQA 候选模型。\n\n"
+        "这次只测试已经通过仓库侧等价验证的当前官方 eDifFIQA-T。\n\n"
         "DirectML 和 CPU fallback 都被严格隔离，不会把 CPU 成功误报成 GPU 成功。",
     )
 
@@ -311,7 +311,10 @@ def run_gui():
             QMessageBox.information(
                 None,
                 "eDifFIQA 候选诊断完成",
-                "可用 DirectML 候选：{}\n\n报告：\n{}".format(winner or "无", path),
+                "当前官方 eDifFIQA-T DirectML：{}\n\n报告：\n{}".format(
+                    "PASS" if winner == "upstream_current" else "FAIL",
+                    path,
+                ),
             )
             thread.quit()
 
