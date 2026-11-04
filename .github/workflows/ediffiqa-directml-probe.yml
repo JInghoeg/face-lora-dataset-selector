@@ -166,20 +166,21 @@ jobs:
 
           $candidates = Join-Path $targetDir "ediffiqa-candidates"
           New-Item -ItemType Directory -Force $candidates | Out-Null
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $candidates -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static.onnx" $candidates -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static_optimized.onnx" $candidates -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $candidates -Force
+          $targetModel = Join-Path $candidates "ediffiqa_t_upstream.onnx"
+          Copy-Item "resources\models\ediffiqa_t.onnx" $targetModel -Force
 
-          foreach ($candidate in @("legacy_fully_static","upstream_current","legacy_fully_static_optimized","legacy_fixed_control")) {
-            $out = Join-Path $PWD "_research_output\dropin-$candidate-cpu.json"
-            $progress = Join-Path $PWD "_research_output\dropin-$candidate-cpu.progress.jsonl"
-            $args = @("--child","--candidate",$candidate,"--provider","cpu","--output",$out,"--progress",$progress)
-            $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Drop-in CPU probe failed for ${candidate}: $($p.ExitCode)" }
-            $result = Get-Content $out -Raw | ConvertFrom-Json
-            if ($result.status -ne "pass") { throw "Drop-in candidate did not pass CPU: $candidate" }
+          $modelHash = (Get-FileHash $targetModel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($modelHash -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
+            throw "Final probe model hash mismatch: $modelHash"
           }
+
+          $out = Join-Path $PWD "_research_output\dropin-upstream_current-cpu.json"
+          $progress = Join-Path $PWD "_research_output\dropin-upstream_current-cpu.progress.jsonl"
+          $args = @("--child","--candidate","upstream_current","--provider","cpu","--output",$out,"--progress",$progress)
+          $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Drop-in official eDifFIQA CPU probe failed: $($p.ExitCode)" }
+          $result = Get-Content $out -Raw | ConvertFrom-Json
+          if ($result.status -ne "pass") { throw "Drop-in official eDifFIQA probe did not pass CPU." }
 
       - name: Build candidate artifact
         shell: pwsh
@@ -189,10 +190,7 @@ jobs:
           New-Item -ItemType Directory -Force $models | Out-Null
 
           Copy-Item (Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe\Face LoRA eDifFIQA Candidate Probe.exe") $dir
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_batch1_fixed.onnx" $models -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static.onnx" $models -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_legacy_fully_static_optimized.onnx" $models -Force
-          Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa_t_upstream.onnx" $models -Force
+          Copy-Item "resources\models\ediffiqa_t.onnx" (Join-Path $models "ediffiqa_t_upstream.onnx") -Force
           Copy-Item "_research_output\ediffiqa-graph-lab\ediffiqa-graph-lab.json" $dir -Force
 
           @'
@@ -202,10 +200,11 @@ jobs:
           Extract this package into the existing DirectML checkpoint folder.
           It adds:
           - Face LoRA eDifFIQA Candidate Probe.exe
-          - ediffiqa-candidates\ (4 candidate ONNX files)
+          - ediffiqa-candidates\ediffiqa_t_upstream.onnx
           - ediffiqa-graph-lab.json
 
-          The target probe runs ONLY these eDifFIQA candidates.
+          The target probe runs ONLY the exact current official eDifFIQA-T
+          model tracked at the production resource path on this PR.
           DirectML Python fallback and CPU EP fallback are disabled.
           A PASS therefore requires a real DmlExecutionProvider session.
 
@@ -219,7 +218,7 @@ jobs:
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FaceLoRA-eDifFIQA-Candidate-Probe
+          name: FaceLoRA-eDifFIQA-DirectML-Final-Probe
           path: FaceLoRA-eDifFIQA-Candidate-Probe.zip
           if-no-files-found: error
           retention-days: 7
