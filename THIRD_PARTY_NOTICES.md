@@ -14,9 +14,13 @@ This project uses or redistributes third-party libraries, model files, and resou
 ### eDifFIQA-T
 
 - File: `models/ediffiqa_t.onnx`
-- Project: eDifFIQA
+- Original project: eDifFIQA — https://github.com/LSIbabnikz/eDifFIQA
+- Current ONNX re-export / mirror: Face Image Quality Assessment — https://github.com/yakhyo/face-image-quality-assessment
 - License: MIT License
-- Source: https://github.com/LSIbabnikz/eDifFIQA
+- Re-export copyright: Copyright (c) 2026 Yakhyokhuja Valikhujaev
+- SHA-256: `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`
+
+The bundled ONNX is the current upstream eDifFIQA-T release export from the original authors' PyTorch weights. It replaces the repository's older view/Reshape-based export while preserving the model's quality-score behavior.
 
 ### 3DDFA-V2
 
