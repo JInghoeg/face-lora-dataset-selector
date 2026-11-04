@@ -81,6 +81,18 @@ def initializer_fingerprint(path: Path, min_elements: int = 32):
     return rows
 
 
+def _initializer_consumers(model):
+    consumers = defaultdict(list)
+    for node in model.graph.node:
+        for name in node.input:
+            if name:
+                consumers[name].append({
+                    "node": node.name,
+                    "op_type": node.op_type,
+                })
+    return consumers
+
+
 def compare_initializer_multisets(reference_path: Path, candidate_path: Path, min_elements: int = 32):
     reference = initializer_fingerprint(reference_path, min_elements)
     candidate = initializer_fingerprint(candidate_path, min_elements)
@@ -88,6 +100,35 @@ def compare_initializer_multisets(reference_path: Path, candidate_path: Path, mi
     cand_counts = Counter(row["sha256"] for row in candidate)
     missing = list((ref_counts - cand_counts).elements())
     extra = list((cand_counts - ref_counts).elements())
+
+    ref_model = onnx.load(str(reference_path), load_external_data=False)
+    cand_model = onnx.load(str(candidate_path), load_external_data=False)
+    ref_consumers = _initializer_consumers(ref_model)
+    cand_consumers = _initializer_consumers(cand_model)
+
+    ref_by_hash = defaultdict(list)
+    cand_by_hash = defaultdict(list)
+    for row in reference:
+        ref_by_hash[row["sha256"]].append(row)
+    for row in candidate:
+        cand_by_hash[row["sha256"]].append(row)
+
+    missing_details = []
+    for digest in sorted(set(missing)):
+        for row in ref_by_hash[digest]:
+            missing_details.append({
+                **row,
+                "consumers": ref_consumers.get(row["name"], []),
+            })
+
+    extra_details = []
+    for digest in sorted(set(extra)):
+        for row in cand_by_hash[digest]:
+            extra_details.append({
+                **row,
+                "consumers": cand_consumers.get(row["name"], []),
+            })
+
     return {
         "min_elements": min_elements,
         "reference_count": len(reference),
@@ -95,6 +136,8 @@ def compare_initializer_multisets(reference_path: Path, candidate_path: Path, mi
         "identical_multiset": not missing and not extra,
         "missing_hashes": missing,
         "extra_hashes": extra,
+        "missing_details": missing_details,
+        "extra_details": extra_details,
     }
 
 
