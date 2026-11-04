@@ -275,15 +275,68 @@ def optimize_cpu(source: Path, output: Path):
         raise RuntimeError("ORT did not write optimized model")
 
 
-def cpu_outputs(model: Path, seeds=(11, 29, 47, 71, 101)):
+def deterministic_inputs():
+    rows = []
+
+    def add(name, data):
+        array = np.asarray(data, dtype=np.float32)
+        if array.shape != (1, 3, 112, 112):
+            raise ValueError(f"{name}: unexpected shape {array.shape}")
+        rows.append((name, array))
+
+    add("zeros", np.zeros((1, 3, 112, 112), dtype=np.float32))
+    add("ones", np.ones((1, 3, 112, 112), dtype=np.float32))
+    add("minus_ones", -np.ones((1, 3, 112, 112), dtype=np.float32))
+    add("half", np.full((1, 3, 112, 112), 0.5, dtype=np.float32))
+    add("minus_half", np.full((1, 3, 112, 112), -0.5, dtype=np.float32))
+
+    ramp_x = np.linspace(-1.0, 1.0, 112, dtype=np.float32)[None, None, None, :]
+    add("ramp_x", np.broadcast_to(ramp_x, (1, 3, 112, 112)))
+    ramp_y = np.linspace(-1.0, 1.0, 112, dtype=np.float32)[None, None, :, None]
+    add("ramp_y", np.broadcast_to(ramp_y, (1, 3, 112, 112)))
+
+    yy, xx = np.indices((112, 112))
+    checker = (((xx + yy) % 2) * 2 - 1).astype(np.float32)
+    add("checkerboard", np.broadcast_to(checker[None, None], (1, 3, 112, 112)))
+
+    impulse = np.zeros((1, 3, 112, 112), dtype=np.float32)
+    impulse[:, :, 56, 56] = 1.0
+    add("center_impulse", impulse)
+
+    channel_ramp = np.zeros((1, 3, 112, 112), dtype=np.float32)
+    channel_ramp[:, 0] = np.linspace(-1.0, 1.0, 112 * 112, dtype=np.float32).reshape(112, 112)
+    channel_ramp[:, 1] = 0.25
+    channel_ramp[:, 2] = -0.75
+    add("channel_ramp", channel_ramp)
+
+    for seed in range(64):
+        rng = np.random.default_rng(1000 + seed)
+        add(
+            f"uniform_{seed:02d}",
+            rng.uniform(-1.0, 1.0, size=(1, 3, 112, 112)).astype(np.float32),
+        )
+
+    for seed in range(32):
+        rng = np.random.default_rng(2000 + seed)
+        add(
+            f"normal_clipped_{seed:02d}",
+            np.clip(
+                rng.standard_normal((1, 3, 112, 112), dtype=np.float32),
+                -1.0,
+                1.0,
+            ),
+        )
+
+    return rows
+
+
+def cpu_outputs(model: Path):
     session = ort.InferenceSession(str(model), providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
     rows = []
-    for seed in seeds:
-        rng = np.random.default_rng(seed)
-        data = rng.standard_normal((1, 3, 112, 112), dtype=np.float32)
+    for case, data in deterministic_inputs():
         value = np.asarray(session.run(None, {input_name: data})[0], dtype=np.float64)
-        rows.append({"seed": seed, "shape": list(value.shape), "value": value.reshape(-1).tolist()})
+        rows.append({"case": case, "shape": list(value.shape), "value": value.reshape(-1).tolist()})
     return rows
 
 
@@ -292,18 +345,33 @@ def compare_outputs(reference_rows, candidate_rows):
         return {"comparable": False, "reason": "row_count"}
     rows = []
     allclose = True
+    exact = True
     max_abs = 0.0
     for ref, cand in zip(reference_rows, candidate_rows):
         a = np.asarray(ref["value"], dtype=np.float64)
         b = np.asarray(cand["value"], dtype=np.float64)
         if a.shape != b.shape:
-            return {"comparable": False, "reason": "shape", "seed": ref["seed"]}
+            return {"comparable": False, "reason": "shape", "case": ref["case"]}
         delta = float(np.max(np.abs(a - b))) if a.size else 0.0
         close = bool(np.allclose(a, b, rtol=1e-6, atol=1e-7))
+        same = bool(np.array_equal(a, b))
         max_abs = max(max_abs, delta)
         allclose = allclose and close
-        rows.append({"seed": ref["seed"], "max_abs_diff": delta, "allclose": close})
-    return {"comparable": True, "allclose": allclose, "max_abs_diff": max_abs, "rows": rows}
+        exact = exact and same
+        rows.append({
+            "case": ref["case"],
+            "max_abs_diff": delta,
+            "allclose": close,
+            "exact": same,
+        })
+    return {
+        "comparable": True,
+        "allclose": allclose,
+        "exact": exact,
+        "max_abs_diff": max_abs,
+        "case_count": len(rows),
+        "rows": rows,
+    }
 
 
 def reshape_producer_paths(path: Path):
