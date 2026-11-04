@@ -63,7 +63,8 @@ jobs:
           # comparison baseline instead of accidentally comparing upstream to itself.
           git fetch origin main --quiet
           $legacy = Join-Path $lab "ediffiqa_t_legacy_main.onnx"
-          cmd /c "git show origin/main:resources/models/ediffiqa_t.onnx > \"$legacy\""
+          $cmdLine = 'git show origin/main:resources/models/ediffiqa_t.onnx > "' + $legacy + '"'
+          cmd.exe /d /s /c $cmdLine
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $legacy)) {
             throw "Unable to extract legacy eDifFIQA model from origin/main."
           }
