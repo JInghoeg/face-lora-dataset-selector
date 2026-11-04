@@ -146,6 +146,11 @@ jobs:
           python tools/install_ui_dependencies.py
           python -c "import importlib.util, qfluentwidgets; assert importlib.util.find_spec('PySide6.QtCharts') is None, 'PySide6-Addons unexpectedly installed'; print('Fluent UI Essentials-only runtime OK')"
 
+      - name: Prepare SHA-pinned bundled models
+        shell: pwsh
+        run: |
+          python tools/prepare_bundled_models.py --root resources/models
+
       - name: Source runtime self-test
         shell: pwsh
         run: |
