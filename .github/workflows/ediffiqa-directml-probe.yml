@@ -103,6 +103,8 @@ jobs:
           Write-Host "Upstream large initializer multiset identical:" $report.candidates.upstream_current.large_initializer_equivalence.identical_multiset
           Write-Host "Upstream large initializer reference count:" $report.candidates.upstream_current.large_initializer_equivalence.reference_count
           Write-Host "Upstream large initializer candidate count:" $report.candidates.upstream_current.large_initializer_equivalence.candidate_count
+          Write-Host "Upstream missing initializer details:" ($report.candidates.upstream_current.large_initializer_equivalence.missing_details | ConvertTo-Json -Depth 8 -Compress)
+          Write-Host "Upstream extra initializer details:" ($report.candidates.upstream_current.large_initializer_equivalence.extra_details | ConvertTo-Json -Depth 8 -Compress)
 
       - name: Build candidate probe
         shell: pwsh
