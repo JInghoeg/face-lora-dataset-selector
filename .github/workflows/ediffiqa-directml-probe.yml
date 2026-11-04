@@ -79,6 +79,12 @@ jobs:
           if (-not $report.candidates.upstream_current.cpu_equivalence.allclose) {
             throw "Current upstream model is not CPU-equivalent."
           }
+          if (-not $report.candidates.upstream_current.cpu_equivalence.exact) {
+            throw "Current upstream model is not bit-exact across the deterministic suite."
+          }
+          if ($report.candidates.upstream_current.cpu_equivalence.case_count -lt 100) {
+            throw "Functional equivalence suite is unexpectedly small."
+          }
 
           Write-Host "Legacy input:" ($report.legacy.inputs | ConvertTo-Json -Compress)
           Write-Host "Fixed input:" ($report.candidates.legacy_fixed.summary.inputs | ConvertTo-Json -Compress)
@@ -100,6 +106,8 @@ jobs:
           Write-Host "Upstream reshape paths:" ($report.candidates.upstream_current.reshape_paths | ConvertTo-Json -Depth 10 -Compress)
 
           Write-Host "Upstream max abs diff:" $report.candidates.upstream_current.cpu_equivalence.max_abs_diff
+          Write-Host "Upstream exact equivalence:" $report.candidates.upstream_current.cpu_equivalence.exact
+          Write-Host "Upstream equivalence cases:" $report.candidates.upstream_current.cpu_equivalence.case_count
           Write-Host "Upstream large initializer multiset identical:" $report.candidates.upstream_current.large_initializer_equivalence.identical_multiset
           Write-Host "Upstream large initializer reference count:" $report.candidates.upstream_current.large_initializer_equivalence.reference_count
           Write-Host "Upstream large initializer candidate count:" $report.candidates.upstream_current.large_initializer_equivalence.candidate_count
