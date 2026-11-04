@@ -8,6 +8,8 @@ on:
       - "src/infrastructure/inference_runtime.py"
       - "tests/settings_inference_runtime_smoke.py"
       - "requirements/runtime-directml.txt"
+      - "resources/models/ediffiqa_t.onnx"
+      - "tools/prepare_bundled_models.py"
       - "tools/benchmarks/directml_runtime_probe.py"
       - "tools/build_portable.ps1"
       - "packaging/portable.spec"
@@ -73,6 +75,15 @@ jobs:
         run: |
           python tools/prepare_bundled_models.py --root resources/models
 
+      - name: Verify pinned eDifFIQA source model
+        shell: pwsh
+        run: |
+          $expected = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
+          $actual = (Get-FileHash "resources\models\ediffiqa_t.onnx" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Source eDifFIQA hash mismatch: $actual"
+          }
+
       - name: Real-model provider and fallback probe
         shell: pwsh
         run: |
@@ -126,6 +137,16 @@ jobs:
           })
           if ($ortDlls.Count -eq 0) {
             throw "Packaged ONNX Runtime binaries were not found."
+          }
+
+          $expectedModel = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
+          $packagedModel = Join-Path $root "_internal\models\ediffiqa_t.onnx"
+          if (-not (Test-Path $packagedModel)) {
+            throw "Packaged eDifFIQA model missing: $packagedModel"
+          }
+          $packagedHash = (Get-FileHash $packagedModel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($packagedHash -ne $expectedModel) {
+            throw "Packaged eDifFIQA hash mismatch: $packagedHash"
           }
 
           "Uncompressed DirectML portable: $totalMB MB" |
