@@ -45,6 +45,13 @@ Human QA — select exactly one:
 - [ ] HUMAN NOT REQUIRED
 - [ ] IMMEDIATE HUMAN QA REQUIRED
 
+Human test delivery (required when requesting workstation QA; mark N/A only if genuinely no human workstation test is needed):
+- [ ] N/A — no workstation test requested by this PR
+- [ ] Exact CI-verified artifact/run and one-command setup+launch+report delivery are provided
+- [ ] Cached runtime/model reuse or incremental overlay; G: workspace and safe cleanup verified
+- [ ] No manual Actions download, ZIP extraction, model copy, dependency install or log hunting
+- [ ] Any remaining HUMAN UNVERIFIED target gate is explicit
+
 QA debt issue:
 State impact rationale:
 
