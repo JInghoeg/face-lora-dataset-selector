@@ -100,6 +100,22 @@ Use risk-based validation:
 - bounded reversible changes with relevant passing automation may remain HUMAN UNVERIFIED until an explicit checkpoint;
 - deferred human QA must remain tracked in GitHub.
 
+## Mandatory one-command human-QA delivery gate
+
+When a user must test a Windows Portable, a GPU/ML checkpoint, a temporary diagnostic, or a UI candidate on their own machine, **the QA delivery is an engineering deliverable, not a manual installation task for the user**.
+
+Before asking for a human test:
+
+1. Finish all feasible CI/build, source/packaged self-tests, artifact/model hash verification, fallback detection and regression checks. Keep their evidence tied to the exact target commit/artifact.
+2. Prepare and validate **one copy-pasteable PowerShell command** (or an already-installed one-click launcher) that handles artifact selection/download, extraction, SHA-256 checks, update/deploy, launch, bounded failure/timeout and automatic diagnostic/report collection. A GitHub Actions artifact is not a human-ready deliverable by itself.
+3. **Reuse first:** inspect `tools/qa-portable.ps1`, the existing checkpoint workspace, compatible cached Portable/models and QA overlay before adding a new downloader. Prefer a small incremental overlay; never force a repeated 400–700 MB download without a proven compatibility reason.
+4. The target workstation's scratch, downloads, unpacking, logs and cache must remain on the user's configured **G: data drive**. Do not default to C:, %TEMP%, the profile's Downloads folder, or new unbounded folders. Honor explicitly configured locations, keep cleanup boundaries/sentinels, and never overwrite original datasets. Generic scripts must not hardcode a personal drive.
+5. Keep human work to the irreducible step: run the single command and, if automatic collection cannot transmit results, return **one clearly named report or concise output**. Do not ask the user to browse Actions, choose a run, download nested ZIPs, manually copy files, install dependencies or hunt for logs.
+6. Keep test and runtime claims separate: CI PASS != target-machine PASS; ONNX session provider availability != GPU execution; CPU fallback != DirectML PASS. Preserve HUMAN UNVERIFIED until actual acceptance.
+7. If any delivery prerequisite is not implemented or verified, **do not offload setup**. Finish the automation first or report the exact blocker. Do not invent a one-liner that silently depends on missing prerequisites.
+
+For the concrete checklist and delivery contract, read `docs/QA_DELIVERY_PROTOCOL.md` before constructing any human test instructions. This rule also applies to disposable research/checkpoint tools, not only public releases. Keep risk-based QA cadence; do not request a fresh human test after every reversible change.
+
 ## Source/data safety
 
 - Do not casually modify the original source tool folder.
