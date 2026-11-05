@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/benchmarks/ediffiqa_graph_lab.py"
       - "tools/benchmarks/ediffiqa_candidate_probe.py"
+      - "tests/ediffiqa_final_probe_smoke.py"
       - "packaging/ediffiqa_candidate_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
   workflow_dispatch:
@@ -50,6 +51,10 @@ jobs:
           python -m py_compile tools/benchmarks/ediffiqa_graph_lab.py
           python -m py_compile tools/benchmarks/ediffiqa_candidate_probe.py
           python tools/benchmarks/ediffiqa_candidate_probe.py --help
+
+      - name: Verify SHA-pinned single-model target behavior
+        shell: pwsh
+        run: python tests/ediffiqa_final_probe_smoke.py
 
       - name: Analyze legacy vs upstream eDifFIQA graphs
         shell: pwsh
@@ -180,6 +185,9 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Drop-in official eDifFIQA CPU probe failed: $($p.ExitCode)" }
           $result = Get-Content $out -Raw | ConvertFrom-Json
           if ($result.status -ne "pass") { throw "Drop-in official eDifFIQA probe did not pass CPU." }
+          if ($result.model_sha256 -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
+            throw "Drop-in model hash was not the production model."
+          }
 
       - name: Build candidate artifact
         shell: pwsh
