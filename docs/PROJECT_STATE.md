@@ -66,9 +66,9 @@ Historical repository note:
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 is reopened. Two real RTX 5080 target runs hung in the DirectML path, but that evidence does not prove GPU acceleration is unsuitable. The previous closure was premature because the checkpoint did not isolate adapter selection, DirectML session creation, first inference, or the specific model that blocks.
 - The self-contained CPU-vs-DirectML target-performance checkpoint from PR #99/#100/#101 is retained as research tooling, but its diagnostics are now known to be insufficient for root cause: it emitted “provider setup finished” before creating any DirectML session, and it did not distinguish session creation from first Run for individual models.
-- PR #105 completes the repository-side DirectML root-cause probe: per-model/per-phase subprocess isolation, raw ORT vs shared-runtime comparisons, targeted metacommand/graph-optimization retries, explicit adapter trials only when the small sanity model fails, and a dual-session Ranking scenario that keeps eDifFIQA alive while creating/running 3DDFA. The diagnostic build/feed/drop-in automation is green. Actual RTX 5080 behavior remains HUMAN UNVERIFIED until the bounded probe is run once on the target workstation.
+- PR #105 completes the repository-side DirectML root-cause probe: per-model/per-phase subprocess isolation, raw ORT vs shared-runtime comparisons, targeted metacommand/graph-optimization retries, explicit adapter trials only when the small sanity model fails, and a dual-session Ranking scenario that keeps eDifFIQA alive while creating/running 3DDFA. The diagnostic build/feed/drop-in automation passed and the first target-machine root-cause run was completed; results are recorded immediately below.
 - The first target root-cause report is now available: YuNet, 3DDFA, Composite person/head, OCR, ISNetIS and MI-GAN all create and run through DirectML successfully on the RTX 5080; only eDifFIQA-T fails on first `session.run()`. The native error signature is `MLOperatorAuthorImpl.cpp(2853)` / HRESULT `0x80070057 (E_INVALIDARG)` and Python mis-decodes the provider error as `UnicodeDecodeError`. SessionOptions `batch=1` is not a fix: it causes DirectML initialization to fail and ONNX Runtime to rebuild CPU-only unless fallback is explicitly disabled.
-- PR #106 has advanced from research-only diagnosis to a Draft production repair candidate. The root cause is now source-level: the legacy eDifFIQA MobileFaceNet implements Flatten as `input.view(input.size(0), -1)`, exactly matching Microsoft ONNX Runtime DirectML issue #26944's minimal repro and the target RTX native signature `MLOperatorAuthorImpl.cpp(2853) / 0x80070057`. The current official 2026 eDifFIQA-T re-export from `yakhyo/face-image-quality-assessment` replaces the legacy `Reshape[-1,512]` export with an explicit `Flatten`; repository validation requires bit-exact CPU parity across 106 deterministic inputs. That official file is now the sole production candidate, vendored at `resources/models/ediffiqa_t.onnx`, pinned to SHA-256 `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`, and covered by updated provenance/license metadata. The final target probe is being reduced to this exact production model with Python EP fallback and CPU EP fallback disabled. PR #106 remains Draft / HUMAN UNVERIFIED; no target QA is requested until all automated production/Portable gates are green.
+- PR #106 has advanced from research-only diagnosis to a Draft production repair candidate. The root cause is now source-level: the legacy eDifFIQA MobileFaceNet implements Flatten as `input.view(input.size(0), -1)`, exactly matching Microsoft ONNX Runtime DirectML issue #26944's minimal repro and the target RTX native signature `MLOperatorAuthorImpl.cpp(2853) / 0x80070057`. The current official 2026 eDifFIQA-T re-export from `yakhyo/face-image-quality-assessment` replaces the legacy `Reshape[-1,512]` export with an explicit `Flatten`; repository validation requires bit-exact CPU parity across 106 deterministic inputs. That official file is now the sole production candidate, vendored at `resources/models/ediffiqa_t.onnx`, pinned to SHA-256 `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`, and covered by updated provenance/license metadata. The final target probe now schedules only this exact production model, rejects an unexpected SHA-256 before session creation, and disables both Python EP fallback and ORT CPU-node fallback. A dedicated no-GPU regression test prevents legacy candidate iteration and false CPU PASS; this change still needs fresh CI verification. PR #106 remains Draft / HUMAN UNVERIFIED; real target DML inference is not proven.
 - Background Composite → Auto Crop enrichment remains merged and retained, but it is not the active slice while Issue #55 / PR #106 resolves the DirectML runtime. The full Settings UI remains paused until the GPU path is closed.
 - PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
 
@@ -84,7 +84,7 @@ Historical repository note:
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACTIVE PRODUCTION UI:** whole-product UI/UX modernization (#75) is currently on Composite Split production PR #93, following HUMAN PASS of prototype #91. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
+- **ACCEPTED PRODUCTION UI:** Composite Split production PR #93 has been merged after HUMAN PASS of prototype #91; its integrated build still has deferred human QA. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -96,7 +96,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Accelerator research under Issue #55 is active again. Do not infer that DirectML itself failed merely because the previous integrated checkpoint hung; first isolate adapter/model/phase and distinguish our integration defects from runtime defects.
+- Accelerator research under Issue #55 is active. The target root-cause report isolated the first-inference failure to the shipped legacy eDifFIQA-T model; strict DML validation of the SHA-pinned official replacement is still required. Do not count CPU recovery as GPU success.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -109,7 +109,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
-- Issue #55 accelerator research is active. The next target-machine interaction must be a bounded DirectML-only root-cause probe, not another long CPU-vs-GPU benchmark.
+- Issue #55 accelerator research is active. The next target-machine interaction is a single SHA-pinned official eDifFIQA-T strict DirectML first-inference probe, not another whole-workflow benchmark or legacy four-candidate sweep.
 - PR #103 background enrichment is HUMAN UNVERIFIED. Non-destructive automated coverage should land first; do not interrupt the user for per-fix QA unless automation exposes a blocker.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
@@ -117,11 +117,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. run the CI-validated eDifFIQA candidate probe artifact once on the target RTX 5080; it tests only four eDifFIQA ONNX candidates and strictly requires a real `DmlExecutionProvider` session;
-2. prefer the minimal CPU-equivalent candidate in this order if it passes DirectML: legacy fully-static `Reshape([1,512])`, current upstream official `Flatten`, then fully-static+ORT-optimized; the fixed-input-only model is a control, not a preferred production candidate;
-3. if at least one candidate passes strict DirectML session creation and first Run, integrate only that model choice into Ranking and then rerun the normal target performance checkpoint once;
-4. if all candidates fail, preserve the per-candidate native logs and continue at the specific DML operator/model-export layer rather than reopening whole-GPU or adapter speculation;
-5. keep PR #103 background enrichment merged/HUMAN UNVERIFIED and keep Settings UI paused until the GPU runtime question is resolved.
+1. Complete fresh PR #106 checks for the one-model target entry point, hash check, no-GPU regression, source and packaged validation; keep the PR Draft and do not infer a target GPU PASS from CI.
+2. Use the verified `FaceLoRA-eDifFIQA-DirectML-Final-Probe` artifact from the latest successful #106 run, extracting the tiny overlay into the existing disposable DirectML checkpoint directory. It must contain exactly the official `ediffiqa_t_upstream.onnx` with SHA-256 `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`; do not install dependencies or write research outputs to the system drive.
+3. Run the bundled eDifFIQA probe once on the RTX 5080 and inspect `ediffiqa-candidate-results/<timestamp>/ediffiqa-directml-candidates.json`. Although the historical report filename is preserved for compatibility, it must contain exactly one `upstream_current` test; a PASS requires the pinned hash, a real `DmlExecutionProvider` session, and completed inference with both fallback routes disabled.
+4. If it passes, evaluate #106 for merge using real target evidence, then do a measured end-to-end GPU/CPU wall-time comparison. If it fails, retain the native log/progress and diagnose the specific eDifFIQA export/operator layer; do not reopen adapter speculation or mark #55 complete.
+5. Keep PR #103 merged/HUMAN UNVERIFIED and the full Settings UI paused until the GPU runtime decision. Preserve deferred v0.4 UI and feature work.
 
 ## Do not repeat
 
@@ -162,8 +162,8 @@ Accepted visual reference / pending production QA:
 Accepted Composite visual reference:
 - PR #91 — HUMAN PASS visual prototype; closed unmerged as reference evidence
 
-Active Composite production work:
-- Draft PR #93 — Composite Split production implementation; HUMAN UNVERIFIED pending production checkpoint
+Merged Composite production work:
+- PR #93 — Composite Split production implementation merged to main; integrated experience remains HUMAN UNVERIFIED pending the v0.4 production checkpoint
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate
