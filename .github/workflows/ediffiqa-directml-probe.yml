@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/benchmarks/ediffiqa_graph_lab.py"
       - "tools/benchmarks/ediffiqa_candidate_probe.py"
+      - "tools/qa-ediffiqa-directml.ps1"
       - "tests/ediffiqa_final_probe_smoke.py"
       - "packaging/ediffiqa_candidate_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
@@ -51,6 +52,7 @@ jobs:
           python -m py_compile tools/benchmarks/ediffiqa_graph_lab.py
           python -m py_compile tools/benchmarks/ediffiqa_candidate_probe.py
           python tools/benchmarks/ediffiqa_candidate_probe.py --help
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "tools/qa-ediffiqa-directml.ps1"), [ref]$null, [ref]$null)
 
       - name: Verify SHA-pinned single-model target behavior
         shell: pwsh
@@ -204,8 +206,9 @@ jobs:
           eDifFIQA DirectML Candidate Probe
           =================================
 
-          Extract this package into the existing DirectML checkpoint folder.
-          It adds:
+          The verified one-command QA helper downloads and installs this small
+          overlay into the existing DirectML checkpoint folder. Do not manually
+          unzip or copy files. It adds:
           - Face LoRA eDifFIQA Candidate Probe.exe
           - ediffiqa-candidates\ediffiqa_t_upstream.onnx
           - ediffiqa-graph-lab.json
@@ -215,12 +218,42 @@ jobs:
           DirectML Python fallback and CPU EP fallback are disabled.
           A PASS therefore requires a real DmlExecutionProvider session.
 
-          Send:
-          ediffiqa-candidate-results\<timestamp>\ediffiqa-directml-candidates.json
-          back to ChatGPT.
+          The one-command helper writes one combined report:
+          qa-ediffiqa-last-run.json
+          Return only that file after the target RTX run.
           '@ | Set-Content -Path (Join-Path $dir "README.txt") -Encoding UTF8
 
+          $files = @(
+            "Face LoRA eDifFIQA Candidate Probe.exe",
+            "ediffiqa-candidates/ediffiqa_t_upstream.onnx",
+            "ediffiqa-graph-lab.json"
+          )
+          $entries = @()
+          foreach ($relative in $files) {
+            $path = Join-Path $dir $relative
+            $entries += [ordered]@{
+              path = $relative
+              sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          }
+          $manifest = [ordered]@{ schema_version = 1; files = $entries }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $dir "payload.sha256.json") -Encoding UTF8
           Compress-Archive -Path "$dir\*" -DestinationPath "FaceLoRA-eDifFIQA-Candidate-Probe.zip" -CompressionLevel Optimal -Force
+
+      - name: Validate one-command QA overlay preparation against actual checkpoint
+        shell: pwsh
+        run: |
+          $checkpoint = Join-Path $PWD "_research_output\checkpoint-base"
+          $zip = Join-Path $PWD "FaceLoRA-eDifFIQA-Candidate-Probe.zip"
+          & pwsh -NoProfile -File tools/qa-ediffiqa-directml.ps1 -CheckpointRoot $checkpoint -PackageZip $zip -PrepareOnly
+          if ($LASTEXITCODE -ne 0) { throw "One-command QA deploy preflight failed." }
+          $singleReport = Get-ChildItem $checkpoint -Recurse -File -Filter "qa-ediffiqa-last-run.json" | Select-Object -First 1
+          if (-not $singleReport) { throw "Single QA report was not emitted by the wrapper." }
+          $state = Get-Content $singleReport.FullName -Raw | ConvertFrom-Json
+          if ($state.status -ne "prepared" -or $state.target_gpu_verified -ne $false) {
+            throw "CI preparation must not claim real target DirectML pass."
+          }
+          Write-Host "Verified CI-only preparation and single-report contract."
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
