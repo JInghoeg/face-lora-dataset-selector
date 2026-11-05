@@ -1,14 +1,13 @@
-"""Strict DirectML probe for eDifFIQA model candidates.
+"""Strict target-RTX DirectML probe of the exact production eDifFIQA-T model.
 
-The candidate models are generated and CPU-validated in CI. Target use is only
-to answer: which candidate can create a real DmlExecutionProvider session and
-complete first inference on the target RTX GPU?
-
-Python EP fallback and CPU EP node fallback are disabled for DirectML probes.
+The official re-export is SHA-pinned and CPU-equivalent in CI. Legacy ONNX
+alternatives remain research-only; the target package tests exactly this file.
+Both Python provider fallback and ONNX Runtime CPU-node fallback are disabled.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -21,12 +20,9 @@ import numpy as np
 import onnxruntime as ort
 
 
-CANDIDATES = (
-    ("legacy_fully_static", "ediffiqa_t_legacy_fully_static.onnx"),
-    ("upstream_current", "ediffiqa_t_upstream.onnx"),
-    ("legacy_fully_static_optimized", "ediffiqa_t_legacy_fully_static_optimized.onnx"),
-    ("legacy_fixed_control", "ediffiqa_t_legacy_batch1_fixed.onnx"),
-)
+PRODUCTION_CANDIDATE = ("upstream_current", "ediffiqa_t_upstream.onnx")
+CANDIDATES = (PRODUCTION_CANDIDATE,)
+PRODUCTION_SHA256 = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
 TIMEOUT_SECONDS = 45
 
 
@@ -43,9 +39,9 @@ def candidate_root() -> Path:
         app_dir() / "_research_output" / "ediffiqa-graph-lab",
     ]
     for root in roots:
-        if root.is_dir():
+        if (root / PRODUCTION_CANDIDATE[1]).is_file():
             return root
-    raise FileNotFoundError("No ediffiqa-candidates directory found beside the probe.")
+    raise FileNotFoundError("Official eDifFIQA-T model not found beside the probe.")
 
 
 def make_input(seed: int):
@@ -101,6 +97,10 @@ def child(args) -> int:
     try:
         if not model.is_file():
             raise FileNotFoundError(model)
+        actual_sha256 = hashlib.sha256(model.read_bytes()).hexdigest()
+        result["model_sha256"] = actual_sha256
+        if actual_sha256 != PRODUCTION_SHA256:
+            raise ValueError("Official eDifFIQA-T model SHA-256 mismatch: " + actual_sha256)
 
         append_event(progress, "session_create_started", candidate=args.candidate, provider=args.provider)
         t0 = time.perf_counter()
@@ -244,27 +244,23 @@ def result_root() -> Path:
 
 def run_parent(status=lambda _text: None):
     root = result_root()
-    rows = []
-    for name, _filename in CANDIDATES:
-        status(f"严格 DirectML：{name}…")
-        rows.append(run_bounded(root, name, "directml"))
-
-    priority = [x[0] for x in CANDIDATES]
-    winners = [
-        row["candidate"]
-        for row in rows
-        if row.get("status") == "pass"
+    status("严格 DirectML：当前官方 eDifFIQA-T…")
+    row = run_bounded(root, PRODUCTION_CANDIDATE[0], "directml")
+    passed = (
+        row.get("status") == "pass"
+        and row.get("model_sha256") == PRODUCTION_SHA256
         and "DmlExecutionProvider" in row.get("session_providers", [])
-    ]
-    winner = next((name for name in priority if name in winners), None)
+    )
+    winner = PRODUCTION_CANDIDATE[0] if passed else None
 
+    # Keep the existing report keys/file for compatible downstream collection.
     report = {
         "schema_version": 1,
         "kind": "ediffiqa-directml-candidates",
         "candidate_root": str(candidate_root()),
-        "probes": rows,
+        "probes": [row],
         "winner": winner,
-        "all_directml_passes": winners,
+        "all_directml_passes": [winner] if winner else [],
     }
     path = root / "ediffiqa-directml-candidates.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -278,13 +274,13 @@ def run_gui():
     app = QApplication.instance() or QApplication(sys.argv)
     QMessageBox.information(
         None,
-        "eDifFIQA DirectML 候选模型诊断",
+        "eDifFIQA DirectML 官方模型诊断",
         "这次只测试已经通过仓库侧等价验证的当前官方 eDifFIQA-T。\n\n"
         "DirectML 和 CPU fallback 都被严格隔离，不会把 CPU 成功误报成 GPU 成功。",
     )
 
     progress = QProgressDialog("准备…", None, 0, 0)
-    progress.setWindowTitle("eDifFIQA DirectML 候选模型诊断")
+    progress.setWindowTitle("eDifFIQA DirectML 官方模型诊断")
     progress.setCancelButton(None)
     progress.setMinimumDuration(0)
     progress.setAutoClose(False)
@@ -310,7 +306,7 @@ def run_gui():
             winner = report.get("winner")
             QMessageBox.information(
                 None,
-                "eDifFIQA 候选诊断完成",
+                "eDifFIQA 官方模型诊断完成",
                 "当前官方 eDifFIQA-T DirectML：{}\n\n报告：\n{}".format(
                     "PASS" if winner == "upstream_current" else "FAIL",
                     path,
@@ -359,9 +355,9 @@ def main():
             raise SystemExit("--child requires --candidate, --output and --progress")
         return child(args)
     if args.headless:
-        path, _report = run_parent(print)
+        path, report = run_parent(print)
         print(path)
-        return 0
+        return 0 if report["winner"] == PRODUCTION_CANDIDATE[0] else 2
     return run_gui()
 
 
