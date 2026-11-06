@@ -29,7 +29,7 @@ $oldTemp = $env:TEMP
 $oldTmp = $env:TMP
 $report = [ordered]@{
     schema_version = 1
-    kind = 'ediffiqa-one-command-target-qa'
+    kind = if ($Benchmark) { 'ediffiqa-one-command-performance' } else { 'ediffiqa-one-command-target-qa' }
     status = 'starting'
     target_gpu_verified = $false
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
@@ -236,6 +236,7 @@ try {
                 $report.probe_exit_code -eq 0) {
                 $report.status = 'benchmark_pass'
                 $report.target_gpu_verified = $true
+                $report.performance_verified = $true
             } else {
                 $report.status = 'benchmark_fail'
                 $report.failure = if ($payload.error) {
