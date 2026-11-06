@@ -262,6 +262,8 @@ jobs:
           $events = @(
             @{cat="Node"; name="Expand_kernel_time"; args=@{provider="CPUExecutionProvider"; op_name="Expand"}}
             @{cat="Node"; name="Conv_kernel_time"; args=@{provider="DmlExecutionProvider"; op_name="Conv"}}
+            @{cat="Node"; name="Gemm_kernel_time"; args=@{provider="DmlExecutionProvider"; op_name="Gemm"}}
+            @{cat="Node"; name="Gelu_kernel_time"; args=@{provider="CPUExecutionProvider"; op_name="Gelu"}}
             @{cat="Session"; name="model_run"; args=@{}}
           )
           $events | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilePath -Encoding UTF8
@@ -289,23 +291,39 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Saved-profile recovery script failed." }
           $out = Join-Path $root "qa-ediffiqa-recovered-profile.json"
           $summary = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
-          if ($summary.status -ne "gpu_execution_evidence_recovered" -or
+          if ($summary.status -ne "gpu_core_with_cpu_gelu_verified" -or
               -not $summary.gpu_compute_verified -or
-              $summary.dml_compute_kernel_events -ne 1 -or
+              -not $summary.production_mixed_execution_accepted -or
+              $summary.dml_compute_kernel_events -ne 2 -or
+              $summary.cpu_gelu_kernel_events -ne 1 -or
+              $summary.model_sha256 -ne $expectedModel -or
+              $summary.performance_verified -ne $false -or
               $summary.inference_runs_returned -ne 3 -or
               $summary.human_qa -ne "HUMAN_UNVERIFIED") {
             throw "Positive existing-profile recovery failed; $($summary | ConvertTo-Json -Depth 10)"
           }
 
           $events[1].args.provider = "CPUExecutionProvider"
+          $events[2].args.provider = "CPUExecutionProvider"
           $events | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilePath -Encoding UTF8
           & pwsh -NoProfile -File tools/qa-ediffiqa-recover-profile.ps1 -CheckpointRoot $root
           $summary = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
           if ($summary.gpu_compute_verified -or
+              $summary.production_mixed_execution_accepted -or
               $summary.status -ne "profile_does_not_prove_gpu_compute") {
             throw "CPU-only false PASS in recovery script."
           }
-          Write-Host "Saved-profile recovery and CPU-only rejection PASS. No GPU runtime or download required."
+          # A partially DML execution with substantive CPU Gemm is not accepted.
+          $events[1].args.provider = "DmlExecutionProvider"
+          $events | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilePath -Encoding UTF8
+          & pwsh -NoProfile -File tools/qa-ediffiqa-recover-profile.ps1 -CheckpointRoot $root
+          $summary = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
+          if (-not $summary.gpu_compute_verified -or
+              $summary.production_mixed_execution_accepted -or
+              $summary.status -ne "gpu_compute_verified_cpu_placement_unreviewed") {
+            throw "Unexpected CPU Gemm was falsely accepted."
+          }
+          Write-Host "Saved-profile DML+CPU Gelu acceptance and CPU-heavy rejection PASS. No GPU rerun required."
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
