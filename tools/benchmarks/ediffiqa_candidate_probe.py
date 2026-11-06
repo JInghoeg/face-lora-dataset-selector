@@ -363,6 +363,7 @@ def run_parent(status=lambda _text: None):
         and row.get("model_sha256") == PRODUCTION_SHA256
         and "DmlExecutionProvider" in row.get("session_providers", [])
         and row.get("gpu_compute_verified") is True
+        and row.get("production_mixed_execution_accepted") is True
     )
     winner = PRODUCTION_CANDIDATE[0] if passed else None
 
