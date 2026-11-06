@@ -59,7 +59,12 @@ $recovered = [ordered]@{
     operators_by_provider = [ordered]@{}
     dml_compute_kernel_events = 0
     cpu_non_helper_ops = @()
+    unexpected_cpu_compute_ops = @()
+    cpu_gelu_kernel_events = 0
+    cpu_nodes_executed = $false
     gpu_compute_verified = $false
+    production_mixed_execution_accepted = $false
+    performance_verified = $false
     human_qa = 'HUMAN_UNVERIFIED'
     error = $null
 }
@@ -78,6 +83,7 @@ try {
     $row = $details.probes[0]
     Require ($row.candidate -eq 'upstream_current') 'Probe candidate mismatch.'
     Require ($row.model_sha256 -eq $expectedModel) 'Probe model SHA mismatch.'
+    $recovered.model_sha256 = $row.model_sha256
     Require ($row.provider_requested -eq 'directml') 'Probe did not request DirectML.'
     Require (@($row.session_providers) -contains 'DmlExecutionProvider') 'Probe never had a DML session.'
     Require ($row.status -eq 'error') 'This is not the expected profile-saving exception.'
@@ -121,9 +127,37 @@ try {
     }
     $recovered.dml_compute_kernel_events = $mathEvents
     $recovered.cpu_non_helper_ops = @($cpuNonHelper | Sort-Object -Unique)
-    $recovered.gpu_compute_verified = ($mathEvents -gt 0 -and $cpuNonHelper.Count -eq 0)
-    if ($recovered.gpu_compute_verified) {
-        $recovered.status = 'gpu_execution_evidence_recovered'
+    $recovered.unexpected_cpu_compute_ops = @($cpuNonHelper | Where-Object { $_ -ne 'Gelu' } | Sort-Object -Unique)
+    $recovered.cpu_nodes_executed = $providers.ContainsKey('CPUExecutionProvider')
+    $convEvents = 0
+    $gemmEvents = 0
+    $cpuGelu = 0
+    if ($opsByProvider.ContainsKey('DmlExecutionProvider')) {
+        $dmlOps = $opsByProvider['DmlExecutionProvider']
+        if ($dmlOps.ContainsKey('Conv')) { $convEvents = $dmlOps['Conv'] }
+        if ($dmlOps.ContainsKey('Gemm')) { $gemmEvents = $dmlOps['Gemm'] }
+    }
+    if ($opsByProvider.ContainsKey('CPUExecutionProvider')) {
+        $cpuOps = $opsByProvider['CPUExecutionProvider']
+        if ($cpuOps.ContainsKey('Gelu')) { $cpuGelu = $cpuOps['Gelu'] }
+    }
+    $recovered.cpu_gelu_kernel_events = $cpuGelu
+    # Truthful DML execution evidence does not disappear because CPU Gelu ran.
+    $recovered.gpu_compute_verified = ($mathEvents -gt 0)
+    $recovered.production_mixed_execution_accepted = (
+        $recovered.gpu_compute_verified -and
+        $convEvents -gt 0 -and $gemmEvents -gt 0 -and
+        @($recovered.unexpected_cpu_compute_ops).Count -eq 0 -and
+        $cpuGelu -le $recovered.inference_runs_returned
+    )
+    if ($recovered.production_mixed_execution_accepted) {
+        $recovered.status = if ($cpuGelu -gt 0) {
+            'gpu_core_with_cpu_gelu_verified'
+        } else {
+            'gpu_execution_evidence_recovered'
+        }
+    } elseif ($recovered.gpu_compute_verified) {
+        $recovered.status = 'gpu_compute_verified_cpu_placement_unreviewed'
     } else {
         $recovered.status = 'profile_does_not_prove_gpu_compute'
     }
@@ -135,8 +169,8 @@ try {
     Write-Host "Recovered profile report: $output"
     Write-Host "Status: $($recovered.status); DML arithmetic kernel events: $($recovered.dml_compute_kernel_events)"
 }
-if ($recovered.status -eq 'gpu_execution_evidence_recovered') {
-    Write-Host 'Executed DML arithmetic confirmed from the previous saved profile. HUMAN acceptance remains separate.' -ForegroundColor Green
+if ($recovered.production_mixed_execution_accepted) {
+    Write-Host "DML core execution confirmed; CPU Gelu events: $($recovered.cpu_gelu_kernel_events). Performance remains unmeasured." -ForegroundColor Green
 } else {
-    Write-Warning 'Existing evidence is not yet sufficient to confirm GPU computation. Return the one report.'
+    Write-Warning 'Core DirectML/CPU-placement acceptance remains incomplete; see the report. Do not label it a CPU-only run without evidence.'
 }
