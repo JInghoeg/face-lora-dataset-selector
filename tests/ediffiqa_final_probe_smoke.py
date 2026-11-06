@@ -226,6 +226,82 @@ class FinalProbeSmoke(unittest.TestCase):
             self.assertEqual(len(saved), 1)
             self.assertEqual(saved[0]["profile_path"], str(trace))
 
+    def test_benchmark_measures_same_model_cpu_and_dml_without_claiming_ci_gpu_proof(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            model = root / probe.PRODUCTION_CANDIDATE[1]
+            model.write_bytes(b"official-model-fixture")
+            digest = probe.hashlib.sha256(model.read_bytes()).hexdigest()
+            trace = root / "benchmark-profile.json"
+            trace.write_text(json.dumps([
+                {"cat": "Node", "name": "Conv_kernel_time",
+                 "args": {"provider": "DmlExecutionProvider", "op_name": "Conv"}},
+                {"cat": "Node", "name": "Gemm_kernel_time",
+                 "args": {"provider": "DmlExecutionProvider", "op_name": "Gemm"}},
+                {"cat": "Node", "name": "Gelu_kernel_time",
+                 "args": {"provider": "CPUExecutionProvider", "op_name": "Gelu"}},
+            ]), encoding="utf-8")
+            calls = []
+
+            class Input:
+                name = "input"
+                shape = [1, 3, 112, 112]
+
+            class FakeSession:
+                def __init__(self, provider, profiled):
+                    self.provider = provider
+                    self.profiled = profiled
+                    self.run_count = 0
+
+                def get_inputs(self):
+                    return [Input()]
+
+                def get_providers(self):
+                    return (["DmlExecutionProvider", "CPUExecutionProvider"]
+                            if self.provider == "directml" else ["CPUExecutionProvider"])
+
+                def run(self, _outputs, feed):
+                    self.run_count += 1
+                    self.input_signature = float(probe.np.sum(feed["input"]))
+                    return [probe.np.array([[0.45]], dtype=probe.np.float32)]
+
+                def end_profiling(self):
+                    return str(trace)
+
+            def session_factory(_model, sess_options, providers, enable_fallback):
+                self.assertFalse(enable_fallback)
+                name = "directml" if "DmlExecutionProvider" in providers else "cpu"
+                inst = FakeSession(name, sess_options.enable_profiling)
+                calls.append(inst)
+                return inst
+
+            with (
+                mock.patch.object(probe, "candidate_root", return_value=root),
+                mock.patch.object(probe, "app_dir", return_value=root),
+                mock.patch.object(probe, "PRODUCTION_SHA256", digest),
+                mock.patch.object(probe.ort, "InferenceSession", side_effect=session_factory),
+            ):
+                code = probe.run_performance_benchmark()
+
+            self.assertEqual(code, 0)
+            report = json.loads((root / "qa-ediffiqa-performance.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["status"], "benchmarked_mixed_directml")
+            self.assertTrue(report["target_gpu_verified"])  # mock evidence only, not physical proof
+            self.assertTrue(report["performance_verified"])  # mock wall-time computation only
+            self.assertEqual(report["model_sha256"], digest)
+            self.assertEqual(report["timed_samples_per_provider"], 30)
+            self.assertEqual(len(report["cpu"]["samples_ms"]), 30)
+            self.assertEqual(len(report["directml"]["samples_ms"]), 30)
+            self.assertEqual(report["max_abs_output_difference"], 0.0)
+            self.assertGreater(report["cpu_to_directml_median_speedup"], 0)
+            self.assertEqual(len(calls), 3)
+            self.assertTrue(calls[0].profiled)
+            self.assertFalse(calls[1].profiled)
+            self.assertFalse(calls[2].profiled)
+            self.assertEqual(calls[0].run_count, 1)
+            self.assertEqual(calls[1].run_count, 35)
+            self.assertEqual(calls[2].run_count, 35)
+
     def test_wrong_model_hash_is_rejected_before_session_creation(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
