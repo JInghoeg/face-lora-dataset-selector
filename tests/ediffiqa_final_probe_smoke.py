@@ -115,6 +115,60 @@ class FinalProbeSmoke(unittest.TestCase):
         self.assertTrue(options.enable_profiling)
         self.assertEqual(options.profile_file_prefix, "G:/qa/ort")
 
+    def test_child_finishes_real_profile_path_without_duplicate_keyword(self):
+        """Run the real child pipeline with mocked ORT; cover the exact RTX failure."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            model = root / probe.PRODUCTION_CANDIDATE[1]
+            model.write_bytes(b"fixture-official-model")
+            expected_sha = probe.hashlib.sha256(model.read_bytes()).hexdigest()
+            trace = root / "profile.json"
+            trace.write_text(json.dumps([
+                {"cat": "Node", "name": "Expand_kernel_time",
+                 "args": {"provider": "CPUExecutionProvider", "op_name": "Expand"}},
+                {"cat": "Node", "name": "Conv_kernel_time",
+                 "args": {"provider": "DmlExecutionProvider", "op_name": "Conv"}},
+            ]), encoding="utf-8")
+            args = argparse.Namespace(
+                candidate="upstream_current", provider="directml",
+                output=str(root / "result.json"), progress=str(root / "events.jsonl"),
+            )
+            class Input:
+                name = "input"
+                shape = [1, 3, 112, 112]
+
+            class FakeSession:
+                def __init__(self):
+                    self.calls = 0
+                def get_inputs(self):
+                    return [Input()]
+                def get_providers(self):
+                    return ["DmlExecutionProvider", "CPUExecutionProvider"]
+                def run(self, _outputs, _feed):
+                    self.calls += 1
+                    return [probe.np.array([[0.45]], dtype=probe.np.float32)]
+                def end_profiling(self):
+                    return str(trace)
+
+            session = FakeSession()
+            with (
+                mock.patch.object(probe, "candidate_root", return_value=root),
+                mock.patch.object(probe, "PRODUCTION_SHA256", expected_sha),
+                mock.patch.object(probe.ort, "InferenceSession", return_value=session) as ctor,
+            ):
+                code = probe.child(args)
+            self.assertEqual(code, 0)
+            self.assertEqual(session.calls, 3)
+            self.assertFalse(ctor.call_args.kwargs["enable_fallback"])
+            data = json.loads(Path(args.output).read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "pass")
+            self.assertTrue(data["gpu_compute_verified"])
+            self.assertEqual(data["profile_summary"]["dml_compute_kernel_events"], 1)
+            progress = [json.loads(s) for s in Path(args.progress).read_text(encoding="utf-8").splitlines()]
+            saved = [e for e in progress if e["event"] == "profile_saved"]
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0]["profile_path"], str(trace))
+
     def test_wrong_model_hash_is_rejected_before_session_creation(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
