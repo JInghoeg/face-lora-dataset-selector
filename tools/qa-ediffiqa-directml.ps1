@@ -3,7 +3,7 @@
 One-command, non-destructive RTX checkpoint handoff.
 Default: reuse the existing G: DirectML checkpoint, download only the tiny
 official eDifFIQA overlay from the exact PR-head successful CI run, and perform
-one strictly GPU-only bounded probe. No Python/CUDA/Conda installation.
+one profiled GPU-compute bounded probe (CPU shape helpers audited). No Python/CUDA/Conda installation.
 CI: -PackageZip <CI-built zip> -PrepareOnly validates offline staging.
 #>
 [CmdletBinding()]
@@ -37,6 +37,10 @@ $report = [ordered]@{
     deployed_model_sha256 = $null
     probe_report = $null
     probe_exit_code = $null
+    gpu_compute_verified = $false
+    profile_summary = $null
+    probe_error = $null
+    native_error_lines = @()
     failure = $null
 }
 $targetDir = $null
@@ -198,7 +202,7 @@ try {
     if ($PrepareOnly) {
         Write-Host 'CI/offline preparation PASS. No target GPU result was claimed.'
     } else {
-        Write-Host 'Running exactly one strict eDifFIQA-T DirectML test (CPU fallback disabled)...'
+        Write-Host 'Running one profiled eDifFIQA-T DirectML test (Python CPU-only retry disabled; CPU shape helpers audited)...'
         $started = (Get-Date).ToUniversalTime()
         $p = Start-Process -FilePath $probeDst -ArgumentList @('--headless') -WorkingDirectory $targetDir -PassThru
         if (-not $p.WaitForExit(120000)) {
@@ -222,15 +226,36 @@ try {
                 throw 'Probe report is not the required single official production-model test.'
             }
             $row = $details.probes[0]
+            $report.gpu_compute_verified = ($row.gpu_compute_verified -eq $true)
+            if ($row.profile_summary) { $report.profile_summary = $row.profile_summary }
+            if ($row.error) { $report.probe_error = $row.error }
+            if ($row.log -and (Test-Path -LiteralPath $row.log -PathType Leaf)) {
+                # Windows native redirected output can contain UTF-16 null bytes.
+                # Only return relevant final native lines, not huge ORT verbose logs.
+                $tail = @(Get-Content -LiteralPath $row.log -Tail 100 -ErrorAction SilentlyContinue)
+                $report.native_error_lines = @(
+                    $tail |
+                    ForEach-Object { ($_ -replace [string][char]0, '') -replace '\x1b\[[0-9;]*m', '' } |
+                    Where-Object { $_ -match 'Error|Exception|\[E:|CPU EP|DmlExecutionProvider|0x[0-9A-Fa-f]+' } |
+                    Select-Object -Last 14
+                )
+            }
             if ($details.winner -eq 'upstream_current' -and $row.status -eq 'pass' -and
                 $row.model_sha256 -eq $ExpectedModelSha -and
                 @($row.session_providers) -contains 'DmlExecutionProvider' -and
+                $row.gpu_compute_verified -eq $true -and
+                $row.profile_summary.dml_compute_kernel_events -gt 0 -and
+                @($row.profile_summary.cpu_non_helper_ops).Count -eq 0 -and
                 $report.probe_exit_code -eq 0) {
                 $report.status = 'strict_directml_pass'
                 $report.target_gpu_verified = $true
             } else {
                 $report.status = 'strict_directml_fail'
-                $report.failure = 'Read the single probe report and its model-specific log; CPU fallback is not a PASS.'
+                $report.failure = if ($row.error) {
+                    [string]$row.error.message
+                } else {
+                    'No proven DML compute kernel or unexpected CPU compute placement. Inspect the embedded profile_summary.'
+                }
             }
         } elseif ($report.status -ne 'timeout') {
             $report.status = 'no_probe_report'
