@@ -212,7 +212,7 @@ def child(args) -> int:
             # because get_providers() reports DmlExecutionProvider.
             profile_path = Path(session.end_profiling())
             result["execution_profile"] = str(profile_path)
-            append_event(progress, "profile_saved", path=str(profile_path))
+            append_event(progress, "profile_saved", profile_path=str(profile_path))
             events = json.loads(profile_path.read_text(encoding="utf-8"))
             summary = summarize_execution_profile(events)
             result["profile_summary"] = summary
