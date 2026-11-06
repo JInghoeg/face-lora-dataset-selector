@@ -34,6 +34,7 @@ class FinalProbeSmoke(unittest.TestCase):
                     "status": "pass",
                     "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
                     "gpu_compute_verified": True,
+                    "production_mixed_execution_accepted": True,
                 }
 
             with (
@@ -54,20 +55,25 @@ class FinalProbeSmoke(unittest.TestCase):
             for row in (
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": probe.PRODUCTION_SHA256,
-                 "session_providers": ["CPUExecutionProvider"], "gpu_compute_verified": True},
+                 "session_providers": ["CPUExecutionProvider"], "gpu_compute_verified": True, "production_mixed_execution_accepted": True},
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": "wrong",
-                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True},
+                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True, "production_mixed_execution_accepted": True},
                 {"candidate": "upstream_current", "status": "timeout",
                  "model_sha256": probe.PRODUCTION_SHA256,
-                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True},
+                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True, "production_mixed_execution_accepted": True},
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": probe.PRODUCTION_SHA256,
                  "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
-                 "gpu_compute_verified": False},
+                 "gpu_compute_verified": False, "production_mixed_execution_accepted": False},
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": probe.PRODUCTION_SHA256,
                  "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"]},
+                {"candidate": "upstream_current", "status": "pass",
+                 "model_sha256": probe.PRODUCTION_SHA256,
+                 "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                 "gpu_compute_verified": True,
+                 "production_mixed_execution_accepted": False},
             ):
                 with (
                     mock.patch.object(probe, "result_root", return_value=root),
@@ -90,6 +96,7 @@ class FinalProbeSmoke(unittest.TestCase):
         ]
         result = probe.summarize_execution_profile(events)
         self.assertTrue(result["gpu_compute_verified"])
+        self.assertTrue(result["production_mixed_execution_accepted"])
         self.assertEqual(result["dml_compute_kernel_events"], 2)
         self.assertEqual(result["operators_by_provider"]["CPUExecutionProvider"]["Expand"], 1)
         self.assertEqual(result["cpu_non_helper_ops"], [])
@@ -108,7 +115,54 @@ class FinalProbeSmoke(unittest.TestCase):
               "args": {"provider": "CPUExecutionProvider", "op_name": "Gemm"}}],
         )
         for events in cases:
-            self.assertFalse(probe.summarize_execution_profile(events)["gpu_compute_verified"])
+            report = probe.summarize_execution_profile(events)
+            self.assertFalse(report["production_mixed_execution_accepted"])
+        for only_cpu in cases[:3]:
+            self.assertFalse(probe.summarize_execution_profile(only_cpu)["gpu_compute_verified"])
+        self.assertTrue(probe.summarize_execution_profile(cases[3])["gpu_compute_verified"])
+
+    def test_real_rtx_profile_aggregate_mixed_dml_compute_is_accepted(self):
+        # Reproduces counts in the uploaded 2026-11-06 recovered profile.
+        # This is a regression fixture, not a measured performance benchmark.
+        specs = [
+            ("DmlExecutionProvider", "Conv", 147),
+            ("DmlExecutionProvider", "Gemm", 9),
+            ("DmlExecutionProvider", "Add", 36),
+            ("DmlExecutionProvider", "Clip", 3),
+            ("DmlExecutionProvider", "Div", 3),
+            ("DmlExecutionProvider", "Expand", 3),
+            ("DmlExecutionProvider", "Flatten", 3),
+            ("DmlExecutionProvider", "MemcpyFromHost", 3),
+            ("DmlExecutionProvider", "MemcpyToHost", 3),
+            ("DmlExecutionProvider", "PRelu", 99),
+            ("DmlExecutionProvider", "ReduceL2", 3),
+            ("DmlExecutionProvider", "Shape", 3),
+            ("CPUExecutionProvider", "Gelu", 3),
+        ]
+        events = [
+            {"cat": "Node", "name": f"{op}_{i}_kernel_time",
+             "args": {"provider": provider, "op_name": op}}
+            for provider, op, count in specs for i in range(count)
+        ]
+        row = probe.summarize_execution_profile(events, expected_runs=3)
+        self.assertEqual(row["provider_kernel_events"],
+                         {"CPUExecutionProvider": 3, "DmlExecutionProvider": 315})
+        self.assertEqual(row["dml_compute_kernel_events"], 156)
+        self.assertEqual(row["cpu_non_helper_ops"], ["Gelu"])
+        self.assertEqual(row["unexpected_cpu_compute_ops"], [])
+        self.assertEqual(row["cpu_gelu_kernel_events"], 3)
+        self.assertTrue(row["gpu_compute_verified"])
+        self.assertTrue(row["production_mixed_execution_accepted"])
+        self.assertTrue(row["cpu_nodes_executed"])
+        self.assertFalse(row["performance_verified"])
+
+        extra_cpu = {"cat": "Node", "name": "Gemm_cpu_kernel_time",
+                     "args": {"provider": "CPUExecutionProvider", "op_name": "Gemm"}}
+        self.assertTrue(probe.summarize_execution_profile(events + [extra_cpu])["gpu_compute_verified"])
+        self.assertFalse(probe.summarize_execution_profile(events + [extra_cpu])["production_mixed_execution_accepted"])
+        extra_gelu = {"cat": "Node", "name": "Gelu_extra_kernel_time",
+                      "args": {"provider": "CPUExecutionProvider", "op_name": "Gelu"}}
+        self.assertFalse(probe.summarize_execution_profile(events + [extra_gelu])["production_mixed_execution_accepted"])
 
     def test_profile_enabled_for_real_dml_proof(self):
         options = probe.session_options(strict_dml=True, profile_prefix="G:/qa/ort")
@@ -128,6 +182,8 @@ class FinalProbeSmoke(unittest.TestCase):
                  "args": {"provider": "CPUExecutionProvider", "op_name": "Expand"}},
                 {"cat": "Node", "name": "Conv_kernel_time",
                  "args": {"provider": "DmlExecutionProvider", "op_name": "Conv"}},
+                {"cat": "Node", "name": "Gemm_kernel_time",
+                 "args": {"provider": "DmlExecutionProvider", "op_name": "Gemm"}},
             ]), encoding="utf-8")
             args = argparse.Namespace(
                 candidate="upstream_current", provider="directml",
@@ -163,7 +219,8 @@ class FinalProbeSmoke(unittest.TestCase):
             data = json.loads(Path(args.output).read_text(encoding="utf-8"))
             self.assertEqual(data["status"], "pass")
             self.assertTrue(data["gpu_compute_verified"])
-            self.assertEqual(data["profile_summary"]["dml_compute_kernel_events"], 1)
+            self.assertEqual(data["profile_summary"]["dml_compute_kernel_events"], 2)
+            self.assertTrue(data["production_mixed_execution_accepted"])
             progress = [json.loads(s) for s in Path(args.progress).read_text(encoding="utf-8").splitlines()]
             saved = [e for e in progress if e["event"] == "profile_saved"]
             self.assertEqual(len(saved), 1)
