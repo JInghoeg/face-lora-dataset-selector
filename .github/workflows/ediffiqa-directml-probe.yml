@@ -258,6 +258,16 @@ jobs:
               $benchPreflight.target_gpu_verified -ne $false) {
             throw "CI offline benchmark preflight must not claim real RTX or performance verification."
           }
+          # Exercise the same scriptblock invocation used by the one-copy
+          # remote PowerShell command, but with this local source and offline zip.
+          $launcherText = Get-Content -LiteralPath "tools/qa-ediffiqa-directml.ps1" -Raw
+          & ([scriptblock]::Create($launcherText)) -CheckpointRoot $checkpoint -PackageZip $zip -PrepareOnly -Benchmark
+          $benchPreflight = Get-Content $benchReport.FullName -Raw | ConvertFrom-Json
+          if ($benchPreflight.status -ne "prepared" -or
+              $benchPreflight.kind -ne "ediffiqa-one-command-performance" -or
+              $benchPreflight.target_gpu_verified -ne $false) {
+            throw "One-copy scriptblock invocation did not prepare the benchmark safely."
+          }
 
       - name: Validate zero-GPU profile recovery from previous probe
         shell: pwsh
