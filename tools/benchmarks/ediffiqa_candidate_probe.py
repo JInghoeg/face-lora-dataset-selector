@@ -38,6 +38,7 @@ CPU_HELPER_OPS = frozenset({
 })
 GPU_COMPUTE_OPS = frozenset({
     "Conv", "FusedConv", "Gemm", "MatMul", "FusedMatMul",
+    "DmlFusedNode", "DmlFused",
 })
 
 
