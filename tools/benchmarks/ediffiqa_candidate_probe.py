@@ -451,6 +451,145 @@ def run_gui():
     return 0
 
 
+
+BENCHMARK_WARMUP = 5
+BENCHMARK_SAMPLES = 30
+BENCHMARK_MAX_ABS_ERROR = 0.001
+
+
+def run_performance_benchmark():
+    """Bounded same-model CPU vs DML-mixed wall-time comparison on target.
+
+    Uses a separately profiled DML preflight for placement evidence, then
+    fresh unprofiled sessions for timing, so instrumentation does not bias
+    the median. Measures blocking session.run wall-time, not UI throughput.
+    """
+    model = candidate_root() / PRODUCTION_CANDIDATE[1]
+    destination = app_dir() / "qa-ediffiqa-performance.json"
+    report = {
+        "schema_version": 1,
+        "kind": "ediffiqa-cpu-vs-directml-walltime",
+        "status": "started",
+        "model_sha256": None,
+        "warmup_per_provider": BENCHMARK_WARMUP,
+        "timed_samples_per_provider": BENCHMARK_SAMPLES,
+        "max_allowed_abs_output_error": BENCHMARK_MAX_ABS_ERROR,
+        "performance_verified": False,
+        "target_gpu_verified": False,
+        "error": None,
+        "note": (
+            "Synthetic eDifFIQA-T 112x112 tensor inference only; "
+            "measures blocking session.run, excludes image pre/post-processing "
+            "and UI. Separate CPU and DML sessions, alternating order, warm-up "
+            "excluded. No inference timing includes ORT profiling overhead."
+        ),
+    }
+    try:
+        digest = hashlib.sha256(model.read_bytes()).hexdigest()
+        report["model_sha256"] = digest
+        if digest != PRODUCTION_SHA256:
+            raise ValueError("Production model SHA-256 mismatch: " + digest)
+
+        # Profiling is restricted to a preflight session, never the timed one.
+        profile_opts = session_options(True, str(app_dir() / "benchmark-dml-preflight"))
+        preflight = ort.InferenceSession(
+            str(model), sess_options=profile_opts,
+            providers=["DmlExecutionProvider", "CPUExecutionProvider"],
+            enable_fallback=False,
+        )
+        if "DmlExecutionProvider" not in preflight.get_providers():
+            raise RuntimeError("DirectML provider missing during preflight.")
+        profile_input = preflight.get_inputs()[0].name
+        preflight.run(None, {profile_input: make_input(11)})
+        profile_path = Path(preflight.end_profiling())
+        placement = summarize_execution_profile(
+            json.loads(profile_path.read_text(encoding="utf-8")),
+            expected_runs=1,
+        )
+        report["preflight_profile"] = str(profile_path)
+        report["preflight_profile_summary"] = placement
+        report["target_gpu_verified"] = placement["gpu_compute_verified"]
+        if not placement["production_mixed_execution_accepted"]:
+            raise RuntimeError("DML preflight does not match the accepted mixed model placement.")
+
+        sessions = {}
+        for name, providers in (
+            ("cpu", ["CPUExecutionProvider"]),
+            ("directml", ["DmlExecutionProvider", "CPUExecutionProvider"]),
+        ):
+            started = time.perf_counter()
+            sess = ort.InferenceSession(
+                str(model), sess_options=session_options(False),
+                providers=providers,
+                enable_fallback=False,
+            )
+            seconds = time.perf_counter() - started
+            got = list(sess.get_providers())
+            if (name == "cpu" and "DmlExecutionProvider" in got) or (
+                name == "directml" and "DmlExecutionProvider" not in got
+            ):
+                raise RuntimeError("Unexpected benchmark session provider assignment: " + repr(got))
+            sessions[name] = sess
+            report[name] = {
+                "session_create_ms": round(seconds * 1000, 3),
+                "session_providers": got,
+                "samples_ms": [],
+            }
+
+        for i in range(BENCHMARK_WARMUP + BENCHMARK_SAMPLES):
+            # Both providers receive the EXACT same tensor for every round.
+            sample = make_input(1000 + i)
+            order = ("cpu", "directml") if i % 2 == 0 else ("directml", "cpu")
+            round_outputs = {}
+            for name in order:
+                sess = sessions[name]
+                input_name = sess.get_inputs()[0].name
+                started = time.perf_counter()
+                value = np.asarray(sess.run(None, {input_name: sample})[0], dtype=np.float64)
+                elapsed = (time.perf_counter() - started) * 1000
+                if not np.all(np.isfinite(value)):
+                    raise RuntimeError(name + " returned non-finite output.")
+                round_outputs[name] = value
+                if i >= BENCHMARK_WARMUP:
+                    report[name]["samples_ms"].append(round(elapsed, 6))
+            cpu_out = round_outputs["cpu"]
+            dml_out = round_outputs["directml"]
+            if cpu_out.shape != dml_out.shape:
+                raise RuntimeError("CPU/DML output shape mismatch.")
+            difference = float(np.max(np.abs(cpu_out - dml_out)))
+            report["max_abs_output_difference"] = max(
+                difference, report.get("max_abs_output_difference", 0.0)
+            )
+            if difference > BENCHMARK_MAX_ABS_ERROR:
+                raise RuntimeError("CPU/DML output mismatch beyond tolerance: " + str(difference))
+
+        for name in ("cpu", "directml"):
+            ms = report[name]["samples_ms"]
+            report[name]["median_ms"] = round(float(np.median(ms)), 6)
+            report[name]["p90_ms"] = round(float(np.percentile(ms, 90)), 6)
+            report[name]["mean_ms"] = round(float(np.mean(ms)), 6)
+            if len(ms) != BENCHMARK_SAMPLES:
+                raise RuntimeError("Timed sample count mismatch for " + name)
+        dml_median = report["directml"]["median_ms"]
+        if dml_median <= 0:
+            raise RuntimeError("Invalid DirectML median.")
+        report["cpu_to_directml_median_speedup"] = round(
+            report["cpu"]["median_ms"] / dml_median, 4
+        )
+        report["performance_verified"] = True
+        report["status"] = "benchmarked_mixed_directml"
+    except Exception as exc:
+        report["status"] = "benchmark_error"
+        report["error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+    finally:
+        destination.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        print("Single performance report:", destination)
+    return 0 if report["status"] == "benchmarked_mixed_directml" else 2
+
 def parser():
     p = argparse.ArgumentParser()
     p.add_argument("--child", action="store_true")
@@ -459,11 +598,14 @@ def parser():
     p.add_argument("--output")
     p.add_argument("--progress")
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--benchmark", action="store_true", help="Bounded CPU vs DirectML wall-time test.")
     return p
 
 
 def main():
     args = parser().parse_args()
+    if args.benchmark:
+        return run_performance_benchmark()
     if args.child:
         if not args.candidate or not args.output or not args.progress:
             raise SystemExit("--child requires --candidate, --output and --progress")
