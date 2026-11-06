@@ -13,7 +13,8 @@ param(
     [string]$Branch = 'research/ediffiqa-directml-batch1',
     [long]$RunId = 0,
     [string]$PackageZip = '',
-    [switch]$PrepareOnly
+    [switch]$PrepareOnly,
+    [switch]$Benchmark
 )
 
 Set-StrictMode -Version Latest
@@ -23,7 +24,7 @@ $ArtifactName = 'FaceLoRA-eDifFIQA-DirectML-Final-Probe'
 $InnerZipName = 'FaceLoRA-eDifFIQA-Candidate-Probe.zip'
 $ProbeExeName = 'Face LoRA eDifFIQA Candidate Probe.exe'
 $CheckpointExeName = 'Face LoRA DirectML Checkpoint.exe'
-$ReportName = 'qa-ediffiqa-last-run.json'
+$ReportName = if ($Benchmark) { 'qa-ediffiqa-performance-result.json' } else { 'qa-ediffiqa-last-run.json' }
 $oldTemp = $env:TEMP
 $oldTmp = $env:TMP
 $report = [ordered]@{
@@ -45,6 +46,8 @@ $report = [ordered]@{
     profile_summary = $null
     probe_error = $null
     native_error_lines = @()
+    benchmark_report = $null
+    benchmark_payload = $null
     failure = $null
 }
 $targetDir = $null
@@ -205,6 +208,46 @@ try {
 
     if ($PrepareOnly) {
         Write-Host 'CI/offline preparation PASS. No target GPU result was claimed.'
+    } elseif ($Benchmark) {
+        Write-Host 'Running bounded CPU vs DirectML inference wall-time comparison; warmed and repeated.'
+        $benchPath = Join-Path $targetDir 'qa-ediffiqa-performance.json'
+        if (Test-Path -LiteralPath $benchPath -PathType Leaf) {
+            Remove-Item -LiteralPath $benchPath -Force
+        }
+        $p = Start-Process -FilePath $probeDst -ArgumentList @('--benchmark') -WorkingDirectory $targetDir -PassThru
+        if (-not $p.WaitForExit(120000)) {
+            & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null
+            $report.status = 'benchmark_timeout'
+            $report.failure = 'Benchmark exceeded 120 seconds.'
+        } else {
+            $report.probe_exit_code = $p.ExitCode
+        }
+        if (Test-Path -LiteralPath $benchPath -PathType Leaf) {
+            $payload = Get-Content -LiteralPath $benchPath -Raw | ConvertFrom-Json
+            $report.benchmark_report = $benchPath
+            $report.benchmark_payload = $payload
+            if ($payload.kind -eq 'ediffiqa-cpu-vs-directml-walltime' -and
+                $payload.status -eq 'benchmarked_mixed_directml' -and
+                $payload.model_sha256 -eq $ExpectedModelSha -and
+                $payload.target_gpu_verified -eq $true -and
+                $payload.performance_verified -eq $true -and
+                @($payload.cpu.samples_ms).Count -eq 30 -and
+                @($payload.directml.samples_ms).Count -eq 30 -and
+                $report.probe_exit_code -eq 0) {
+                $report.status = 'benchmark_pass'
+                $report.target_gpu_verified = $true
+            } else {
+                $report.status = 'benchmark_fail'
+                $report.failure = if ($payload.error) {
+                    [string]$payload.error.message
+                } else {
+                    'Output parity, profiled DML or timed-sample validation did not pass.'
+                }
+            }
+        } elseif ($report.status -ne 'benchmark_timeout') {
+            $report.status = 'benchmark_no_report'
+            $report.failure = 'Probe did not produce a benchmark report.'
+        }
     } else {
         Write-Host 'Running one profiled eDifFIQA-T DirectML test (Python CPU-only retry disabled; CPU shape helpers audited)...'
         $started = (Get-Date).ToUniversalTime()
@@ -300,7 +343,9 @@ try {
         Write-Host "Single QA report: $reportPath"
     }
 }
-if ($report.target_gpu_verified) {
+if ($report.status -eq 'benchmark_pass') {
+    Write-Host "BENCHMARK PASS — CPU median $($report.benchmark_payload.cpu.median_ms) ms; DML median $($report.benchmark_payload.directml.median_ms) ms. Return the single wrapper report." -ForegroundColor Green
+} elseif ($report.target_gpu_verified) {
     Write-Host "DML CORE COMPUTE VERIFIED ($($report.status)); CPU Gelu events: $($report.cpu_gelu_kernel_events). Performance NOT yet benchmarked." -ForegroundColor Green
 } elseif ($report.status -eq 'prepared') {
     Write-Host 'PREPARE PASS (CI fixture only; no GPU proof).' -ForegroundColor Yellow
