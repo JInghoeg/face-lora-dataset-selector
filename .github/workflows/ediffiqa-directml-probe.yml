@@ -247,6 +247,17 @@ jobs:
             throw "CI preparation must not claim real target DirectML pass."
           }
           Write-Host "Verified CI-only preparation and single-report contract (reusable-runtime fixture; RTX remains HUMAN UNVERIFIED)."
+          & pwsh -NoProfile -File tools/qa-ediffiqa-directml.ps1 -CheckpointRoot $checkpoint -PackageZip $zip -PrepareOnly -Benchmark
+          if ($LASTEXITCODE -ne 0) { throw "Performance-mode launcher preparation failed." }
+          $benchReport = Get-ChildItem $checkpoint -Recurse -File -Filter "qa-ediffiqa-performance-result.json" | Select-Object -First 1
+          if (-not $benchReport) { throw "Performance-mode single-report fixture was not emitted." }
+          $benchPreflight = Get-Content $benchReport.FullName -Raw | ConvertFrom-Json
+          if ($benchPreflight.status -ne "prepared" -or
+              $benchPreflight.kind -ne "ediffiqa-one-command-performance" -or
+              $benchPreflight.performance_verified -ne $false -or
+              $benchPreflight.target_gpu_verified -ne $false) {
+            throw "CI offline benchmark preflight must not claim real RTX or performance verification."
+          }
 
       - name: Validate zero-GPU profile recovery from previous probe
         shell: pwsh
