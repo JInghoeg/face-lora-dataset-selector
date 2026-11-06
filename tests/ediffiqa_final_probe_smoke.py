@@ -32,7 +32,8 @@ class FinalProbeSmoke(unittest.TestCase):
                     "provider_requested": provider,
                     "model_sha256": probe.PRODUCTION_SHA256,
                     "status": "pass",
-                    "session_providers": ["DmlExecutionProvider"],
+                    "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                    "gpu_compute_verified": True,
                 }
 
             with (
@@ -53,13 +54,20 @@ class FinalProbeSmoke(unittest.TestCase):
             for row in (
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": probe.PRODUCTION_SHA256,
-                 "session_providers": ["CPUExecutionProvider"]},
+                 "session_providers": ["CPUExecutionProvider"], "gpu_compute_verified": True},
                 {"candidate": "upstream_current", "status": "pass",
                  "model_sha256": "wrong",
-                 "session_providers": ["DmlExecutionProvider"]},
+                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True},
                 {"candidate": "upstream_current", "status": "timeout",
                  "model_sha256": probe.PRODUCTION_SHA256,
-                 "session_providers": ["DmlExecutionProvider"]},
+                 "session_providers": ["DmlExecutionProvider"], "gpu_compute_verified": True},
+                {"candidate": "upstream_current", "status": "pass",
+                 "model_sha256": probe.PRODUCTION_SHA256,
+                 "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"],
+                 "gpu_compute_verified": False},
+                {"candidate": "upstream_current", "status": "pass",
+                 "model_sha256": probe.PRODUCTION_SHA256,
+                 "session_providers": ["DmlExecutionProvider", "CPUExecutionProvider"]},
             ):
                 with (
                     mock.patch.object(probe, "result_root", return_value=root),
@@ -69,6 +77,43 @@ class FinalProbeSmoke(unittest.TestCase):
                     _, report = probe.run_parent()
                 self.assertIsNone(report["winner"])
                 self.assertEqual(report["all_directml_passes"], [])
+
+    def test_profile_accepts_real_gpu_math_with_cpu_shape_helper(self):
+        events = [
+            {"cat": "Node", "name": "Expand_8_kernel_time",
+             "args": {"provider": "CPUExecutionProvider", "op_name": "Expand"}},
+            {"cat": "Node", "name": "Conv_9_kernel_time",
+             "args": {"provider": "DmlExecutionProvider", "op_name": "Conv"}},
+            {"cat": "Node", "name": "Gemm_10_kernel_time",
+             "args": {"provider": "DmlExecutionProvider", "op_name": "Gemm"}},
+            {"cat": "Session", "name": "session_initialization", "args": {}},
+        ]
+        result = probe.summarize_execution_profile(events)
+        self.assertTrue(result["gpu_compute_verified"])
+        self.assertEqual(result["dml_compute_kernel_events"], 2)
+        self.assertEqual(result["operators_by_provider"]["CPUExecutionProvider"]["Expand"], 1)
+        self.assertEqual(result["cpu_non_helper_ops"], [])
+
+    def test_cpu_math_or_provider_only_never_proves_gpu(self):
+        cases = (
+            [{"cat": "Node", "name": "Conv_kernel_time",
+              "args": {"provider": "CPUExecutionProvider", "op_name": "Conv"}}],
+            [{"cat": "Node", "name": "Expand_kernel_time",
+              "args": {"provider": "CPUExecutionProvider", "op_name": "Expand"}}],
+            [{"cat": "Session", "name": "model_run",
+              "args": {"provider": "DmlExecutionProvider"}}],
+            [{"cat": "Node", "name": "Conv_kernel_time",
+              "args": {"provider": "DmlExecutionProvider", "op_name": "Conv"}},
+             {"cat": "Node", "name": "Gemm_kernel_time",
+              "args": {"provider": "CPUExecutionProvider", "op_name": "Gemm"}}],
+        )
+        for events in cases:
+            self.assertFalse(probe.summarize_execution_profile(events)["gpu_compute_verified"])
+
+    def test_profile_enabled_for_real_dml_proof(self):
+        options = probe.session_options(strict_dml=True, profile_prefix="G:/qa/ort")
+        self.assertTrue(options.enable_profiling)
+        self.assertEqual(options.profile_file_prefix, "G:/qa/ort")
 
     def test_wrong_model_hash_is_rejected_before_session_creation(self):
         with tempfile.TemporaryDirectory() as folder:
