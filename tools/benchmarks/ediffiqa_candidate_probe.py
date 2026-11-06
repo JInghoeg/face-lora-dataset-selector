@@ -28,22 +28,30 @@ CANDIDATES = (PRODUCTION_CANDIDATE,)
 PRODUCTION_SHA256 = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
 TIMEOUT_SECONDS = 45
 
-# CPU shape/helper kernels can be deliberately assigned by ORT. Their presence
-# does not prove a whole-session CPU fallback, but they remain visible in the
-# report. CPU placement of arithmetic-heavy model nodes is NOT accepted.
+# ORT may place helper kernels on CPU. The observed official model also puts
+# one Gelu on CPU per inference. This must be disclosed rather than relabeled
+# a shape helper, or mistaken for a CPU-only session fallback.
+# Production acceptance keeps other CPU arithmetic as a separate blocker.
 CPU_HELPER_OPS = frozenset({
     "Shape", "Size", "Gather", "GatherElements", "Slice", "Concat",
     "Unsqueeze", "Squeeze", "Reshape", "Flatten", "Expand", "Cast",
     "Identity", "Constant", "ConstantOfShape",
 })
+EXPECTED_CPU_COMPUTE_OPS = frozenset({"Gelu"})
 GPU_COMPUTE_OPS = frozenset({
     "Conv", "FusedConv", "Gemm", "MatMul", "FusedMatMul",
     "DmlFusedNode", "DmlFused",
 })
 
 
-def summarize_execution_profile(events):
-    """Use ORT's executed-kernel trace; never infer GPU work from get_providers."""
+def summarize_execution_profile(events, expected_runs: int = 3):
+    """Distinguish DML execution proof from the production mixed-EP gate.
+
+    Counts are executed ORT profiler kernel events, NOT elapsed-time shares.
+    Three deterministic inferences are required by the final target probe.
+    The known eDifFIQA-T export has one CPU Gelu per inference; it is real
+    CPU arithmetic and is never misrepresented as a mere shape helper.
+    """
     counts = Counter()
     operators = {}
     executed = 0
@@ -56,17 +64,33 @@ def summarize_execution_profile(events):
         if not isinstance(args, dict):
             continue
         provider = args.get("provider")
-        op = args.get("op_name", "unknown")
+        op = str(args.get("op_name", "unknown"))
         if provider not in {"DmlExecutionProvider", "CPUExecutionProvider"}:
             continue
         executed += 1
         counts[provider] += 1
-        operators.setdefault(provider, Counter())[str(op)] += 1
+        operators.setdefault(provider, Counter())[op] += 1
+
     dml_ops = operators.get("DmlExecutionProvider", Counter())
     cpu_ops = operators.get("CPUExecutionProvider", Counter())
-    unsupported_cpu = sorted(op for op in cpu_ops if op not in CPU_HELPER_OPS)
+    cpu_non_helper = sorted(op for op in cpu_ops if op not in CPU_HELPER_OPS)
+    unexpected_cpu_compute = sorted(
+        op for op in cpu_non_helper if op not in EXPECTED_CPU_COMPUTE_OPS
+    )
     dml_compute = sum(dml_ops.get(op, 0) for op in GPU_COMPUTE_OPS)
-    verified = dml_compute > 0 and not unsupported_cpu
+    cpu_gelu = cpu_ops.get("Gelu", 0)
+    # This answers a factual question: did the DML EP execute arithmetic?
+    # It deliberately does not claim whole-model GPU execution.
+    gpu_compute_verified = dml_compute > 0
+    # Separate, bounded acceptance for this SHA-pinned production export.
+    # Only a single CPU Gelu per recorded inference is expected.
+    production_execution_accepted = (
+        gpu_compute_verified
+        and dml_ops.get("Conv", 0) > 0
+        and dml_ops.get("Gemm", 0) > 0
+        and not unexpected_cpu_compute
+        and cpu_gelu <= expected_runs
+    )
     return {
         "source": "onnxruntime_kernel_profiling",
         "executed_kernel_events": executed,
@@ -75,15 +99,20 @@ def summarize_execution_profile(events):
             key: dict(sorted(value.items())) for key, value in sorted(operators.items())
         },
         "dml_compute_kernel_events": dml_compute,
-        "cpu_non_helper_ops": unsupported_cpu,
-        "gpu_compute_verified": verified,
+        "cpu_gelu_kernel_events": cpu_gelu,
+        "cpu_non_helper_ops": cpu_non_helper,
+        "unexpected_cpu_compute_ops": unexpected_cpu_compute,
+        "gpu_compute_verified": gpu_compute_verified,
+        "production_mixed_execution_accepted": production_execution_accepted,
+        "cpu_nodes_executed": counts["CPUExecutionProvider"] > 0,
+        "performance_verified": False,
         "note": (
-            "CPU helper kernels are allowed and disclosed; core arithmetic "
-            "must execute on DML. Profile event counts are not GPU time or "
-            "a performance benchmark."
+            "DML core compute is separately evidenced by executed Conv/Gemm kernels. "
+            "The official model may perform up to one CPU Gelu per inference. "
+            "Kernel event counts are not wall-time, elapsed-time ratios, "
+            "or proof of acceleration."
         ),
     }
-
 
 
 def app_dir() -> Path:
@@ -214,12 +243,15 @@ def child(args) -> int:
             result["execution_profile"] = str(profile_path)
             append_event(progress, "profile_saved", profile_path=str(profile_path))
             events = json.loads(profile_path.read_text(encoding="utf-8"))
-            summary = summarize_execution_profile(events)
+            summary = summarize_execution_profile(events, expected_runs=len(outputs))
             result["profile_summary"] = summary
             result["gpu_compute_verified"] = summary["gpu_compute_verified"]
-            if not summary["gpu_compute_verified"]:
+            result["production_mixed_execution_accepted"] = summary["production_mixed_execution_accepted"]
+            result["cpu_nodes_executed"] = summary["cpu_nodes_executed"]
+            result["performance_verified"] = False
+            if not summary["production_mixed_execution_accepted"]:
                 raise RuntimeError(
-                    "DML kernel proof missing or CPU non-helper kernels observed: "
+                    "Core DML compute not proven, or unexpected CPU arithmetic assignment: "
                     + json.dumps(summary, ensure_ascii=False)
                 )
         result["status"] = "pass"
