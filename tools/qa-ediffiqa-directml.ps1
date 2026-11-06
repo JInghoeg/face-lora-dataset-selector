@@ -38,6 +38,10 @@ $report = [ordered]@{
     probe_report = $null
     probe_exit_code = $null
     gpu_compute_verified = $false
+    production_mixed_execution_accepted = $false
+    cpu_nodes_executed = $false
+    cpu_gelu_kernel_events = 0
+    performance_verified = $false
     profile_summary = $null
     probe_error = $null
     native_error_lines = @()
@@ -229,8 +233,15 @@ try {
             $gpuProof = ($null -ne $row.PSObject.Properties['gpu_compute_verified'] -and
                 $row.gpu_compute_verified -eq $true)
             $report.gpu_compute_verified = $gpuProof
+            $mixedAccepted = ($null -ne $row.PSObject.Properties['production_mixed_execution_accepted'] -and
+                $row.production_mixed_execution_accepted -eq $true)
+            $report.production_mixed_execution_accepted = $mixedAccepted
+            if ($null -ne $row.PSObject.Properties['cpu_nodes_executed']) {
+                $report.cpu_nodes_executed = ($row.cpu_nodes_executed -eq $true)
+            }
             if ($null -ne $row.PSObject.Properties['profile_summary']) {
                 $report.profile_summary = $row.profile_summary
+                $report.cpu_gelu_kernel_events = [int]$row.profile_summary.cpu_gelu_kernel_events
             }
             if ($null -ne $row.PSObject.Properties['error']) {
                 $report.probe_error = $row.error
@@ -250,19 +261,25 @@ try {
             if ($details.winner -eq 'upstream_current' -and $row.status -eq 'pass' -and
                 $row.model_sha256 -eq $ExpectedModelSha -and
                 @($row.session_providers) -contains 'DmlExecutionProvider' -and
-                $gpuProof -and
+                $gpuProof -and $mixedAccepted -and
                 $null -ne $report.profile_summary -and
                 $report.profile_summary.dml_compute_kernel_events -gt 0 -and
-                @($report.profile_summary.cpu_non_helper_ops).Count -eq 0 -and
+                @($report.profile_summary.unexpected_cpu_compute_ops).Count -eq 0 -and
+                $report.cpu_gelu_kernel_events -le @($row.outputs).Count -and
+                @($row.outputs).Count -eq 3 -and
                 $report.probe_exit_code -eq 0) {
-                $report.status = 'strict_directml_pass'
+                $report.status = if ($report.cpu_nodes_executed) {
+                    'directml_core_pass_mixed_cpu'
+                } else {
+                    'directml_core_pass'
+                }
                 $report.target_gpu_verified = $true
             } else {
                 $report.status = 'strict_directml_fail'
                 $report.failure = if ($null -ne $row.PSObject.Properties['error']) {
                     [string]$row.error.message
                 } else {
-                    'No proven DML compute kernel or unexpected CPU compute placement. Inspect the embedded profile_summary.'
+                    'No proven DML core execution, or CPU placement outside the bounded eDifFIQA model profile. Inspect the embedded profile_summary.'
                 }
             }
         } elseif ($report.status -ne 'timeout') {
@@ -283,8 +300,8 @@ try {
         Write-Host "Single QA report: $reportPath"
     }
 }
-if ($report.status -eq 'strict_directml_pass') {
-    Write-Host 'STRICT DIRECTML PASS — return the single QA report above.' -ForegroundColor Green
+if ($report.target_gpu_verified) {
+    Write-Host "DML CORE COMPUTE VERIFIED ($($report.status)); CPU Gelu events: $($report.cpu_gelu_kernel_events). Performance NOT yet benchmarked." -ForegroundColor Green
 } elseif ($report.status -eq 'prepared') {
     Write-Host 'PREPARE PASS (CI fixture only; no GPU proof).' -ForegroundColor Yellow
 } else {
