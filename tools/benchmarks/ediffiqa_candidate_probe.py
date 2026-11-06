@@ -2,11 +2,14 @@
 
 The official re-export is SHA-pinned and CPU-equivalent in CI. Legacy ONNX
 alternatives remain research-only; the target package tests exactly this file.
-Both Python provider fallback and ONNX Runtime CPU-node fallback are disabled.
+Python provider-level retry is disabled. ORT may still place small shape/helper
+nodes on CPU: every executed node is audited from ORT profiling, and a GPU PASS
+requires actual DML convolution/matrix computation, not provider registration.
 """
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -24,6 +27,62 @@ PRODUCTION_CANDIDATE = ("upstream_current", "ediffiqa_t_upstream.onnx")
 CANDIDATES = (PRODUCTION_CANDIDATE,)
 PRODUCTION_SHA256 = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
 TIMEOUT_SECONDS = 45
+
+# CPU shape/helper kernels can be deliberately assigned by ORT. Their presence
+# does not prove a whole-session CPU fallback, but they remain visible in the
+# report. CPU placement of arithmetic-heavy model nodes is NOT accepted.
+CPU_HELPER_OPS = frozenset({
+    "Shape", "Size", "Gather", "GatherElements", "Slice", "Concat",
+    "Unsqueeze", "Squeeze", "Reshape", "Flatten", "Expand", "Cast",
+    "Identity", "Constant", "ConstantOfShape",
+})
+GPU_COMPUTE_OPS = frozenset({
+    "Conv", "FusedConv", "Gemm", "MatMul", "FusedMatMul",
+})
+
+
+def summarize_execution_profile(events):
+    """Use ORT's executed-kernel trace; never infer GPU work from get_providers."""
+    counts = Counter()
+    operators = {}
+    executed = 0
+    for event in events:
+        if not isinstance(event, dict) or event.get("cat") != "Node":
+            continue
+        if not str(event.get("name", "")).endswith("_kernel_time"):
+            continue
+        args = event.get("args")
+        if not isinstance(args, dict):
+            continue
+        provider = args.get("provider")
+        op = args.get("op_name", "unknown")
+        if provider not in {"DmlExecutionProvider", "CPUExecutionProvider"}:
+            continue
+        executed += 1
+        counts[provider] += 1
+        operators.setdefault(provider, Counter())[str(op)] += 1
+    dml_ops = operators.get("DmlExecutionProvider", Counter())
+    cpu_ops = operators.get("CPUExecutionProvider", Counter())
+    unsupported_cpu = sorted(op for op in cpu_ops if op not in CPU_HELPER_OPS)
+    dml_compute = sum(dml_ops.get(op, 0) for op in GPU_COMPUTE_OPS)
+    verified = dml_compute > 0 and not unsupported_cpu
+    return {
+        "source": "onnxruntime_kernel_profiling",
+        "executed_kernel_events": executed,
+        "provider_kernel_events": dict(sorted(counts.items())),
+        "operators_by_provider": {
+            key: dict(sorted(value.items())) for key, value in sorted(operators.items())
+        },
+        "dml_compute_kernel_events": dml_compute,
+        "cpu_non_helper_ops": unsupported_cpu,
+        "gpu_compute_verified": verified,
+        "note": (
+            "CPU helper kernels are allowed and disclosed; core arithmetic "
+            "must execute on DML. Profile event counts are not GPU time or "
+            "a performance benchmark."
+        ),
+    }
+
 
 
 def app_dir() -> Path:
@@ -49,14 +108,18 @@ def make_input(seed: int):
     return rng.standard_normal((1, 3, 112, 112), dtype=np.float32)
 
 
-def session_options(strict_dml: bool):
+def session_options(strict_dml: bool, profile_prefix: str | None = None):
     options = ort.SessionOptions()
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     options.enable_mem_pattern = False
     if strict_dml:
-        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        options.log_severity_level = 0
-        options.log_verbosity_level = 1
+        # Do NOT forbid all CPU nodes: ORT intentionally places small shape
+        # helpers (e.g. Expand) on CPU even when DML handles core arithmetic.
+        # We audit every executed kernel in the profiler instead.
+        options.enable_profiling = True
+        if profile_prefix is not None:
+            options.profile_file_prefix = profile_prefix
+        options.log_severity_level = 2
     return options
 
 
@@ -81,8 +144,9 @@ def child(args) -> int:
     providers = ["CPUExecutionProvider"]
     kwargs = {}
     if strict:
-        providers = ["DmlExecutionProvider"]
-        kwargs["enable_fallback"] = 0
+        providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        # Disable Python-level fallback/re-creation as a CPU-only session.
+        kwargs["enable_fallback"] = False
 
     result = {
         "candidate": args.candidate,
@@ -106,7 +170,7 @@ def child(args) -> int:
         t0 = time.perf_counter()
         session = ort.InferenceSession(
             str(model),
-            sess_options=session_options(strict),
+            sess_options=session_options(strict, str(out.parent / (args.candidate + "-ort-profile"))),
             providers=providers,
             **kwargs,
         )
@@ -142,6 +206,21 @@ def child(args) -> int:
             append_event(progress, "run_finished", candidate=args.candidate, seed=seed, seconds=elapsed)
 
         result["outputs"] = outputs
+        if strict:
+            # Profiling is saved after real inference; do not accept DML merely
+            # because get_providers() reports DmlExecutionProvider.
+            profile_path = Path(session.end_profiling())
+            result["execution_profile"] = str(profile_path)
+            append_event(progress, "profile_saved", path=str(profile_path))
+            events = json.loads(profile_path.read_text(encoding="utf-8"))
+            summary = summarize_execution_profile(events)
+            result["profile_summary"] = summary
+            result["gpu_compute_verified"] = summary["gpu_compute_verified"]
+            if not summary["gpu_compute_verified"]:
+                raise RuntimeError(
+                    "DML kernel proof missing or CPU non-helper kernels observed: "
+                    + json.dumps(summary, ensure_ascii=False)
+                )
         result["status"] = "pass"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -250,6 +329,7 @@ def run_parent(status=lambda _text: None):
         row.get("status") == "pass"
         and row.get("model_sha256") == PRODUCTION_SHA256
         and "DmlExecutionProvider" in row.get("session_providers", [])
+        and row.get("gpu_compute_verified") is True
     )
     winner = PRODUCTION_CANDIDATE[0] if passed else None
 
@@ -276,7 +356,7 @@ def run_gui():
         None,
         "eDifFIQA DirectML 官方模型诊断",
         "这次只测试已经通过仓库侧等价验证的当前官方 eDifFIQA-T。\n\n"
-        "DirectML 和 CPU fallback 都被严格隔离，不会把 CPU 成功误报成 GPU 成功。",
+        "Python 层 CPU-only 回退已禁用。CPU 形状辅助节点允许存在，但必须有真实 DirectML 计算核执行记录才能判定通过。",
     )
 
     progress = QProgressDialog("准备…", None, 0, 0)
