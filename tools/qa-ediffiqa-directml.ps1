@@ -226,16 +226,23 @@ try {
                 throw 'Probe report is not the required single official production-model test.'
             }
             $row = $details.probes[0]
-            $report.gpu_compute_verified = ($row.gpu_compute_verified -eq $true)
-            if ($row.profile_summary) { $report.profile_summary = $row.profile_summary }
-            if ($row.error) { $report.probe_error = $row.error }
-            if ($row.log -and (Test-Path -LiteralPath $row.log -PathType Leaf)) {
+            $gpuProof = ($null -ne $row.PSObject.Properties['gpu_compute_verified'] -and
+                $row.gpu_compute_verified -eq $true)
+            $report.gpu_compute_verified = $gpuProof
+            if ($null -ne $row.PSObject.Properties['profile_summary']) {
+                $report.profile_summary = $row.profile_summary
+            }
+            if ($null -ne $row.PSObject.Properties['error']) {
+                $report.probe_error = $row.error
+            }
+            if ($null -ne $row.PSObject.Properties['log'] -and
+                (Test-Path -LiteralPath $row.log -PathType Leaf)) {
                 # Windows native redirected output can contain UTF-16 null bytes.
                 # Only return relevant final native lines, not huge ORT verbose logs.
                 $tail = @(Get-Content -LiteralPath $row.log -Tail 100 -ErrorAction SilentlyContinue)
                 $report.native_error_lines = @(
                     $tail |
-                    ForEach-Object { ($_ -replace [string][char]0, '') -replace '\x1b\[[0-9;]*m', '' } |
+                    ForEach-Object { ($_ -replace ([string][char]0), '') -replace '\x1b\[[0-9;]*m', '' } |
                     Where-Object { $_ -match 'Error|Exception|\[E:|CPU EP|DmlExecutionProvider|0x[0-9A-Fa-f]+' } |
                     Select-Object -Last 14
                 )
@@ -243,15 +250,16 @@ try {
             if ($details.winner -eq 'upstream_current' -and $row.status -eq 'pass' -and
                 $row.model_sha256 -eq $ExpectedModelSha -and
                 @($row.session_providers) -contains 'DmlExecutionProvider' -and
-                $row.gpu_compute_verified -eq $true -and
-                $row.profile_summary.dml_compute_kernel_events -gt 0 -and
-                @($row.profile_summary.cpu_non_helper_ops).Count -eq 0 -and
+                $gpuProof -and
+                $null -ne $report.profile_summary -and
+                $report.profile_summary.dml_compute_kernel_events -gt 0 -and
+                @($report.profile_summary.cpu_non_helper_ops).Count -eq 0 -and
                 $report.probe_exit_code -eq 0) {
                 $report.status = 'strict_directml_pass'
                 $report.target_gpu_verified = $true
             } else {
                 $report.status = 'strict_directml_fail'
-                $report.failure = if ($row.error) {
+                $report.failure = if ($null -ne $row.PSObject.Properties['error']) {
                     [string]$row.error.message
                 } else {
                     'No proven DML compute kernel or unexpected CPU compute placement. Inspect the embedded profile_summary.'
