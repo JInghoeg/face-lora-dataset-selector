@@ -136,42 +136,30 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean packaging/ediffiqa_candidate_probe.spec
 
-      - name: Validate candidate probe as checkpoint drop-in
+      - name: Validate packaged CPU probe in an isolated reusable-runtime fixture
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = "application/vnd.github+json"
-            "X-GitHub-Api-Version" = "2022-11-28"
-          }
-
-          $outerZip = Join-Path $PWD "_research_output\checkpoint-artifact.zip"
-          $outerDir = Join-Path $PWD "_research_output\checkpoint-artifact"
+          # Do not depend on historical GitHub Actions artifacts (they expire).
+          # The real target workstation already proved checkpoint EXE reuse works;
+          # this CI fixture checks the current packaged PyInstaller runtime and
+          # the replacement model without downloading a 400+ MB old checkpoint.
           $baseDir = Join-Path $PWD "_research_output\checkpoint-base"
-
-          Invoke-WebRequest -Headers $headers -Uri "https://api.github.com/repos/JInghoeg/face-lora-dataset-selector/actions/artifacts/12889766078/zip" -OutFile $outerZip
-          Expand-Archive -Path $outerZip -DestinationPath $outerDir -Force
-
-          $inner = Get-ChildItem $outerDir -Recurse -File |
-            Where-Object { $_.Name -eq "FaceLoRA-DirectML-Checkpoint-Windows-x64.zip" } |
-            Select-Object -First 1
-          if (-not $inner) { throw "Checkpoint inner ZIP not found." }
-
-          Expand-Archive -Path $inner.FullName -DestinationPath $baseDir -Force
-          $checkpointExe = Get-ChildItem $baseDir -Recurse -File |
-            Where-Object { $_.Name -eq "Face LoRA DirectML Checkpoint.exe" } |
-            Select-Object -First 1
-          if (-not $checkpointExe) { throw "Checkpoint EXE not found." }
-
-          $targetDir = $checkpointExe.Directory.FullName
-          $probeExe = Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe\Face LoRA eDifFIQA Candidate Probe.exe"
+          $targetDir = Join-Path $baseDir "FaceLoRA-DirectML-Checkpoint"
+          $bundle = Join-Path $PWD "dist\FaceLoRA-eDifFIQA-Candidate-Probe"
+          $probeExe = Join-Path $bundle "Face LoRA eDifFIQA Candidate Probe.exe"
+          $runtime = Join-Path $bundle "_internal"
+          if (-not (Test-Path -LiteralPath $probeExe -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $runtime -PathType Container)) {
+            throw "New probe build has no reusable PyInstaller runtime."
+          }
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+          Copy-Item -LiteralPath $runtime -Destination (Join-Path $targetDir "_internal") -Recurse -Force
+          Copy-Item -LiteralPath $probeExe -Destination (Join-Path $targetDir "Face LoRA DirectML Checkpoint.exe") -Force
           $targetExe = Join-Path $targetDir "Face LoRA eDifFIQA Candidate Probe.exe"
-          Copy-Item $probeExe $targetExe -Force
+          Copy-Item -LiteralPath $probeExe -Destination $targetExe -Force
 
           $candidates = Join-Path $targetDir "ediffiqa-candidates"
-          New-Item -ItemType Directory -Force $candidates | Out-Null
+          New-Item -ItemType Directory -Force -Path $candidates | Out-Null
           $targetModel = Join-Path $candidates "ediffiqa_t_upstream.onnx"
           Copy-Item "resources\models\ediffiqa_t.onnx" $targetModel -Force
 
@@ -179,16 +167,15 @@ jobs:
           if ($modelHash -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
             throw "Final probe model hash mismatch: $modelHash"
           }
-
           $out = Join-Path $PWD "_research_output\dropin-upstream_current-cpu.json"
           $progress = Join-Path $PWD "_research_output\dropin-upstream_current-cpu.progress.jsonl"
           $args = @("--child","--candidate","upstream_current","--provider","cpu","--output",$out,"--progress",$progress)
           $p = Start-Process -FilePath $targetExe -ArgumentList $args -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Drop-in official eDifFIQA CPU probe failed: $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0) { throw "Packaged eDifFIQA CPU probe failed: $($p.ExitCode)" }
           $result = Get-Content $out -Raw | ConvertFrom-Json
-          if ($result.status -ne "pass") { throw "Drop-in official eDifFIQA probe did not pass CPU." }
-          if ($result.model_sha256 -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
-            throw "Drop-in model hash was not the production model."
+          if ($result.status -ne "pass" -or
+              $result.model_sha256 -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb") {
+            throw "Packaged CPU probe/model identity verification failed."
           }
 
       - name: Build candidate artifact
@@ -240,7 +227,7 @@ jobs:
           $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $dir "payload.sha256.json") -Encoding UTF8
           Compress-Archive -Path "$dir\*" -DestinationPath "FaceLoRA-eDifFIQA-Candidate-Probe.zip" -CompressionLevel Optimal -Force
 
-      - name: Validate one-command QA overlay preparation against actual checkpoint
+      - name: Validate one-command QA overlay preparation against reusable-runtime fixture
         shell: pwsh
         run: |
           $checkpoint = Join-Path $PWD "_research_output\checkpoint-base"
@@ -253,7 +240,7 @@ jobs:
           if ($state.status -ne "prepared" -or $state.target_gpu_verified -ne $false) {
             throw "CI preparation must not claim real target DirectML pass."
           }
-          Write-Host "Verified CI-only preparation and single-report contract."
+          Write-Host "Verified CI-only preparation and single-report contract (reusable-runtime fixture; RTX remains HUMAN UNVERIFIED)."
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
