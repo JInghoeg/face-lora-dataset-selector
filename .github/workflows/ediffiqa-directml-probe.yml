@@ -8,6 +8,7 @@ on:
       - "tools/benchmarks/ediffiqa_graph_lab.py"
       - "tools/benchmarks/ediffiqa_candidate_probe.py"
       - "tools/qa-ediffiqa-directml.ps1"
+      - "tools/qa-ediffiqa-recover-profile.ps1"
       - "tests/ediffiqa_final_probe_smoke.py"
       - "packaging/ediffiqa_candidate_probe.spec"
       - ".github/workflows/ediffiqa-directml-probe.yml"
@@ -52,7 +53,12 @@ jobs:
           python -m py_compile tools/benchmarks/ediffiqa_graph_lab.py
           python -m py_compile tools/benchmarks/ediffiqa_candidate_probe.py
           python tools/benchmarks/ediffiqa_candidate_probe.py --help
-          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "tools/qa-ediffiqa-directml.ps1"), [ref]$null, [ref]$null)
+          foreach ($script in @("tools/qa-ediffiqa-directml.ps1", "tools/qa-ediffiqa-recover-profile.ps1")) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $script), [ref]$tokens, [ref]$parseErrors)
+            if (@($parseErrors).Count -gt 0) { throw "PowerShell parse errors in $script : $parseErrors" }
+          }
 
       - name: Verify SHA-pinned single-model target behavior
         shell: pwsh
@@ -241,6 +247,65 @@ jobs:
             throw "CI preparation must not claim real target DirectML pass."
           }
           Write-Host "Verified CI-only preparation and single-report contract (reusable-runtime fixture; RTX remains HUMAN UNVERIFIED)."
+
+      - name: Validate zero-GPU profile recovery from previous probe
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "_research_output\recovery-fixture"
+          New-Item -ItemType Directory -Force $root | Out-Null
+          $profilePath = Join-Path $root "sample-ort-profile.json"
+          $probePath = Join-Path $root "sample-probe.json"
+          $qaPath = Join-Path $root "qa-ediffiqa-last-run.json"
+          $expectedCommit = "9dd48e94e47afebb5eb09d88653156ac07eb1bc9"
+          $expectedModel = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
+
+          $events = @(
+            @{cat="Node"; name="Expand_kernel_time"; args=@{provider="CPUExecutionProvider"; op_name="Expand"}}
+            @{cat="Node"; name="Conv_kernel_time"; args=@{provider="DmlExecutionProvider"; op_name="Conv"}}
+            @{cat="Session"; name="model_run"; args=@{}}
+          )
+          $events | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilePath -Encoding UTF8
+          $row = @{
+            candidate = "upstream_current"
+            status = "error"
+            provider_requested = "directml"
+            session_providers = @("DmlExecutionProvider", "CPUExecutionProvider")
+            model_sha256 = $expectedModel
+            outputs = @(@{seed=11}, @{seed=29}, @{seed=47})
+            execution_profile = $profilePath
+            error = @{message="append_event() got multiple values for argument 'path'"}
+          }
+          @{probes=@($row)} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $probePath -Encoding UTF8
+          $qa = @{
+            status = "strict_directml_fail"
+            artifact_commit = $expectedCommit
+            artifact_run_id = 42235496927
+            deployed_model_sha256 = $expectedModel
+            probe_report = $probePath
+          }
+          $qa | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $qaPath -Encoding UTF8
+
+          & pwsh -NoProfile -File tools/qa-ediffiqa-recover-profile.ps1 -CheckpointRoot $root
+          if ($LASTEXITCODE -ne 0) { throw "Saved-profile recovery script failed." }
+          $out = Join-Path $root "qa-ediffiqa-recovered-profile.json"
+          $summary = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
+          if ($summary.status -ne "gpu_execution_evidence_recovered" -or
+              -not $summary.gpu_compute_verified -or
+              $summary.dml_compute_kernel_events -ne 1 -or
+              $summary.inference_runs_returned -ne 3 -or
+              $summary.human_qa -ne "HUMAN_UNVERIFIED") {
+            throw "Positive existing-profile recovery failed; $($summary | ConvertTo-Json -Depth 10)"
+          }
+
+          $events[1].args.provider = "CPUExecutionProvider"
+          $events | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilePath -Encoding UTF8
+          & pwsh -NoProfile -File tools/qa-ediffiqa-recover-profile.ps1 -CheckpointRoot $root
+          $summary = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
+          if ($summary.gpu_compute_verified -or
+              $summary.status -ne "profile_does_not_prove_gpu_compute") {
+            throw "CPU-only false PASS in recovery script."
+          }
+          Write-Host "Saved-profile recovery and CPU-only rejection PASS. No GPU runtime or download required."
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
