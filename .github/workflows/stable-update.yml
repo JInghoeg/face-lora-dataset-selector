@@ -1,0 +1,99 @@
+name: Stable Incremental Updates
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/application/stable_update.py"
+      - "src/application/settings.py"
+      - "src/app_main.py"
+      - "resources/updater/apply-update.ps1"
+      - "packaging/portable.spec"
+      - "tools/build-release-delta.ps1"
+      - "tools/build_portable.ps1"
+      - "tests/stable_update_smoke.py"
+      - ".github/workflows/stable-update.yml"
+      - ".github/workflows/build-portable.yml"
+      - "docs/PROJECT_STATE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "${{ matrix.python-version }}"
+      - name: Validate updater source and offline release behavior
+        shell: pwsh
+        run: |
+          python -m py_compile src/application/stable_update.py tests/stable_update_smoke.py
+          python tests/stable_update_smoke.py
+      - name: Validate bundled Windows PowerShell helper syntax
+        shell: pwsh
+        run: |
+          $tokens=$null;$errors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'resources\updater\apply-update.ps1').Path,
+            [ref]$tokens,[ref]$errors)
+          if (@($errors).Count -gt 0) {
+            foreach ($e in $errors) { Write-Host "$($e.Message) at $($e.Extent.StartLineNumber)" }
+            throw 'Bundled update helper has PowerShell syntax errors.'
+          }
+          Write-Host 'Bundled updater PowerShell parse PASS.'
+
+  release-delta:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build changed-file-only release delta from representative old/new Portable
+        shell: pwsh
+        run: |
+          $base=Join-Path $env:RUNNER_TEMP 'v040'
+          $target=Join-Path $env:RUNNER_TEMP 'v041'
+          $delta=Join-Path $env:RUNNER_TEMP 'delta-output'
+          New-Item -ItemType Directory -Force -Path "$base\_internal\models","$target\_internal\models" | Out-Null
+          "v0.4.0" | Set-Content (Join-Path $base 'VERSION.txt') -Encoding ascii
+          "v0.4.1" | Set-Content (Join-Path $target 'VERSION.txt') -Encoding ascii
+          "exeold" | Set-Content (Join-Path $base 'Face LoRA Dataset Selector.exe') -Encoding ascii
+          "exenew" | Set-Content (Join-Path $target 'Face LoRA Dataset Selector.exe') -Encoding ascii
+          foreach ($i in 1..120) {
+            $rel="_internal\models\shared-$i.onnx"
+            "unchanged-model-$i" | Set-Content (Join-Path $base $rel) -Encoding ascii
+            "unchanged-model-$i" | Set-Content (Join-Path $target $rel) -Encoding ascii
+          }
+          New-Item -ItemType Directory -Force -Path "$base\_userdata\cache","$target\_userdata\cache" | Out-Null
+          '{"record":"DO_NOT_INCLUDE"}' | Set-Content (Join-Path $base '_userdata\cache\original.json')
+          '{"record":"DO_NOT_INCLUDE"}' | Set-Content (Join-Path $target '_userdata\cache\original.json')
+          .\tools\build-release-delta.ps1 -BaseRoot $base -TargetRoot $target -OutputRoot $delta -FromVersion v0.4.0 -ToVersion v0.4.1
+          $m=Get-Content (Join-Path $delta 'manifest.json') -Raw | ConvertFrom-Json
+          if ($m.unchanged_count -lt 120 -or $m.changed.Count -ne 2) {
+            throw 'Stable delta unexpectedly included unchanged models.'
+          }
+          $bad = @($m.changed | Where-Object { $_ -like '_userdata*' -or $_ -like '*shared-*' })
+          if ($bad.Count -gt 0) { throw 'Delta included cached records or unchanged models.' }
+          $zip=Join-Path $env:RUNNER_TEMP 'delta-v040-v041.zip'
+          Compress-Archive -LiteralPath (Join-Path $delta 'manifest.json'),(Join-Path $delta 'files') -DestinationPath $zip
+          @'
+          import sys
+          from pathlib import Path
+          from zipfile import ZipFile
+          sys.path.insert(0, str(Path.cwd() / "src"))
+          from application.stable_update import validate_delta_file
+          path = Path(sys.argv[1])
+          manifest = validate_delta_file(path, "v0.4.0", "v0.4.1")
+          assert len(manifest["changed"]) == 2
+          with ZipFile(path) as z:
+              assert not any("_userdata" in name or "shared-" in name for name in z.namelist())
+          print("Official release delta schema, zero repeated model files and safety: PASS")
+          '@ | python - $zip
