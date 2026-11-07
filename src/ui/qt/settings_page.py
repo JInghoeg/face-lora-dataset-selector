@@ -214,6 +214,14 @@ class SettingsPage(QWidget):
         self.general_group.add_setting(
             self.theme_label, self.theme_description, self.theme_combo
         )
+        self.language_label = QLabel()
+        self.language_description = QLabel()
+        self.language_combo = QComboBox()
+        self.language_combo.setObjectName("SettingsLanguage")
+        self.language_combo.setMinimumWidth(165)
+        self.general_group.add_setting(
+            self.language_label, self.language_description, self.language_combo
+        )
         general_content.addWidget(self.general_group)
         general_content.addStretch(1)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
@@ -314,7 +322,9 @@ class SettingsPage(QWidget):
         for index, label in enumerate(labels):
             self.navigation.item(index).setText(label)
             self._page_headers[index].setText(label)
-        self.general_group.heading.setText(_tr("外观"))
+        self.general_group.heading.setText(_tr("外观与语言"))
+        self.language_label.setText(_tr("界面语言"))
+        self.language_description.setText(_tr("所有复核窗口与主界面的语言立即同步。"))
         self.theme_label.setText(_tr("复核窗口主题"))
         self.theme_description.setText(
             _tr("同步新式复核窗口的默认外观；主界面视觉统一仍在逐模块推进。")
