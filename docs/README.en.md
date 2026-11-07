@@ -527,6 +527,14 @@ Application-controlled analysis cache, Text Cleanup state, thumbnails, runtime l
 
 ---
 
+### v0.4 automatic stable updates (in development)
+
+Starting with v0.4, official stable builds check published GitHub Releases and download **only changed files** in the background. Automatic incremental updates are on by default and can be disabled or checked manually from **Help**. A verified update installs after the app closes and its current review state is saved, then relaunches the app.
+
+The updater hashes the complete runtime inventory and reuses unchanged bundled models and dependencies. It never changes `_userdata`, historical curation decisions, model caches, or source images. If a compatible delta is not available, it reports that fact rather than silently fetching another full Portable. Development and QA builds are not treated as stable releases.
+
+---
+
 ## User guide
 
 README provides a project overview, capability summary, and basic setup instructions.
