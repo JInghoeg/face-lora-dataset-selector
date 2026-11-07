@@ -79,12 +79,14 @@ Historical repository note:
 
 - **2026-11-07 real target performance PASS (RTX 5080)**: one-command benchmark returned from exact-head probe workflow `42256456795` (commit `10be0fd2`, pinned official eDifFIQA-T model SHA `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`). Five warmups + 30 timed CPU-only vs DirectML-mixed `session.run` calls per provider on identical model/inputs: CPU median **2.51120 ms**, DML median **1.25995 ms**, **1.9931×** median inference speed ratio; P90 CPU 9.84775 ms vs DML 1.95573 ms; CPU session creation 27.394 ms vs DML 57.893 ms. Maximum CPU–DML output absolute difference **1.1920928955078125e-07** (allowed 0.001). DML preflight profiled 105 DML kernels (49 Conv / 3 Gemm) plus one real CPU Gelu. Real DML compute and this bounded **model-level** latency improvement are VERIFIED on target; **full application/data-scan throughput, startup trade-off, and UX are NOT VERIFIED**. Multiple timing outliers affect means. One-command wrapper had contradictory default top-level GPU flags even with `benchmark_pass`; nested preflight was correct and the wrapper has been repaired in Draft PR #106 to project the evidence correctly. Do not ask for a repeat GPU compatibility or benchmark run simply to fix metadata; keep target report as historical proof. Issue #55 records sample details.
 
+- **2026-11-07 urgent standalone v0.4 Composite Split QA (authorized by user, separate from releases):** user is processing a Luna/TFD character LoRA dataset in the older v0.3.1 Portable and needs the already-merged PR #93 manual Composite Split UI right now. The one-command `tools/qa-luna-composite.ps1` uses existing successful Windows Portable CI artifact run `42382490831` (artifact `13578236484`, overlay `13577229815`) and deploys into isolated `G:\\FaceLoRA-Luna-v04-QA`. It prefers a verified *copied* `G:\\FaceLoRA-QA` runtime + 11MB overlay when compatible; otherwise it downloads the exact archived full Portable, checks nested SHA-256, verifies the pinned eDifFIQA model, runs the packaged EXE self-test, then launches the standalone GUI. No GitHub CLI, Python install, release publishing or source dataset rewrite. The old Portable is never moved or overwritten. The v0.4 Combo Split UI includes move/resize split boxes, draw new ones, delete/reset, per-image redetection and manual entry. **HUMAN UNVERIFIED** until the user actually runs the isolated candidate. Accepting a split in the app itself moves its source composite into `_CompositeSplit_Originals`; explain before use.
+
 ## Current objective
 
-1. **eDifFIQA-T DirectML model-export blocker is completed via PR #106**: production ONNX is the SHA-pinned 2026 official export, and source/packaged runtime checks plus real RTX 5080 DirectML execution and model-level latency have been verified.
-2. Preserve the stable modular feature architecture, shared Auto / GPU / CPU provider policy, and CPU fallback without reopening eDifFIQA-specific runtime investigations.
-3. Maintain v0.4 accepted feature directions under Issue #60 and the focused trackers. The next product work slice is **not yet selected in this conversation**; do not infer authorization for a broad UI rewrite or a mandatory whole-dataset GPU benchmark.
-4. Treat integrated application human QA, future v0.4 release acceptance and optional end-to-end performance work as distinct checkpoints, not unresolved blockers for the merged model-export fix.
+1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
+2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
+3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
+4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
 
 ## Accepted future directions
 
@@ -123,10 +125,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Confirm `main` contains PR #106's SHA-pinned official eDifFIQA model and corresponding provenance/build/Portable checks; GitHub PR #106 and its merge history are the authoritative completion record.
-2. Keep Issue #55 as an **optional future accelerator optimization** tracker, with the specific legacy eDifFIQA-T GPU incompatibility marked completed; whole-dataset benchmarking is not a prerequisite to this completed fix.
-3. Preserve the HUMAN UNVERIFIED debt of the integrated v0.4 app and next release without misreporting it as failure of the real RTX eDifFIQA checkpoint.
-4. Await the user's selection of the next bounded v0.4 product slice, using Issues #60, #59, #75 and deferred Draft #90 as the accepted context. No broad rewrite or additional machine test is automatically authorized.
+1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
+2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
+3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
+4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
 
 ## Do not repeat
 
