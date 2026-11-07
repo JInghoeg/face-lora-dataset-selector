@@ -501,6 +501,11 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>发现稳定版 {version}，但没有兼容的增量包；不会自动下载完整安装包</source><translation>Stable {version} Is Available but No Compatible Delta Was Found; the Full Package Will Not Be Downloaded Automatically</translation></message>
     <message><source>已是最新稳定版</source><translation>Already on the Latest Stable Version</translation></message>
     <message><source>开发测试版不接收稳定版更新</source><translation>Development Builds Do Not Receive Stable Updates</translation></message>
+    <message><source>设置</source><translation>Settings</translation></message>
+    <message><source>稳定版自动检查已开启</source><translation>Automatic Stable Update Checks Enabled</translation></message>
+    <message><source>稳定版自动检查已关闭</source><translation>Automatic Stable Update Checks Disabled</translation></message>
+    <message><source>发现稳定版 {version}，可在设置中一键增量更新</source><translation>Stable {version} Available: One-Click Incremental Update in Settings</translation></message>
+    <message><source>增量包已校验，当前任务结束后关闭软件即可完成安装</source><translation>Delta Verified: Close the App After the Current Task to Install</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
@@ -579,5 +584,26 @@ Source images were not modified.</translation></message>
   <context>
     <name>ImagePreview</name>
     <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
+  </context>
+  <context>
+    <name>SettingsPage</name>
+    <message><source>设置</source><translation>Settings</translation></message>
+    <message><source>软件更新</source><translation>Software Updates</translation></message>
+    <message><source>自动检查正式稳定版；仅在点击按钮后下载并安装增量更新。</source><translation>Automatically Check Official Stable Releases; Only Download and Install a Delta After You Click Update.</translation></message>
+    <message><source>自动检查稳定版更新</source><translation>Automatically Check for Stable Updates</translation></message>
+    <message><source>检查更新</source><translation>Check for Updates</translation></message>
+    <message><source>一键增量更新并重启</source><translation>One-Click Incremental Update and Restart</translation></message>
+    <message><source>当前版本：{version}</source><translation>Current Version: {version}</translation></message>
+    <message><source>尚未检查更新</source><translation>Updates Not Yet Checked</translation></message>
+    <message><source>正在检查最新稳定版…</source><translation>Checking Latest Stable Release…</translation></message>
+    <message><source>正在下载并校验增量包…</source><translation>Downloading and Verifying Delta…</translation></message>
+    <message><source>发现最新稳定版：{version}</source><translation>Latest Stable Release: {version}</translation></message>
+    <message><source>发现稳定版 {version}，但没有兼容的增量包；不会下载完整包</source><translation>Stable {version} Is Available but Has No Compatible Delta; the Full Package Will Not Be Downloaded</translation></message>
+    <message><source>已是最新稳定版</source><translation>Already Up to Date</translation></message>
+    <message><source>开发测试版不参与稳定版自动更新</source><translation>Development Builds Do Not Auto-Update to Stable Releases</translation></message>
+    <message><source>更新已准备好，等待安全退出并安装</source><translation>Update Ready; Waiting for Safe Exit and Installation</translation></message>
+    <message><source>检查更新失败：{reason}</source><translation>Update Check Failed: {reason}</translation></message>
+    <message><source>已按自动检查间隔跳过重复检查</source><translation>Skipped Repeated Check Within Automatic Check Interval</translation></message>
+    <message><source>需要下载 {size}</source><translation>Download: {size}</translation></message>
   </context>
 </TS>
