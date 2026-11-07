@@ -1,0 +1,149 @@
+name: Stable Incremental Updates
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/application/stable_update.py"
+      - "src/application/settings.py"
+      - "src/app_main.py"
+      - "resources/updater/apply-update.ps1"
+      - "packaging/portable.spec"
+      - "tools/build-release-delta.ps1"
+      - "tools/build_portable.ps1"
+      - "tests/stable_update_smoke.py"
+      - ".github/workflows/stable-update.yml"
+      - ".github/workflows/build-portable.yml"
+      - "docs/PROJECT_STATE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "${{ matrix.python-version }}"
+      - name: Validate updater source and offline release behavior
+        shell: pwsh
+        run: |
+          python -m py_compile src/application/stable_update.py tests/stable_update_smoke.py
+          python tests/stable_update_smoke.py
+      - name: Validate bundled Windows PowerShell helper syntax
+        shell: pwsh
+        run: |
+          $tokens=$null;$errors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'resources\updater\apply-update.ps1').Path,
+            [ref]$tokens,[ref]$errors)
+          if (@($errors).Count -gt 0) {
+            foreach ($e in $errors) { Write-Host "$($e.Message) at $($e.Extent.StartLineNumber)" }
+            throw 'Bundled update helper has PowerShell syntax errors.'
+          }
+          Write-Host 'Bundled updater PowerShell parse PASS.'
+
+  release-delta:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build changed-file-only release delta from representative old/new Portable
+        shell: pwsh
+        run: |
+          $base=Join-Path $env:RUNNER_TEMP 'v040'
+          $target=Join-Path $env:RUNNER_TEMP 'v041'
+          $delta=Join-Path $env:RUNNER_TEMP 'delta-output'
+          New-Item -ItemType Directory -Force -Path "$base\_internal\models","$target\_internal\models" | Out-Null
+          "v0.4.0" | Set-Content (Join-Path $base 'VERSION.txt') -Encoding ascii
+          "v0.4.1" | Set-Content (Join-Path $target 'VERSION.txt') -Encoding ascii
+          # A real, harmless Windows EXE lets us test actual restart/exit behavior.
+          Copy-Item (Join-Path $env:WINDIR 'System32\notepad.exe') (Join-Path $base 'Face LoRA Dataset Selector.exe')
+          Copy-Item (Join-Path $env:WINDIR 'System32\notepad.exe') (Join-Path $target 'Face LoRA Dataset Selector.exe')
+          "old readme" | Set-Content (Join-Path $base 'README.md') -Encoding ascii
+          "new readme" | Set-Content (Join-Path $target 'README.md') -Encoding ascii
+          foreach ($i in 1..120) {
+            $rel="_internal\models\shared-$i.onnx"
+            "unchanged-model-$i" | Set-Content (Join-Path $base $rel) -Encoding ascii
+            "unchanged-model-$i" | Set-Content (Join-Path $target $rel) -Encoding ascii
+          }
+          New-Item -ItemType Directory -Force -Path "$base\_userdata\cache","$target\_userdata\cache" | Out-Null
+          '{"record":"DO_NOT_INCLUDE"}' | Set-Content (Join-Path $base '_userdata\cache\original.json')
+          '{"record":"DO_NOT_INCLUDE"}' | Set-Content (Join-Path $target '_userdata\cache\original.json')
+          .\tools\build-release-delta.ps1 -BaseRoot $base -TargetRoot $target -OutputRoot $delta -FromVersion v0.4.0 -ToVersion v0.4.1
+          $m=Get-Content (Join-Path $delta 'manifest.json') -Raw | ConvertFrom-Json
+          if ($m.unchanged_count -lt 120 -or $m.changed.Count -ne 2) {
+            throw 'Stable delta unexpectedly included unchanged models.'
+          }
+          $bad = @($m.changed | Where-Object { $_ -like '_userdata*' -or $_ -like '*shared-*' })
+          if ($bad.Count -gt 0) { throw 'Delta included cached records or unchanged models.' }
+          $zip=Join-Path $env:RUNNER_TEMP 'delta-v040-v041.zip'
+          Compress-Archive -LiteralPath (Join-Path $delta 'manifest.json'),(Join-Path $delta 'files') -DestinationPath $zip
+          @'
+          import sys
+          from pathlib import Path
+          from zipfile import ZipFile
+          import importlib.util
+          module = Path.cwd() / "src" / "application" / "stable_update.py"
+          spec = importlib.util.spec_from_file_location("stable_update_fixture", module)
+          updater = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = updater
+          spec.loader.exec_module(updater)
+          validate_delta_file = updater.validate_delta_file
+          path = Path(sys.argv[1])
+          manifest = validate_delta_file(path, "v0.4.0", "v0.4.1")
+          assert len(manifest["changed"]) == 2
+          with ZipFile(path) as z:
+              assert not any("_userdata" in name or "shared-" in name for name in z.namelist())
+          print("Official release delta schema, zero repeated model files and safety: PASS")
+          '@ | python - $zip
+
+      - name: "Offline native Windows updater integration: install, restart, preserve cache/models"
+        shell: pwsh
+        run: |
+          $base=Join-Path $env:RUNNER_TEMP 'v040'
+          $target=Join-Path $env:RUNNER_TEMP 'v041'
+          $updates=Join-Path $env:RUNNER_TEMP '.face-lora-updates'
+          $zip=Join-Path $env:RUNNER_TEMP 'delta-v040-v041.zip'
+          New-Item -ItemType Directory -Path $updates -Force | Out-Null
+          $installed=Join-Path $base '_userdata\cache\important-review.json'
+          '{"manual_status":"推荐","source":"real-dataset"}' | Set-Content -LiteralPath $installed -Encoding utf8
+          $stateHash=(Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
+          $model=Join-Path $base '_internal\models\shared-1.onnx'
+          $modelHash=(Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash
+          $packageName='v0.4.0-to-v0.4.1.zip'
+          Copy-Item -LiteralPath $zip -Destination (Join-Path $updates $packageName)
+          $expected=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{
+            schema=1
+            app_root=[IO.Path]::GetFullPath($base).TrimEnd('\')
+            from_version='v0.4.0'
+            to_version='v0.4.1'
+            archive_name=$packageName
+            archive_sha256=$expected
+          } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $updates 'pending.json') -Encoding utf8
+          & pwsh -NoProfile -NonInteractive -File resources\updater\apply-update.ps1 -AppRoot $base -Pending (Join-Path $updates 'pending.json') -WaitPid 99999998
+          $out=Get-Content (Join-Path $updates 'result.json') -Raw | ConvertFrom-Json
+          try {
+            if ($out.status -ne 'installed') { throw "Installer failed: $($out.error)" }
+            if ((Get-Content -LiteralPath (Join-Path $base 'VERSION.txt') -Raw).Trim() -ne 'v0.4.1') { throw 'Update version was not applied.' }
+            if ((Get-Content -LiteralPath (Join-Path $base 'README.md') -Raw).Trim() -ne 'new readme') { throw 'Changed resource did not update.' }
+            if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $stateHash) { throw 'User review state changed.' }
+            if ((Get-FileHash $model -Algorithm SHA256).Hash -ne $modelHash) { throw 'Unchanged model was rewritten.' }
+            if ((Test-Path -LiteralPath (Join-Path $updates 'pending.json'))) { throw 'Completed update still marked pending.' }
+            if ((Test-Path -LiteralPath (Join-Path $updates 'rollback'))) { throw 'Successful update kept duplicate old binaries.' }
+            Write-Host 'Windows on-exit incremental install, app restart, intact user state and unchanged model: PASS'
+          } finally {
+            if ($out.process_id) {
+              Stop-Process -Id ([int]$out.process_id) -Force -ErrorAction SilentlyContinue
+            }
+          }
+
