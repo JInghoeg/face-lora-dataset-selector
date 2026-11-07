@@ -293,8 +293,8 @@ jobs:
               dml_compute_kernel_events = 52
               cpu_non_helper_ops = @("Gelu")
             }
-            cpu = @{samples_ms = @(1..30 | ForEach-Object { 2.5 })}
-            directml = @{samples_ms = @(1..30 | ForEach-Object { 1.2 })}
+            cpu = @{samples_ms = @(1..30 | ForEach-Object { 2.5 }); median_ms = 2.5 }
+            directml = @{samples_ms = @(1..30 | ForEach-Object { 1.2 }); median_ms = 1.2 }
           }
           function Start-Process {
             param([string]$FilePath, [string[]]$ArgumentList,
