@@ -5,6 +5,8 @@ from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
+import queue
+import threading
 
 from infrastructure.runtime_log import (
     runtime_event,
@@ -20,9 +22,10 @@ try:
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
+    from application.stable_update import check_stable_release, check_and_prepare, app_version, launch_pending_update
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SettingsPage, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -436,7 +439,7 @@ class LegacyCompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self._update_queue=queue.Queue();self._update_thread=None;self._update_install_on_exit=False;self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -511,10 +514,14 @@ class Window(QMainWindow):
         combo.blockSignals(False)
     def retranslate_shell(self):
         self.setWindowTitle(self._tr_main('LoRA 数据集筛选与字幕清理'))
+        if hasattr(self,'settings_page'):
+            self.settings_page.retranslate()
         if hasattr(self,'tabs'):
             self.tabs.setTabText(self.dataset_tab_index,self._tr_main('LoRA 数据集筛选'))
             if self.text_cleanup_tab_index>=0:
                 self.tabs.setTabText(self.text_cleanup_tab_index,self._tr_main('批量去字幕 / 水印'))
+            if hasattr(self,'settings_tab_index'):
+                self.tabs.setTabText(self.settings_tab_index,self._tr_main('设置'))
         if hasattr(self,'language_combo'):
             manager=ui_language_manager();index=self.language_combo.findData(manager.language)
             if index>=0 and index!=self.language_combo.currentIndex():
@@ -525,7 +532,7 @@ class Window(QMainWindow):
         self.rescan.setToolTip(self._tr_main('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。'))
         if not self.folder:self.folder_label.setText(self._tr_main('尚未选择文件夹'))
         if not self.records and not (self.thread and self.thread.isRunning()):self.progress.setText(self._tr_main('准备就绪'))
-        self.language_label.setText(self._tr_main('语言 / Language'))
+        # SettingsPage owns the Language label's live translation.
         self.cancel_analysis_btn.setText(self._tr_main('取消'))
         self.auto_target_label.setText(self._tr_main('自动推荐目标：'))
         self.custom_mode.setText(self._tr_main('自定义'))
@@ -618,12 +625,177 @@ class Window(QMainWindow):
     def changeEvent(self,event):
         if event.type()==QEvent.LanguageChange:self.retranslate_shell()
         super().changeEvent(event)
+    def _effective_review_theme(self, preference):
+        if preference in ('light', 'dark'):
+            return preference
+        app=QApplication.instance()
+        if app is None:
+            return 'light'
+        try:
+            from PySide6.QtGui import QPalette
+            return 'dark' if app.palette().color(QPalette.Window).lightness() < 128 else 'light'
+        except Exception:
+            return 'light'
+
+    def apply_review_theme_preference(self, theme):
+        # Do not impose a global Qt skin on the still-legacy main Dataset UI.
+        # These dialog classes already own scoped light/dark Fluent styles.
+        choice=self._effective_review_theme(theme)
+        for dialog_type in (
+            AutoCropReviewDialog, CompositeSplitReviewDialog, DuplicateReviewDialog
+        ):
+            dialog_type._preferred_theme=choice
+
+    def change_review_theme(self, theme):
+        if theme not in ('system','light','dark'):
+            return
+        BACKEND.update_app_settings(theme=theme)
+        self.apply_review_theme_preference(theme)
+        self.statusBar().showMessage(
+            self._tr_main('复核窗口外观已保存；下次打开复核窗口时生效'), 5500
+        )
+
+    def change_inference_device(self, device):
+        if device not in ('auto','gpu','cpu'):
+            return
+        if self._update_has_active_jobs():
+            self.settings_page.set_preferences(
+                inference_device=BACKEND.app_settings.inference_device,
+                background_enrichment=BACKEND.app_settings.background_enrichment,
+                theme=BACKEND.app_settings.theme,
+            )
+            self.statusBar().showMessage(
+                self._tr_main('请先完成当前分析任务，再切换推理设备'), 6500
+            )
+            return
+        BACKEND.update_app_settings(inference_device=device)
+        self.statusBar().showMessage(
+            self._tr_main('推理设备已保存；新建模型会话将使用此偏好，允许 CPU 回退'), 6500
+        )
+
+    def change_background_enrichment(self, enabled):
+        BACKEND.update_app_settings(background_enrichment=bool(enabled))
+        if not enabled:
+            # Only cancel the optional pre-scan; never modify source images,
+            # current review choices, existing proposal cache or user status.
+            self.invalidate_background_enrichment()
+            self.statusBar().showMessage(self._tr_main('后台预扫描已关闭'), 5500)
+        else:
+            self.statusBar().showMessage(self._tr_main('后台预扫描已开启'), 5500)
+            if not (self.thread is not None and self.thread.isRunning()):
+                QTimer.singleShot(0, self.start_background_enrichment)
+
+    def toggle_stable_auto_check(self, enabled):
+        BACKEND.update_app_settings(stable_auto_check=bool(enabled))
+        self.statusBar().showMessage(
+            self._tr_main('稳定版自动检查已开启' if enabled else '稳定版自动检查已关闭'), 5000
+        )
+        if enabled:
+            self.start_stable_update_check()
+
+    def _update_has_active_jobs(self):
+        # Never restart while a dataset analysis, export, source-move or
+        # background crop/composite task is still changing application state.
+        return any(
+            thread is not None and thread.isRunning()
+            for thread in (
+                self.thread, self.organizer_thread, self.export_thread,
+                self.incremental_thread, self.composite_thread,
+                self.auto_crop_thread, self.background_enrichment_thread,
+            )
+        )
+
+    def start_stable_update_check(self, force=False, download=False):
+        if not getattr(sys, 'frozen', False):
+            self.settings_page.updates.set_status('development')
+            return
+        if not (force or download) and not BACKEND.app_settings.stable_auto_check:
+            return
+        if self._update_thread is not None and self._update_thread.is_alive():
+            return
+        self.settings_page.updates.set_status('downloading' if download else 'checking')
+        def _worker():
+            try:
+                if download:
+                    result=check_and_prepare(APP_DIR,force=True)
+                else:
+                    result=check_stable_release(APP_DIR,force=force)
+                self._update_queue.put(('result',result,download))
+            except Exception as exc:
+                self._update_queue.put(('error',str(exc),download))
+        self._update_thread=threading.Thread(
+            target=_worker,name='stable-incremental-update',daemon=True
+        )
+        self._update_thread.start()
+        QTimer.singleShot(400,self._poll_stable_update)
+
+    def _poll_stable_update(self):
+        try:
+            kind,value,download=self._update_queue.get_nowait()
+        except queue.Empty:
+            if self._update_thread is not None and self._update_thread.is_alive():
+                QTimer.singleShot(500,self._poll_stable_update)
+            return
+        if kind=='error':
+            runtime_event('stable_update_check_error',reason=str(value))
+            self.settings_page.updates.set_status('error',detail=str(value))
+            return
+        result=value
+        if result.status=='staged' and download:
+            self._update_install_on_exit=True
+            self.settings_page.updates.set_status('prepared',latest=result.latest)
+            if not self._update_has_active_jobs():
+                # The user already explicitly clicked "one-click update and
+                # restart". closeEvent saves record state before installer runs.
+                QTimer.singleShot(300,self.close)
+            else:
+                self.statusBar().showMessage(
+                    self._tr_main('增量包已校验，当前任务结束后关闭软件即可完成安装'),
+                    0,
+                )
+        elif result.status=='staged':
+            # A staged archive left by a previous session is not permission to
+            # auto-install; only an explicit click in THIS process authorizes it.
+            self.settings_page.updates.set_status('available',latest=result.latest)
+        else:
+            self.settings_page.updates.set_status(
+                result.status,latest=result.latest,
+                download_bytes=getattr(result,'download_bytes',None),
+            )
+            if result.status=='available':
+                self.statusBar().showMessage(
+                    self._tr_main('发现稳定版 {version}，可在设置中一键增量更新').format(
+                        version=result.latest
+                    ),12000
+                )
+
+
     def ui(self):
         self.tabs=QTabWidget();self.setCentralWidget(self.tabs)
         w=QWidget();self.dataset_tab_index=self.tabs.addTab(w,'')
         self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE,cancellation_exception=OperationCancelled) if BACKEND.feature_available('text_cleanup') else None
         self.text_cleanup_tab_index=-1
         if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
+        self.settings_page=SettingsPage(
+            BACKEND.app_settings.stable_auto_check, app_version(APP_DIR),
+            inference_device=BACKEND.app_settings.inference_device,
+            background_enrichment=BACKEND.app_settings.background_enrichment,
+            theme=BACKEND.app_settings.theme,
+        )
+        self.settings_tab_index=self.tabs.addTab(self.settings_page,'')
+        self.settings_page.updates.check_requested.connect(
+            lambda:self.start_stable_update_check(force=True)
+        )
+        self.settings_page.updates.install_requested.connect(
+            lambda:self.start_stable_update_check(force=True,download=True)
+        )
+        self.settings_page.updates.auto_check_changed.connect(
+            self.toggle_stable_auto_check
+        )
+        self.settings_page.inference_device_changed.connect(self.change_inference_device)
+        self.settings_page.background_enrichment_changed.connect(self.change_background_enrichment)
+        self.settings_page.theme_changed.connect(self.change_review_theme)
+        self.apply_review_theme_preference(BACKEND.app_settings.theme)
         l=QVBoxLayout(w)
 
         t=QHBoxLayout()
@@ -633,12 +805,15 @@ class Window(QMainWindow):
         self.operation_bar=QProgressBar();self.operation_bar.setTextVisible(True);self.operation_bar.setMaximumWidth(220);self.operation_bar.hide()
         self.cancel_analysis_btn=QPushButton();self.cancel_analysis_btn.clicked.connect(self.cancel_active_analysis);self.cancel_analysis_btn.hide()
         t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);t.addWidget(self.operation_bar);t.addWidget(self.cancel_analysis_btn)
-        self.language_label=QLabel();self.language_combo=QComboBox()
+        # Language belongs to Settings, but keep the legacy attributes for
+        # i18n live-switch consumers and save/restore compatibility.
+        self.language_label=self.settings_page.language_label
+        self.language_combo=self.settings_page.language_combo
         for code,label in SUPPORTED_LANGUAGES:self.language_combo.addItem(label,code)
         manager=ui_language_manager();language_index=self.language_combo.findData(manager.language)
         if language_index>=0:self.language_combo.setCurrentIndex(language_index)
         self.language_combo.currentIndexChanged.connect(lambda _=None:self.change_language())
-        t.addWidget(self.language_label);t.addWidget(self.language_combo);l.addLayout(t)
+        l.addLayout(t)
 
         rec=QHBoxLayout();self.auto_target_label=QLabel();rec.addWidget(self.auto_target_label)
         self.group=QButtonGroup(self);self.group.setExclusive(True)
@@ -902,6 +1077,8 @@ class Window(QMainWindow):
         return None
 
     def start_background_enrichment(self):
+        if not BACKEND.app_settings.background_enrichment:
+            return
         if not self.records:
             return
         if self.background_enrichment_running():
@@ -2091,8 +2268,15 @@ def main():
     w=Window()
     a.aboutToQuit.connect(lambda:w.shutdown_background(force=True))
     w.show()
+    QTimer.singleShot(1400,w.start_stable_update_check)
     runtime_event('qt_event_loop_start',log=log_path)
     exit_code=a.exec()
+    if w._update_install_on_exit:
+        try:
+            if launch_pending_update(APP_DIR,RESOURCE_ROOT):
+                runtime_event('stable_update_installer_launched')
+        except Exception as exc:
+            runtime_event('stable_update_installer_error',reason=str(exc))
     runtime_event('process_exit',code=exit_code)
     sys.exit(exit_code)
 

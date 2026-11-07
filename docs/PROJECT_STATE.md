@@ -83,10 +83,15 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+**2026-11-08 user-selected slice: formal Settings UI, continuing PR #110.** This is a **v0.4 development step, not final integration/release.**
+
+1. Reuse existing `AppSettings` + `JsonSettingsStore`, and the previously confirmed **Settings → Software Updates** destination. Build one cohesive Settings tab with compact sidebar navigation for General, Performance & Analysis, and Software Updates; do not return to an unrelated Help menu or crowd the dataset workspace with options.
+2. Move existing global live Language selection from the dataset toolbar to Settings → General while preserving the same `language_combo` and i18n manager. Provide a saved *review-window* theme preference (System/Light/Dark) and apply it to the existing scoped Auto Crop, Composite Split and Duplicate Review dialogs. **Do not claim the rejected main-shell/global dark redesign is completed.**
+3. Put ONNX Auto/Prefer GPU/CPU and optional background Composite/Auto Crop pre-scan in Settings → Performance. Persist via `SelectorApplication.update_app_settings`; device changes affect **new sessions**, are deferred while running jobs, and permit verified CPU fallback. Wire `background_enrichment` into the real scheduler: disabled means no automatic pre-scan and a graceful cancel of an in-progress optional scan; all manual review actions remain available.
+4. Keep the prior user-approved update UX: automatic **metadata-only** checks of official stable GitHub Releases; user must explicitly click **One-Click Incremental Update and Restart** before any delta download or install. Strict SHA verification, no duplicate bundled models, no full Portable fallback, no forced interruption of active tasks. Stable update service remains independently testable and Qt-free.
+5. Scope to Draft PR #110 `feat/v04-stable-incremental-updater` with new `src/ui/qt/settings_page.py`, normal i18n, persistence tests, and Windows actual Portable CI. Avoid new model downloads or fresh QA installers for the user. Remain HUMAN UNVERIFIED until a coherent existing-G:-runtime incremental checkpoint. PR #109 is **interim** unified human-QA evidence, not the v0.4 release gate.
+
+**v0.4 scope still open:** #60 umbrella includes additional Text Cleanup UX, Dataset Review main shell redesign (previous candidate rejected), Source Organizer UI consistency, dataset-level recommendation quality/research and other explicitly tracked/deferred items. Do not treat PR #109/#110 as completing the entire v0.4 scope.
 
 ## Accepted future directions
 
@@ -111,6 +116,8 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Human QA debt
 
+- **Stable update in v0.4 (2026-11-08):** software-integrated release checking, automatic incremental download and on-exit installer require Windows CI and eventual real user acceptance. Current v0.3.1 is not retroactively self-updating; QA script-only update does not count as this product feature. HUMAN UNVERIFIED.
+
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
@@ -125,10 +132,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Run Python 3.9/3.12 `tests/settings_preferences_smoke.py` + Qt offscreen `tests/settings_update_ui_smoke.py`. Verify navigation, language relocation, preference persistence, device/backend connection, background-scan enable/disable and explicit update authorization.
+2. Pass Windows `Stable Incremental Updates`, `I18n Foundation`, Architecture Boundaries and **Build Windows Portable** workflows on PR #110. Do not substitute script-only tests for packaged application behavior.
+3. If regression exposed, repair in the scoped branch, rerun checks, update PR state. Real visual/review use remains HUMAN UNVERIFIED and the proposed main-shell theme restyle is explicitly outside this slice.
+4. Then resume the user's next selected v0.4 module (likely #59 Text Cleanup UX), not a premature all-v0.4 final acceptance or another 438 MB test package.
 
 ## Do not repeat
 
