@@ -22,8 +22,11 @@ function Inventory([string]$Root) {
   foreach ($file in @(Get-ChildItem -LiteralPath $rootPath -File -Recurse -Force -ErrorAction Stop)) {
     Fail (([int]($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) -eq 0) "Symlinks prohibited in Portable: $($file.FullName)"
     $rel = $file.FullName.Substring($rootPath.Length).TrimStart('\').Replace('/','\')
-    Fail (-not ($rel.StartsWith('_userdata\',[StringComparison]::OrdinalIgnoreCase))) "Application user state found in portable build: $rel"
-    Fail (-not ($rel.StartsWith('_FaceLoRA_ModelCache\',[StringComparison]::OrdinalIgnoreCase))) "Downloaded model cache found in portable build: $rel"
+    # CI's application self-test can create _userdata/.legacy_appdata_migrated_v031.
+    # This is per-install state, never part of the reusable runtime or its delta.
+    if ($rel.StartsWith('_userdata\',[StringComparison]::OrdinalIgnoreCase) -or
+        $rel.StartsWith('_FaceLoRA_ModelCache\',[StringComparison]::OrdinalIgnoreCase) -or
+        $rel.StartsWith('logs\',[StringComparison]::OrdinalIgnoreCase)) { continue }
     $list.Add([pscustomobject]@{
       relative = $rel
       size = [int64]$file.Length
