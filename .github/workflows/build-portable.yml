@@ -308,6 +308,7 @@ jobs:
               to_version=$tag
               asset=$deltaZip
               sha256=$deltaSha
+              size_bytes=(Get-Item -LiteralPath $deltaZip).Length
             })
             Write-Host "Stable delta $oldTag -> $tag: $([math]::Round((Get-Item $deltaZip).Length / 1MB,1)) MiB"
             } catch {
