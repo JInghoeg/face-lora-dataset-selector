@@ -226,11 +226,25 @@ try {
             $payload = Get-Content -LiteralPath $benchPath -Raw | ConvertFrom-Json
             $report.benchmark_report = $benchPath
             $report.benchmark_payload = $payload
+            # Benchmark DML preflight records executed-kernel placement separately
+            # from the non-profiled timed inference. Reflect the actual evidence
+            # in top-level fields; never leave success with contradictory defaults.
+            if ($null -ne $payload.PSObject.Properties['preflight_profile_summary']) {
+                $preflight = $payload.preflight_profile_summary
+                $report.profile_summary = $preflight
+                $report.gpu_compute_verified = ($preflight.gpu_compute_verified -eq $true)
+                $report.production_mixed_execution_accepted = (
+                    $preflight.production_mixed_execution_accepted -eq $true)
+                $report.cpu_nodes_executed = ($preflight.cpu_nodes_executed -eq $true)
+                $report.cpu_gelu_kernel_events = [int]$preflight.cpu_gelu_kernel_events
+            }
             if ($payload.kind -eq 'ediffiqa-cpu-vs-directml-walltime' -and
                 $payload.status -eq 'benchmarked_mixed_directml' -and
                 $payload.model_sha256 -eq $ExpectedModelSha -and
                 $payload.target_gpu_verified -eq $true -and
                 $payload.performance_verified -eq $true -and
+                $report.gpu_compute_verified -eq $true -and
+                $report.production_mixed_execution_accepted -eq $true -and
                 @($payload.cpu.samples_ms).Count -eq 30 -and
                 @($payload.directml.samples_ms).Count -eq 30 -and
                 $report.probe_exit_code -eq 0) {
