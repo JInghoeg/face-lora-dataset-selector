@@ -54,6 +54,7 @@ class CheckResult:
     latest: str = ""
     url: str = ""
     detail: str = ""
+    download_bytes: Optional[int] = None
 
 
 def app_version(app_root: Path) -> str:
@@ -264,6 +265,75 @@ def _download(url: str, destination: Path, expected_sha: str) -> None:
         os.replace(str(tmp), str(destination))
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def check_stable_release(app_root: Path, *, force: bool = False, now: Optional[float] = None) -> CheckResult:
+    """Read published stable metadata ONLY; never download an update payload.
+
+    Safe for default-on periodic checks. A user click is required before the
+    separate check_and_prepare() method is called to download a delta.
+    """
+    root = Path(app_root).resolve()
+    current = app_version(root)
+    if not VERSION_RE.fullmatch(current):
+        return CheckResult("development", current)
+    _storage(root)  # Refuse system-drive update scratch.
+    state_path = root / "_userdata" / "update_check.json"
+    when = time.time() if now is None else now
+    try:
+        cached = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cached = {}
+    try:
+        last_checked = float(cached.get("last_checked", 0))
+    except (ValueError, TypeError):
+        last_checked = 0
+    if not force and 0 <= when - last_checked < CHECK_INTERVAL_SECONDS:
+        status = str(cached.get("status", "not_due"))
+        if status in ("available", "current", "no_delta"):
+            size = cached.get("download_bytes")
+            size = size if type(size) is int and size >= 0 else None
+            return CheckResult(status, current, str(cached.get("latest_tag", "")),
+                               str(cached.get("release_url", "")), download_bytes=size)
+        return CheckResult("not_due", current)
+    release = latest_release()
+    result = CheckResult("current", current, release.tag, release.page_url)
+    if is_newer(release.tag, current):
+        catalog_url = release.assets.get(CATALOG_ASSET)
+        if not catalog_url:
+            result = CheckResult("no_delta", current, release.tag, release.page_url)
+        else:
+            catalog = _read_json_response(catalog_url)
+            if (not isinstance(catalog, dict) or catalog.get("schema") != 1 or
+                catalog.get("release_version") != release.tag):
+                raise UpdateError("Stable update catalog has an invalid version.")
+            options = catalog.get("deltas")
+            if not isinstance(options, list):
+                raise UpdateError("Stable update catalog has invalid delta entries.")
+            selection = next((
+                item for item in options if isinstance(item, dict)
+                and item.get("from_version") == current
+                and item.get("to_version") == release.tag
+                and item.get("asset") in release.assets
+            ), None)
+            if selection is None:
+                result = CheckResult("no_delta", current, release.tag, release.page_url)
+            else:
+                # Display actual compressed update size when published, not a
+                # fabricated comparison with the full Portable.
+                size = selection.get("size_bytes")
+                if type(size) is not int or not 0 <= size <= MAX_DELTA_BYTES:
+                    size = None
+                result = CheckResult("available", current, release.tag,
+                                     release.page_url, download_bytes=size)
+    _write_json(state_path, {
+        "last_checked": when,
+        "latest_tag": release.tag,
+        "release_url": release.page_url,
+        "status": result.status,
+        "download_bytes": result.download_bytes,
+    })
+    return result
 
 
 def check_and_prepare(app_root: Path, *, force: bool = False, now: Optional[float] = None) -> CheckResult:
