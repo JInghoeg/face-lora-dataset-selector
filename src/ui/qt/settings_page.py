@@ -215,6 +215,7 @@ class SettingsPage(QWidget):
             self.theme_label, self.theme_description, self.theme_combo
         )
         general_content.addWidget(self.general_group)
+        general_content.addStretch(1)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
 
         self.compute_group = _SettingsGroup()
@@ -238,11 +239,13 @@ class SettingsPage(QWidget):
             self.background_label, self.background_description, self.background_check
         )
         compute_content.addWidget(self.compute_group)
+        compute_content.addStretch(1)
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
         self.background_check.toggled.connect(self.background_enrichment_changed.emit)
 
         self.updates = SoftwareUpdateSection(auto_check, version)
         updates_content.addWidget(self.updates)
+        updates_content.addStretch(1)
 
         self.set_preferences(
             inference_device=inference_device,
@@ -268,7 +271,6 @@ class SettingsPage(QWidget):
         heading.setObjectName("SettingsPageHeading")
         heading.setStyleSheet("font-size:21px;font-weight:600")
         content.addWidget(heading)
-        content.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll)
         self.pages.addWidget(host)
