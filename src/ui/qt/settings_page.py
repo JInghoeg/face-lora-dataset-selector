@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget,
+    QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 
@@ -125,30 +125,209 @@ class SoftwareUpdateSection(QFrame):
         self.install_button.setEnabled(self._available)
 
 
-class SettingsPage(QWidget):
-    """The normal Settings tab, with a dedicated Software Updates section."""
+class _SettingsGroup(QFrame):
+    """Reusable section with compact, horizontally aligned setting rows."""
 
-    def __init__(self, auto_check: bool, version: str, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        self.setObjectName("SettingsSection")
+        self.setStyleSheet(
+            "QFrame#SettingsSection { border:1px solid palette(mid); "
+            "border-radius:10px; } "
+            "QFrame#SettingsSection QLabel { border: none; }"
+        )
+        self.content = QVBoxLayout(self)
+        self.content.setContentsMargins(18, 16, 18, 17)
+        self.content.setSpacing(13)
+        self.heading = QLabel()
+        self.heading.setStyleSheet("font-size:16px;font-weight:600")
+        self.content.addWidget(self.heading)
+
+    def add_setting(self, label: QLabel, description: QLabel, widget: QWidget):
+        row = QHBoxLayout()
+        row.setSpacing(18)
+        stack = QVBoxLayout()
+        stack.setSpacing(3)
+        stack.addWidget(label)
+        description.setWordWrap(True)
+        description.setStyleSheet("color: palette(mid)")
+        stack.addWidget(description)
+        row.addLayout(stack, 1)
+        row.addWidget(widget, 0, Qt.AlignVCenter)
+        self.content.addLayout(row)
+        return row
+
+
+class SettingsPage(QWidget):
+    """A single persistent Settings tab; each group remains feature-owned.
+
+    Settings are dispatched as values to the application layer. No ONNX runtime
+    or dataset processing code lives in this Qt presentation component.
+    """
+
+    inference_device_changed = Signal(str)
+    background_enrichment_changed = Signal(bool)
+    theme_changed = Signal(str)
+
+    def __init__(
+        self, auto_check: bool, version: str, parent=None,
+        *, inference_device: str = "auto",
+        background_enrichment: bool = True, theme: str = "system",
+    ):
+        super().__init__(parent)
+        self.setObjectName("SettingsPage")
+        self.setMinimumWidth(600)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(14, 14, 18, 16)
+        outer.setSpacing(18)
+        self.navigation = QListWidget()
+        self.navigation.setObjectName("SettingsNavigation")
+        self.navigation.setFixedWidth(172)
+        self.navigation.setSpacing(3)
+        self.navigation.addItems(["", "", ""])
+        self.navigation.setStyleSheet(
+            "QListWidget#SettingsNavigation { border: none; "
+            "background: transparent; outline: none; } "
+            "QListWidget#SettingsNavigation::item {"
+            "padding:10px 12px; border-radius:7px; } "
+            "QListWidget#SettingsNavigation::item:selected {"
+            "background:palette(highlight); color:palette(highlighted-text); }"
+        )
+        outer.addWidget(self.navigation)
+        self.pages = QStackedWidget()
+        outer.addWidget(self.pages, 1)
+        self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
+
+        self.general, general_content = self._page()
+        self.compute, compute_content = self._page()
+        self.updates_page, updates_content = self._page()
+
+        self.general_group = _SettingsGroup()
+        self.theme_label = QLabel()
+        self.theme_description = QLabel()
+        self.theme_combo = QComboBox()
+        self.theme_combo.setObjectName("SettingsTheme")
+        self.theme_combo.setMinimumWidth(165)
+        for mode in ("system", "light", "dark"):
+            self.theme_combo.addItem("", mode)
+        self.general_group.add_setting(
+            self.theme_label, self.theme_description, self.theme_combo
+        )
+        general_content.addWidget(self.general_group)
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+
+        self.compute_group = _SettingsGroup()
+        self.device_label = QLabel()
+        self.device_description = QLabel()
+        self.device_combo = QComboBox()
+        self.device_combo.setObjectName("SettingsInferenceDevice")
+        self.device_combo.setMinimumWidth(165)
+        for value in ("auto", "gpu", "cpu"):
+            self.device_combo.addItem("", value)
+        self.compute_group.add_setting(
+            self.device_label, self.device_description, self.device_combo
+        )
+        self.compute_group.content.addSpacing(6)
+        self.background_label = QLabel()
+        self.background_description = QLabel()
+        self.background_check = QCheckBox()
+        self.background_check.setObjectName("SettingsBackgroundScan")
+        self.background_check.setMinimumWidth(60)
+        self.compute_group.add_setting(
+            self.background_label, self.background_description, self.background_check
+        )
+        compute_content.addWidget(self.compute_group)
+        self.device_combo.currentIndexChanged.connect(self._on_device_changed)
+        self.background_check.toggled.connect(self.background_enrichment_changed.emit)
+
+        self.updates = SoftwareUpdateSection(auto_check, version)
+        updates_content.addWidget(self.updates)
+
+        self.set_preferences(
+            inference_device=inference_device,
+            background_enrichment=background_enrichment,
+            theme=theme,
+        )
+        self.navigation.setCurrentRow(0)
+        self.retranslate()
+
+    def _page(self):
+        """Give each settings category its own scroll view and section stack."""
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         body = QWidget()
         content = QVBoxLayout(body)
-        content.setContentsMargins(12, 10, 12, 16)
-        content.setSpacing(16)
-        self.heading = QLabel()
-        self.heading.setStyleSheet("font-size:21px;font-weight:600;")
-        content.addWidget(self.heading)
-        self.updates = SoftwareUpdateSection(auto_check, version)
-        content.addWidget(self.updates)
+        content.setContentsMargins(8, 9, 14, 16)
+        content.setSpacing(14)
+        heading = QLabel()
+        heading.setObjectName("SettingsPageHeading")
+        heading.setStyleSheet("font-size:21px;font-weight:600")
+        content.addWidget(heading)
         content.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll)
-        self.retranslate()
+        self.pages.addWidget(host)
+        if not hasattr(self, "_page_headers"):
+            self._page_headers = []
+        self._page_headers.append(heading)
+        return host, content
+
+    @staticmethod
+    def _combo_value(combo):
+        return str(combo.currentData())
+
+    def _on_device_changed(self, _index):
+        self.inference_device_changed.emit(self._combo_value(self.device_combo))
+
+    def _on_theme_changed(self, _index):
+        self.theme_changed.emit(self._combo_value(self.theme_combo))
+
+    def set_preferences(self, *, inference_device, background_enrichment, theme):
+        # Programmatic settings reload must not spuriously reconfigure ONNX.
+        for combo, value in (
+            (self.device_combo, inference_device),
+            (self.theme_combo, theme),
+        ):
+            combo.blockSignals(True)
+            index = combo.findData(value)
+            combo.setCurrentIndex(index if index >= 0 else 0)
+            combo.blockSignals(False)
+        self.background_check.blockSignals(True)
+        self.background_check.setChecked(bool(background_enrichment))
+        self.background_check.blockSignals(False)
+
+    def show_updates(self):
+        self.navigation.setCurrentRow(2)
+        self.updates.setFocus()
 
     def retranslate(self):
-        self.heading.setText(_tr("设置"))
+        labels = (
+            _tr("常规"), _tr("性能与分析"), _tr("软件更新")
+        )
+        for index, label in enumerate(labels):
+            self.navigation.item(index).setText(label)
+            self._page_headers[index].setText(label)
+        self.general_group.heading.setText(_tr("外观"))
+        self.theme_label.setText(_tr("复核窗口主题"))
+        self.theme_description.setText(
+            _tr("同步新式复核窗口的默认外观；主界面视觉统一仍在逐模块推进。")
+        )
+        for i, label in enumerate(("跟随系统", "浅色", "深色")):
+            self.theme_combo.setItemText(i, _tr(label))
+        self.compute_group.heading.setText(_tr("模型运行"))
+        self.device_label.setText(_tr("推理设备"))
+        self.device_description.setText(
+            _tr("自动优先可用 GPU；GPU 模式允许 CPU 回退。修改后仅影响新建推理会话。")
+        )
+        for i, label in enumerate(("自动", "优先 GPU", "仅 CPU")):
+            self.device_combo.setItemText(i, _tr(label))
+        self.background_label.setText(_tr("后台预扫描"))
+        self.background_description.setText(
+            _tr("完成数据集分析后，自动预扫描组合图拆分和裁剪候选；关闭不影响手动复核。")
+        )
         self.updates.retranslate()
