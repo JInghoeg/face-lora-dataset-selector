@@ -805,12 +805,15 @@ class Window(QMainWindow):
         self.operation_bar=QProgressBar();self.operation_bar.setTextVisible(True);self.operation_bar.setMaximumWidth(220);self.operation_bar.hide()
         self.cancel_analysis_btn=QPushButton();self.cancel_analysis_btn.clicked.connect(self.cancel_active_analysis);self.cancel_analysis_btn.hide()
         t.addWidget(self.pick);t.addWidget(self.rescan);t.addWidget(self.folder_label,1);t.addWidget(self.progress);t.addWidget(self.operation_bar);t.addWidget(self.cancel_analysis_btn)
-        self.language_label=QLabel();self.language_combo=QComboBox()
+        # Language belongs to Settings, but keep the legacy attributes for
+        # i18n live-switch consumers and save/restore compatibility.
+        self.language_label=self.settings_page.language_label
+        self.language_combo=self.settings_page.language_combo
         for code,label in SUPPORTED_LANGUAGES:self.language_combo.addItem(label,code)
         manager=ui_language_manager();language_index=self.language_combo.findData(manager.language)
         if language_index>=0:self.language_combo.setCurrentIndex(language_index)
         self.language_combo.currentIndexChanged.connect(lambda _=None:self.change_language())
-        t.addWidget(self.language_label);t.addWidget(self.language_combo);l.addLayout(t)
+        l.addLayout(t)
 
         rec=QHBoxLayout();self.auto_target_label=QLabel();rec.addWidget(self.auto_target_label)
         self.group=QButtonGroup(self);self.group.setExclusive(True)
