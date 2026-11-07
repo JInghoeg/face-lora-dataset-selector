@@ -220,6 +220,30 @@ jobs:
             -FullZip ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip" `
             -FullChecksum ".\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip.sha256"
 
+      - name: Validate isolated Luna Composite QA launcher against real Portable
+        shell: pwsh
+        run: |
+          $qa = Join-Path $env:RUNNER_TEMP "FaceLoRA-Luna-CI"
+          $zip = Join-Path $PWD "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
+          & pwsh -NoProfile -File tools/qa-luna-composite.ps1 -Root $qa -LocalPackageZip $zip -PrepareOnly -CiFixture
+          if ($LASTEXITCODE -ne 0) { throw "Isolated Luna QA launcher failed." }
+          $info = Join-Path $qa "QA_INFO.json"
+          $summary = Get-Content -LiteralPath $info -Raw | ConvertFrom-Json
+          if ($summary.status -ne "prepared" -or $summary.mode -ne "full-verified-portable" -or
+              $summary.artifact_id -ne 13578236484 -or
+              $summary.model_sha256 -ne "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb" -or
+              -not (Test-Path -LiteralPath $summary.executable)) {
+            throw "Isolated Luna QA prepare report failed assertions."
+          }
+          # Idempotent rerun must not require a second download or replace user files.
+          & pwsh -NoProfile -File tools/qa-luna-composite.ps1 -Root $qa -LocalPackageZip $zip -PrepareOnly -CiFixture
+          if ($LASTEXITCODE -ne 0) { throw "Isolated QA cached rerun failed." }
+          $again = Get-Content -LiteralPath $info -Raw | ConvertFrom-Json
+          if ($again.status -ne "prepared" -or $again.mode -ne "cached") {
+            throw "Isolated Luna QA did not reuse its verified cached Portable."
+          }
+          Write-Host "Isolated v0.4 Luna QA launcher verified on the actual Windows Portable; no release or user dataset was touched."
+
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
