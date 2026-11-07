@@ -298,9 +298,65 @@ def assert_auto_advance():
         pump(app)
         dialog.keep_checked()
         pump(app)
-        assert dialog.current_group == 18, dialog.current_group
+        # At the end, find an unfinished group by wrapping to the start.
+        assert dialog.current_group == 4, dialog.current_group
         assert 18 in backend.reviewed
 
+        # Regress the real user screenshot: 0 incomplete / all groups already
+        # finished. Clicking Finish must still move to the next group so
+        # reviewing an already-screened Luna dataset is not a dead end.
+        backend.reviewed.update(backend.duplicate_group_ids(dialog.records))
+        dialog.reload_groups(prefer=1)
+        pump(app)
+        assert dialog.current_group == 1
+        assert all(
+            backend.duplicate_group_reviewed(dialog.records, group_id)
+            for group_id in backend.duplicate_group_ids(dialog.records)
+        )
+        dialog.keep_checked()
+        pump(app)
+        assert dialog.current_group == 2, dialog.current_group
+
+        # Last group with everything finished wraps back to first.
+        select_group(dialog, 18)
+        pump(app)
+        dialog.keep_checked()
+        pump(app)
+        assert dialog.current_group == 1, dialog.current_group
+
+        dialog.close()
+        pump(app)
+
+
+def assert_badge_and_full_card_toggle():
+    with tempfile.TemporaryDirectory() as td:
+        dialog, backend, _changed = build_dialog(Path(td), 4)
+        dialog.show()
+        app = QApplication.instance()
+        pump(app)
+        select_group(dialog, 3)
+        pump(app)
+        assert dialog._fluent is not None
+        assert isinstance(dialog.members.itemDelegate(), duplicate_review.DuplicateMemberDelegate)
+        first, second = dialog.members.item(0), dialog.members.item(1)
+        assert first.data(Qt.UserRole + 2) == "推荐", first.data(Qt.UserRole + 2)
+        assert second.data(Qt.UserRole + 2) == "备选", second.data(Qt.UserRole + 2)
+        assert not (second.flags() & Qt.ItemIsUserCheckable), "Tiny native checkbox should be suppressed"
+        assert second.checkState() == Qt.Unchecked
+        dialog.toggle_member_on_click(second)
+        pump(app)
+        assert second.checkState() == Qt.Checked
+        assert second.data(Qt.UserRole + 2) == "推荐"
+        dialog.toggle_member_on_click(second)
+        pump(app)
+        assert second.checkState() == Qt.Unchecked
+        assert second.data(Qt.UserRole + 2) == "备选"
+        backend.reviewed.add(3)
+        dialog.reload_groups(prefer=3)
+        pump(app)
+        assert dialog.members.item(1).data(Qt.UserRole + 2) == "淘汰"
+        # A real paint call verifies that the new overlay delegate runs in Qt.
+        assert not dialog.members.viewport().grab().isNull()
         dialog.close()
         pump(app)
 
@@ -339,8 +395,10 @@ def main():
                 app.setFont(QFont(families[0], 10))
 
     assert_auto_advance()
+    assert_badge_and_full_card_toggle()
     assert_fallback_starts()
-    print("duplicate auto-advance: PASS")
+    print("duplicate auto-advance (unfinished, wrapped, all-done): PASS")
+    print("duplicate opaque status badges and full-card click: PASS")
     print("duplicate no-Fluent fallback: PASS")
 
     if args.out:
