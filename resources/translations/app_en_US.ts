@@ -506,6 +506,11 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>稳定版自动检查已关闭</source><translation>Automatic Stable Update Checks Disabled</translation></message>
     <message><source>发现稳定版 {version}，可在设置中一键增量更新</source><translation>Stable {version} Available: One-Click Incremental Update in Settings</translation></message>
     <message><source>增量包已校验，当前任务结束后关闭软件即可完成安装</source><translation>Delta Verified: Close the App After the Current Task to Install</translation></message>
+    <message><source>复核窗口外观已保存；下次打开复核窗口时生效</source><translation>Review Window Appearance Saved; Applies Next Time You Open a Review Window</translation></message>
+    <message><source>请先完成当前分析任务，再切换推理设备</source><translation>Finish the Current Analysis Before Changing Inference Device</translation></message>
+    <message><source>推理设备已保存；新建模型会话将使用此偏好，允许 CPU 回退</source><translation>Inference Preference Saved; New Sessions Will Apply It with CPU Fallback</translation></message>
+    <message><source>后台预扫描已关闭</source><translation>Background Pre-scan Disabled</translation></message>
+    <message><source>后台预扫描已开启</source><translation>Background Pre-scan Enabled</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
@@ -605,5 +610,21 @@ Source images were not modified.</translation></message>
     <message><source>检查更新失败：{reason}</source><translation>Update Check Failed: {reason}</translation></message>
     <message><source>已按自动检查间隔跳过重复检查</source><translation>Skipped Repeated Check Within Automatic Check Interval</translation></message>
     <message><source>需要下载 {size}</source><translation>Download: {size}</translation></message>
-  </context>
+      <message><source>常规</source><translation>General</translation></message>
+    <message><source>性能与分析</source><translation>Performance & Analysis</translation></message>
+    <message><source>外观</source><translation>Appearance</translation></message>
+    <message><source>复核窗口主题</source><translation>Review Window Theme</translation></message>
+    <message><source>同步新式复核窗口的默认外观；主界面视觉统一仍在逐模块推进。</source><translation>Set the default appearance for modern review windows; main-window visual modernization remains ongoing.</translation></message>
+    <message><source>跟随系统</source><translation>Follow System</translation></message>
+    <message><source>浅色</source><translation>Light</translation></message>
+    <message><source>深色</source><translation>Dark</translation></message>
+    <message><source>模型运行</source><translation>Model Runtime</translation></message>
+    <message><source>推理设备</source><translation>Inference Device</translation></message>
+    <message><source>自动优先可用 GPU；GPU 模式允许 CPU 回退。修改后仅影响新建推理会话。</source><translation>Auto prefers an available GPU; GPU preference permits CPU fallback. Changes affect new inference sessions only.</translation></message>
+    <message><source>自动</source><translation>Automatic</translation></message>
+    <message><source>优先 GPU</source><translation>Prefer GPU</translation></message>
+    <message><source>仅 CPU</source><translation>CPU Only</translation></message>
+    <message><source>后台预扫描</source><translation>Background Pre-scan</translation></message>
+    <message><source>完成数据集分析后，自动预扫描组合图拆分和裁剪候选；关闭不影响手动复核。</source><translation>After dataset analysis, pre-scan composite split and auto-crop candidates in the background. Manual review remains available when disabled.</translation></message>
+</context>
 </TS>
