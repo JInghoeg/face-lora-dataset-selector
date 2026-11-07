@@ -193,6 +193,14 @@ try {
         $exe = Check-Model $app
     }
     $report.executable = $exe
+    # Once the verified application is staged, release the big temporary ZIPs.
+    # Cleanup is strictly confined to this sentinel-owned G: work directory.
+    foreach ($piece in @('artifact', 'unpack', 'overlay', 'artifact.zip', 'overlay.zip')) {
+        $scratch = Join-Path $work $piece
+        if (Test-Path -LiteralPath $scratch) {
+            Remove-Item -LiteralPath $scratch -Recurse -Force
+        }
+    }
     if ($PrepareOnly) {
         $report.status = 'prepared'
         Write-Host "Isolated v0.4 QA prepared: $exe"
