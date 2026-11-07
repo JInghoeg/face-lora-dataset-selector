@@ -60,7 +60,8 @@ $app=[IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
 $rootDrive=[IO.Path]::GetPathRoot($app).TrimEnd('\')
 Require ($app -ne $rootDrive -and $app.Length -gt 12) 'Unsafe application directory.'
 Require (Test-Path -LiteralPath (Join-Path $app 'Face LoRA Dataset Selector.exe') -PathType Leaf) 'The target is not a Face LoRA Portable.'
-Require ((Get-Item -LiteralPath $app).Attributes -band [IO.FileAttributes]::ReparsePoint -eq 0) 'Portable root is a symlink.'
+$rootEntry=Get-Item -LiteralPath $app -Force
+Require (([int]($rootEntry.Attributes -band [IO.FileAttributes]::ReparsePoint)) -eq 0) 'Portable root is a symlink.'
 $updateRoot=Join-Path (Split-Path $app -Parent) '.face-lora-updates'
 $pendingFull=[IO.Path]::GetFullPath($Pending)
 Require ($pendingFull -eq (Join-Path $updateRoot 'pending.json')) 'Pending record must reside next to the Portable.'
