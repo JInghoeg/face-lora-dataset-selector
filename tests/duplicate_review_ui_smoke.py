@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import Optional
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -351,6 +352,13 @@ def assert_badge_and_full_card_toggle():
         pump(app)
         assert second.checkState() == Qt.Unchecked
         assert second.data(Qt.UserRole + 2) == "备选"
+        # Double click opens source without accidentally marking it for reject.
+        original = first.checkState()
+        dialog.toggle_member_on_click(first)
+        with patch.object(duplicate_review.os, "startfile", return_value=None):
+            dialog.open_member(first)
+        pump(app)
+        assert first.checkState() == original, "Source preview changed review choice"
         backend.reviewed.add(3)
         dialog.reload_groups(prefer=3)
         pump(app)
