@@ -88,7 +88,10 @@
     <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
     <message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
     <message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
-  </context>
+      <message><source>保留</source><translation>Keep</translation></message>
+    <message><source>待确认</source><translation>Pending</translation></message>
+    <message><source>完成后跳到下一组，优先未完成组</source><translation>After finishing, advance to the next group (prioritizing unfinished groups)</translation></message>
+</context>
   <context>
     <name>CompositeSplitReviewDialog</name>
     <message><source>组合图拆分复核</source><translation>Composite Split Review</translation></message>
