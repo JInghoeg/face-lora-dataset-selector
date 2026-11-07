@@ -489,6 +489,18 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>导出准备中：0/{total}</source><translation>Preparing export: 0/{total}</translation></message>
     <message><source>导出 {current}/{total}：{name}</source><translation>Exporting {current}/{total}: {name}</translation></message>
     <message><source>导出完成：{count} 张</source><translation>Export complete: {count} images</translation></message>
+    <message><source>帮助</source><translation>Help</translation></message>
+    <message><source>检查稳定版更新</source><translation>Check for Stable Updates</translation></message>
+    <message><source>自动检查并增量更新稳定版</source><translation>Automatically Check and Install Stable Delta Updates</translation></message>
+    <message><source>稳定版自动增量更新已开启</source><translation>Automatic Stable Updates Enabled</translation></message>
+    <message><source>稳定版自动增量更新已关闭</source><translation>Automatic Stable Updates Disabled</translation></message>
+    <message><source>开发版不接收稳定版自动更新</source><translation>Development Builds Do Not Receive Stable Updates</translation></message>
+    <message><source>正在检查稳定版更新…</source><translation>Checking for Stable Updates…</translation></message>
+    <message><source>更新检查失败，请稍后重试</source><translation>Update Check Failed; Please Try Again Later</translation></message>
+    <message><source>稳定版 {version} 的增量更新已准备好，关闭程序后自动安装</source><translation>Stable Update {version} Is Ready; It Will Install After Exit</translation></message>
+    <message><source>发现稳定版 {version}，但没有兼容的增量包；不会自动下载完整安装包</source><translation>Stable {version} Is Available but No Compatible Delta Was Found; the Full Package Will Not Be Downloaded Automatically</translation></message>
+    <message><source>已是最新稳定版</source><translation>Already on the Latest Stable Version</translation></message>
+    <message><source>开发测试版不接收稳定版更新</source><translation>Development Builds Do Not Receive Stable Updates</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
