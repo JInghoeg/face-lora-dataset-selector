@@ -31,6 +31,16 @@ function SafePath([string]$root, [string]$relative) {
     $base=[IO.Path]::GetFullPath($root).TrimEnd('\')
     $resolved=[IO.Path]::GetFullPath((Join-Path $base ($parts -join '\')))
     Require ($resolved.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase)) 'Patch path escapes target root.'
+    # Prevent a linked _internal/models directory from redirecting writes to a
+    # user's external LoRA dataset or an unrelated installation.
+    $prefix=$base
+    foreach ($part in $parts) {
+        $prefix=Join-Path $prefix $part
+        if (Test-Path -LiteralPath $prefix) {
+            $entry=Get-Item -LiteralPath $prefix -Force
+            Require (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) 'Update refuses junctions/symlinks inside Portable.'
+        }
+    }
     return $resolved
 }
 function JsonAtomic([string]$path,[object]$data) {
@@ -77,6 +87,7 @@ try {
     $report.from_version=[string]$data.from_version
     $report.to_version=[string]$data.to_version
     Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip=[IO.Compression.ZipFile]::OpenRead($archive)
     try {
         $manifestEntry=$zip.GetEntry('manifest.json')
