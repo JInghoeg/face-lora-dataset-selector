@@ -269,6 +269,67 @@ jobs:
             throw "One-copy scriptblock invocation did not prepare the benchmark safely."
           }
 
+      - name: Validate benchmark wrapper projects profiled GPU evidence (mocked process)
+        shell: pwsh
+        run: |
+          # Exercise the wrapper with an offline packaged overlay, no real GPU.
+          # Replace only process launch; keep actual package/model verification,
+          # JSON parsing and top-level report classification.
+          $checkpoint = Join-Path $PWD "_research_output\checkpoint-base"
+          $zip = Join-Path $PWD "FaceLoRA-eDifFIQA-Candidate-Probe.zip"
+          $source = Get-Content -LiteralPath "tools/qa-ediffiqa-directml.ps1" -Raw
+          $officialSha = "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb"
+          $script:mockBenchmarkPayload = @{
+            kind = "ediffiqa-cpu-vs-directml-walltime"
+            status = "benchmarked_mixed_directml"
+            model_sha256 = $officialSha
+            target_gpu_verified = $true
+            performance_verified = $true
+            preflight_profile_summary = @{
+              gpu_compute_verified = $true
+              production_mixed_execution_accepted = $true
+              cpu_nodes_executed = $true
+              cpu_gelu_kernel_events = 1
+              dml_compute_kernel_events = 52
+              cpu_non_helper_ops = @("Gelu")
+            }
+            cpu = @{samples_ms = @(1..30 | ForEach-Object { 2.5 })}
+            directml = @{samples_ms = @(1..30 | ForEach-Object { 1.2 })}
+          }
+          function Start-Process {
+            param([string]$FilePath, [string[]]$ArgumentList,
+                  [string]$WorkingDirectory, [switch]$PassThru)
+            if (@($ArgumentList) -notcontains "--benchmark") {
+              throw "Mock process must only replace the benchmark."
+            }
+            $script:mockBenchmarkPayload | ConvertTo-Json -Depth 16 |
+              Set-Content -LiteralPath (Join-Path $WorkingDirectory "qa-ediffiqa-performance.json") -Encoding UTF8
+            $fake = [pscustomobject]@{ExitCode=0}
+            $fake | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($ms) return $true }
+            return $fake
+          }
+          try {
+            & ([scriptblock]::Create($source)) -CheckpointRoot $checkpoint -PackageZip $zip -Benchmark
+            $output = Get-ChildItem -LiteralPath $checkpoint -Recurse -File -Filter "qa-ediffiqa-performance-result.json" |
+              Select-Object -First 1
+            if (-not $output) { throw "Benchmark wrapper report missing." }
+            $report = Get-Content -LiteralPath $output.FullName -Raw | ConvertFrom-Json
+            if ($report.status -ne "benchmark_pass" -or
+                $report.kind -ne "ediffiqa-one-command-performance" -or
+                -not $report.target_gpu_verified -or
+                -not $report.gpu_compute_verified -or
+                -not $report.production_mixed_execution_accepted -or
+                -not $report.cpu_nodes_executed -or
+                $report.cpu_gelu_kernel_events -ne 1 -or
+                $report.profile_summary.dml_compute_kernel_events -ne 52 -or
+                -not $report.performance_verified) {
+              throw "Benchmark wrapper lost valid DML preflight evidence."
+            }
+            Write-Host "Offline mocked benchmark report evidence propagation PASS (no actual GPU proof)."
+          } finally {
+            Remove-Item Function:Start-Process -ErrorAction SilentlyContinue
+          }
+
       - name: Validate zero-GPU profile recovery from previous probe
         shell: pwsh
         run: |
