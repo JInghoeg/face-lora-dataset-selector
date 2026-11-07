@@ -611,7 +611,7 @@ Source images were not modified.</translation></message>
     <message><source>已按自动检查间隔跳过重复检查</source><translation>Skipped Repeated Check Within Automatic Check Interval</translation></message>
     <message><source>需要下载 {size}</source><translation>Download: {size}</translation></message>
       <message><source>常规</source><translation>General</translation></message>
-    <message><source>性能与分析</source><translation>Performance & Analysis</translation></message>
+    <message><source>性能与分析</source><translation>Performance &amp; Analysis</translation></message>
     <message><source>外观</source><translation>Appearance</translation></message>
     <message><source>复核窗口主题</source><translation>Review Window Theme</translation></message>
     <message><source>同步新式复核窗口的默认外观；主界面视觉统一仍在逐模块推进。</source><translation>Set the default appearance for modern review windows; main-window visual modernization remains ongoing.</translation></message>
@@ -626,7 +626,7 @@ Source images were not modified.</translation></message>
     <message><source>仅 CPU</source><translation>CPU Only</translation></message>
     <message><source>后台预扫描</source><translation>Background Pre-scan</translation></message>
     <message><source>完成数据集分析后，自动预扫描组合图拆分和裁剪候选；关闭不影响手动复核。</source><translation>After dataset analysis, pre-scan composite split and auto-crop candidates in the background. Manual review remains available when disabled.</translation></message>
-    <message><source>外观与语言</source><translation>Appearance & Language</translation></message>
+    <message><source>外观与语言</source><translation>Appearance &amp; Language</translation></message>
     <message><source>界面语言</source><translation>Interface Language</translation></message>
     <message><source>所有复核窗口与主界面的语言立即同步。</source><translation>Language changes apply immediately to the main window and all review dialogs.</translation></message>
 </context>
