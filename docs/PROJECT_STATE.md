@@ -83,6 +83,8 @@ Historical repository note:
 
 ## Current objective
 
+- **2026-11-08 UX decision — Settings instead of a standalone updater screen:** user requested the update entry to be part of the existing Settings module, not an independent app module or Help submenu. Existing `AppSettings`/`JsonSettingsStore` provided only persistence, so implement a reusable `src/ui/qt/settings_page.py` with `Settings → Software Updates` and the stable update service remaining isolated in `src/application/stable_update.py`. Default-on **metadata-only** stable-release check; show actual delta bytes where published; explicitly click **One-Click Incremental Update and Restart** before ANY download, install or restart. Stop silent auto-install-on-exit from PR #110's previous prototype. Do not force-close running curation/export operations. Keep all original datasets/model cache/persisted review statuses unchanged; no fallback to a full Portable when no compatible delta exists. This is product UX implementation awaiting CI and human verification.
+
 - **2026-11-08 interaction clarification, NOT YET ACCEPTED:** user wants automatic *stable-release detection* followed by an explicit **one-click incremental update to latest stable**, and objected that the current Draft #110 silently chose auto-download and auto-install-on-exit without discussing interaction. Treat current implementation as an unapproved UX prototype, not release-ready. Discussion proposal: passive check notification; inspect target version/changelog, exact delta size and reused model volume; user's one explicit action starts incremental download/verify and safe restart; no unnoticed install, never full-package fallback, with task-in-progress safeguards. Final labels/settings placement and restart timing require user agreement. No production merge or release from this design without approval.
 
 1. **User-authorized 2026-11-08 v0.4 stable incremental updater:** move beyond QA-only PowerShell overlay to a real built-in product feature. On startup (or manually through Help menu) check **only GitHub published stable Releases**, never PR Actions/Draft/pre-releases. Default automatic check/download/install-on-exit; allow in-app toggle.
@@ -130,6 +132,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
+0. Run new `tests/settings_update_ui_smoke.py` with offscreen Qt alongside `tests/stable_update_smoke.py` to prove default auto-check never downloads, Settings update button is explicit, and no-delta state disables install; run CI full Portable/I18n as the package-check gate.
 1. Verify `src/application/stable_update.py` and `resources/updater/apply-update.ps1` with offline tests on Python 3.9/3.12 and Windows PowerShell parsing, including wrong/missing deltas, SHA mismatch, traversal, cache protection and no repeated model bytes.
 2. Validate automatic stable version identification, in-app Help menu/toggle, background update and packaged EXE/helper resources. Run existing packaging CI on the actual Windows Portable.
 3. Exercise `tools/build-release-delta.ps1` on synthetic old/new Portables, and ensure release publishing builds multiple stable-base deltas plus `FaceLoRA-Incremental-v1.json` only after explicit release-gate approval.
