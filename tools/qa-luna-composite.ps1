@@ -212,7 +212,7 @@ try {
             throw "GUI startup failed with exit code $($p.ExitCode). Check startup-error.txt in the isolated app folder."
         }
         $report.status = 'launched'
-        $report.process_id = $p.Id
+        $report['process_id'] = $p.Id
     }
 } catch {
     $report.status = 'failed'
