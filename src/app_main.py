@@ -625,6 +625,66 @@ class Window(QMainWindow):
     def changeEvent(self,event):
         if event.type()==QEvent.LanguageChange:self.retranslate_shell()
         super().changeEvent(event)
+    def _effective_review_theme(self, preference):
+        if preference in ('light', 'dark'):
+            return preference
+        app=QApplication.instance()
+        if app is None:
+            return 'light'
+        try:
+            from PySide6.QtGui import QPalette
+            return 'dark' if app.palette().color(QPalette.Window).lightness() < 128 else 'light'
+        except Exception:
+            return 'light'
+
+    def apply_review_theme_preference(self, theme):
+        # Do not impose a global Qt skin on the still-legacy main Dataset UI.
+        # These dialog classes already own scoped light/dark Fluent styles.
+        choice=self._effective_review_theme(theme)
+        for dialog_type in (
+            AutoCropReviewDialog, CompositeSplitReviewDialog, DuplicateReviewDialog
+        ):
+            dialog_type._preferred_theme=choice
+
+    def change_review_theme(self, theme):
+        if theme not in ('system','light','dark'):
+            return
+        BACKEND.update_app_settings(theme=theme)
+        self.apply_review_theme_preference(theme)
+        self.statusBar().showMessage(
+            self._tr_main('复核窗口外观已保存；下次打开复核窗口时生效'), 5500
+        )
+
+    def change_inference_device(self, device):
+        if device not in ('auto','gpu','cpu'):
+            return
+        if self._update_has_active_jobs():
+            self.settings_page.set_preferences(
+                inference_device=BACKEND.app_settings.inference_device,
+                background_enrichment=BACKEND.app_settings.background_enrichment,
+                theme=BACKEND.app_settings.theme,
+            )
+            self.statusBar().showMessage(
+                self._tr_main('请先完成当前分析任务，再切换推理设备'), 6500
+            )
+            return
+        BACKEND.update_app_settings(inference_device=device)
+        self.statusBar().showMessage(
+            self._tr_main('推理设备已保存；新建模型会话将使用此偏好，允许 CPU 回退'), 6500
+        )
+
+    def change_background_enrichment(self, enabled):
+        BACKEND.update_app_settings(background_enrichment=bool(enabled))
+        if not enabled:
+            # Only cancel the optional pre-scan; never modify source images,
+            # current review choices, existing proposal cache or user status.
+            self.invalidate_background_enrichment()
+            self.statusBar().showMessage(self._tr_main('后台预扫描已关闭'), 5500)
+        else:
+            self.statusBar().showMessage(self._tr_main('后台预扫描已开启'), 5500)
+            if not (self.thread is not None and self.thread.isRunning()):
+                QTimer.singleShot(0, self.start_background_enrichment)
+
     def toggle_stable_auto_check(self, enabled):
         BACKEND.update_app_settings(stable_auto_check=bool(enabled))
         self.statusBar().showMessage(
@@ -717,7 +777,10 @@ class Window(QMainWindow):
         self.text_cleanup_tab_index=-1
         if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
         self.settings_page=SettingsPage(
-            BACKEND.app_settings.stable_auto_check,app_version(APP_DIR)
+            BACKEND.app_settings.stable_auto_check, app_version(APP_DIR),
+            inference_device=BACKEND.app_settings.inference_device,
+            background_enrichment=BACKEND.app_settings.background_enrichment,
+            theme=BACKEND.app_settings.theme,
         )
         self.settings_tab_index=self.tabs.addTab(self.settings_page,'')
         self.settings_page.updates.check_requested.connect(
@@ -729,6 +792,10 @@ class Window(QMainWindow):
         self.settings_page.updates.auto_check_changed.connect(
             self.toggle_stable_auto_check
         )
+        self.settings_page.inference_device_changed.connect(self.change_inference_device)
+        self.settings_page.background_enrichment_changed.connect(self.change_background_enrichment)
+        self.settings_page.theme_changed.connect(self.change_review_theme)
+        self.apply_review_theme_preference(BACKEND.app_settings.theme)
         l=QVBoxLayout(w)
 
         t=QHBoxLayout()
@@ -1007,6 +1074,8 @@ class Window(QMainWindow):
         return None
 
     def start_background_enrichment(self):
+        if not BACKEND.app_settings.background_enrichment:
+            return
         if not self.records:
             return
         if self.background_enrichment_running():
