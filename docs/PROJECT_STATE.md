@@ -83,10 +83,11 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+1. **Unified v0.4 human-QA build — explicitly requested 2026-11-08**: deliver a *single* isolated Windows Portable with all repository-complete features for review, not the partial CPU #108 candidate. Include merged Composite Split UI (#93), streaming background Composite→Auto Crop (#103), accepted Duplicate Review production UI from Draft #90, existing Auto/GPU/CPU shared provider policy (#95/#98), and pinned official eDifFIQA-T repair (#106).
+2. Use the separate **onnxruntime-directml 1.24.4** standalone runtime build, with normal CPU fallback, and confirm DirectML.dll/model SHA plus real packaged EXE self-test in CI. Previous target RTX evidence stands; do not add another mandatory GPU or full-scan benchmark.
+3. **Preserve v0.3.1 records**: read old Portable `_userdata` and legacy `cache`, optional `_FaceLoRA_ModelCache` and UI preferences, copy missing files into an isolated `G:\\FaceLoRA-v04-Unified-QA\\app` with SHA verification. Never overwrite originals, existing QA files, datasets or stored review statuses. Refuse ambiguous/missing old roots instead of silently launching an empty state. Main v0.3.1 stays intact.
+4. The Duplicate Review #90 code is reused **only in the independent unified QA candidate**, not merged into protected `main` until human acceptance. Existing open Draft #90 and other deferred UX trackers remain independent. This is **HUMAN UNVERIFIED**, not an approved public release.
+5. Required deliverable: tested one-copyable-command download+hash-check+G: staging+old-state migration+start, with a single `QA_REPORT.json` to diagnose failures.
 
 ## Accepted future directions
 
@@ -109,6 +110,8 @@ Execution ordering among these directions is intentionally **not inferred here**
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
 
+- **Unified v0.4 integrated test (2026-11-08)**: user explicitly requested one coherent QA version covering completed Duplicate Review, Composite, background Auto Crop, DirectML and migration of their v0.3.1 history. Deliver as a dedicated QA candidate with CI smoke and one-command G: install; **HUMAN UNVERIFIED** until real user check. Do not treat the earlier partial CPU-only #108 launch as accepted v0.4.
+
 ## Human QA debt
 
 - **v0.3: none.**
@@ -125,10 +128,9 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Finish the dedicated unified QA branch `qa/v04-unified-human-acceptance`; run the new `qa-unified-v04.yml` Windows pipeline against the actual merged main plus Draft #90 UI and pinned DirectML profile. Fix any real integration test/build failures.
+2. Record immutable build artifact ID and exact source SHA, then provide a one-command launcher from `tools/qa-unified-v04.ps1` that auto-locates the old v0.3.1 directory when unambiguous (or accepts explicit `-OldRoot`), copies old cache/settings, launches the independent G: candidate, and writes `QA_REPORT.json`.
+3. Do not merge Draft #90 or publish v0.4 until user completes the **unified human-QA**. Keep source model and user dataset safety visible; do not claim the user's PC was installed by GitHub CI.
 
 ## Do not repeat
 
