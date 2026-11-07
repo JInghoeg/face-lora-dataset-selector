@@ -81,10 +81,10 @@ Historical repository note:
 
 ## Current objective
 
-1. complete PR #106 as a scoped, fully validated replacement of the legacy eDifFIQA-T model on `main`; no additional GPU compatibility or end-to-end throughput gate is required;
-2. preserve SHA-pinned provenance, 106-input CPU parity, authentic RTX DirectML core execution and the measured model-level ~1.99× median inference ratio, while disclosing its CPU `Gelu` placement and non-zero DML initialization cost;
-3. retain shared GPU/CPU provider fallback, modular feature boundaries and existing Portable build/release safeguards without altering unrelated modules;
-4. after #106 merges, return to the next **user-selected** v0.4 feature; pending human QA for broader integrated v0.4 behavior remains tracked.
+1. **eDifFIQA-T DirectML model-export blocker is completed via PR #106**: production ONNX is the SHA-pinned 2026 official export, and source/packaged runtime checks plus real RTX 5080 DirectML execution and model-level latency have been verified.
+2. Preserve the stable modular feature architecture, shared Auto / GPU / CPU provider policy, and CPU fallback without reopening eDifFIQA-specific runtime investigations.
+3. Maintain v0.4 accepted feature directions under Issue #60 and the focused trackers. The next product work slice is **not yet selected in this conversation**; do not infer authorization for a broad UI rewrite or a mandatory whole-dataset GPU benchmark.
+4. Treat integrated application human QA, future v0.4 release acceptance and optional end-to-end performance work as distinct checkpoints, not unresolved blockers for the merged model-export fix.
 
 ## Accepted future directions
 
@@ -123,10 +123,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Merge PR #106 into protected `main` after final branch-protection gates, using the exact passing head and preserving expected post-merge state here. No new full-data-scan performance gate.
-2. Verify merged `main` contains the pinned official eDifFIQA-T ONNX and relevant model-build/Portable checks; keep Issue #55 open only for separately scoped optional accelerator follow-ups, not as a blocker to this solved export issue.
-3. Update PR #106 and Issue #55 with the merge reference and the honest distinction between real-device eDifFIQA model-level verification and v0.4 integrated application HUMAN UNVERIFIED.
-4. Choose the next v0.4 surface explicitly with the user. The prior accepted directions in Issue #60, #59, #75 and Draft #90 stay preserved; no large UI/architecture implementation follows automatically from merging GPU work.
+1. Confirm `main` contains PR #106's SHA-pinned official eDifFIQA model and corresponding provenance/build/Portable checks; GitHub PR #106 and its merge history are the authoritative completion record.
+2. Keep Issue #55 as an **optional future accelerator optimization** tracker, with the specific legacy eDifFIQA-T GPU incompatibility marked completed; whole-dataset benchmarking is not a prerequisite to this completed fix.
+3. Preserve the HUMAN UNVERIFIED debt of the integrated v0.4 app and next release without misreporting it as failure of the real RTX eDifFIQA checkpoint.
+4. Await the user's selection of the next bounded v0.4 product slice, using Issues #60, #59, #75 and deferred Draft #90 as the accepted context. No broad rewrite or additional machine test is automatically authorized.
 
 ## Do not repeat
 
