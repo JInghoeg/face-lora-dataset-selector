@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -12,8 +13,12 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-from application import stable_update as updater
+MODULE = ROOT / "src" / "application" / "stable_update.py"
+SPEC = importlib.util.spec_from_file_location("stable_update_under_test", MODULE)
+updater = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = updater
+assert SPEC.loader is not None
+SPEC.loader.exec_module(updater)
 
 
 def sha(data: bytes) -> str:
@@ -93,9 +98,9 @@ def check_main():
             downloads.append(url)
             shutil.copy2(delta, destination)
 
-        with (patch.object(updater, "latest_release", return_value=release),
-              patch.object(updater, "_read_json_response", return_value=catalog),
-              patch.object(updater, "_download", side_effect=mock_download)):
+        with patch.object(updater, 'latest_release', return_value=release), \
+             patch.object(updater, '_read_json_response', return_value=catalog), \
+             patch.object(updater, '_download', side_effect=mock_download):
             result = updater.check_and_prepare(app, force=True, now=1771000000)
         assert result.status == "staged", result
         assert len(downloads) == 1
@@ -111,9 +116,9 @@ def check_main():
         # Missing per-version delta: do not fall back to full portable.
         (root / ".face-lora-updates" / "pending.json").unlink()
         no_delta = {"schema": 1, "release_version": "v0.4.1", "deltas": []}
-        with (patch.object(updater, "latest_release", return_value=release),
-              patch.object(updater, "_read_json_response", return_value=no_delta),
-              patch.object(updater, "_download", side_effect=AssertionError("full download forbidden"))):
+        with patch.object(updater, 'latest_release', return_value=release), \
+             patch.object(updater, '_read_json_response', return_value=no_delta), \
+             patch.object(updater, '_download', side_effect=AssertionError('full download forbidden')):
             missing = updater.check_and_prepare(app, force=True, now=1771000100)
         assert missing.status == "no_delta"
         assert updater._hash_file(saved) == saved_sha
