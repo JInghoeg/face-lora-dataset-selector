@@ -83,10 +83,11 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+1. **User-authorized 2026-11-08 v0.4 stable incremental updater:** move beyond QA-only PowerShell overlay to a real built-in product feature. On startup (or manually through Help menu) check **only GitHub published stable Releases**, never PR Actions/Draft/pre-releases. Default automatic check/download/install-on-exit; allow in-app toggle.
+2. Reuse the repository's proven file-level QA delta logic for official stable release assets, with source/target SHA-256 inventory. Publish a trusted per-release incremental catalog and deltas from recent stable bases; only changed EXE/DLL/resources/models travel over the user's connection. **Never automatically download an entire Portable** when no matching base or no delta exists.
+3. No interruption of active curation: run network work outside the GUI thread, stage beside the installed Portable (G: on the target workstation), apply only after process exit using packaged PowerShell. Verify base and patch hashes, snapshot only files being replaced, verify target, attempt rollback on failure; never edit `_userdata`, analysis histories, `_FaceLoRA_ModelCache`, logs, or user image datasets. Do not accumulate old complete Portable copies.
+4. Implement this slice on `feat/v04-stable-incremental-updater` by scoped PR; standalone unified human-QA integration PR #109 remains a separate Draft and its pinned downloaded binary does **not** yet include this updater. No release without human acceptance.
+5. The current stable release remains **v0.3.1**; a development build must identify itself as `v0.4.0-dev` and must **not** auto-update or treat current Drafts as releases. Future official Portable version is generated only with `.project/release_gate.json` `APPROVED` + `HUMAN PASS`.
 
 ## Accepted future directions
 
@@ -111,6 +112,8 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Human QA debt
 
+- **Stable update in v0.4 (2026-11-08):** software-integrated release checking, automatic incremental download and on-exit installer require Windows CI and eventual real user acceptance. Current v0.3.1 is not retroactively self-updating; QA script-only update does not count as this product feature. HUMAN UNVERIFIED.
+
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
@@ -125,10 +128,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Verify `src/application/stable_update.py` and `resources/updater/apply-update.ps1` with offline tests on Python 3.9/3.12 and Windows PowerShell parsing, including wrong/missing deltas, SHA mismatch, traversal, cache protection and no repeated model bytes.
+2. Validate automatic stable version identification, in-app Help menu/toggle, background update and packaged EXE/helper resources. Run existing packaging CI on the actual Windows Portable.
+3. Exercise `tools/build-release-delta.ps1` on synthetic old/new Portables, and ensure release publishing builds multiple stable-base deltas plus `FaceLoRA-Incremental-v1.json` only after explicit release-gate approval.
+4. Keep product updater HUMAN UNVERIFIED until it joins a coherent v0.4 acceptance build; do not change or re-download the already pinned unified QA #109 artifact implicitly.
 
 ## Do not repeat
 
