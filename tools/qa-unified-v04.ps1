@@ -11,6 +11,9 @@ param(
   [string]$LocalPackageZip = '',
   [string]$ArtifactId = '',
   [string]$ArtifactCommit = '',
+  [string]$DeltaArtifactId = '',
+  [string]$LocalDeltaZip = '',
+  [string]$BaseAppRoot = '',
   [switch]$PrepareOnly,
   [switch]$CiFixture
 )
@@ -105,6 +108,104 @@ function VerifyApp([string]$Dir) {
   Assert ($dml.Count -gt 0) 'This package is CPU-only: DirectML.dll is missing.'
   return $exe
 }
+
+function Get-DeltaCandidates {
+  if ($BaseAppRoot) { return @([IO.Path]::GetFullPath($BaseAppRoot).TrimEnd('\')) }
+  return @(
+    'G:\FaceLoRA-Luna-v04-QA\app',
+    'G:\FaceLoRA-QA\runtime\Face-LoRA-Dataset-Selector',
+    'G:\FaceLoRA-QA\current\app\Face-LoRA-Dataset-Selector',
+    'G:\FaceLoRA-QA\current\app'
+  )
+}
+function SafeRelative([string]$Rel,[string]$Parent) {
+  Assert (-not [string]::IsNullOrWhiteSpace($Rel)) 'Delta relative path is empty.'
+  $relNorm = $Rel.Replace('/','\')
+  Assert (-not [IO.Path]::IsPathRooted($relNorm)) "Delta contains rooted path: $Rel"
+  Assert (-not ($relNorm -match '(^|\\)\.\.(\\|$)')) "Delta contains parent traversal: $Rel"
+  Assert (-not ($relNorm.Contains(':'))) "Delta contains colon path: $Rel"
+  Assert (-not $relNorm.StartsWith('_userdata\',[StringComparison]::OrdinalIgnoreCase)) "Delta may not modify user records: $Rel"
+  $full = [IO.Path]::GetFullPath((Join-Path $Parent $relNorm))
+  $root = [IO.Path]::GetFullPath($Parent).TrimEnd('\')
+  Assert ($full.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)) "Delta escapes runtime directory: $Rel"
+  return $full
+}
+function Test-DeltaBase([string]$Source,[object]$Manifest) {
+  if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return $false }
+  try {
+    foreach ($entry in @($Manifest.base)) {
+      $file = SafeRelative ([string]$entry.relative) $Source
+      if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
+      if ((Get-Item -LiteralPath $file).Length -ne [long]$entry.size) { return $false }
+      if ((HashFile $file) -ne [string]$entry.sha256) { return $false }
+    }
+    return $true
+  } catch { return $false }
+}
+function Build-DeltaStage([string]$Zip,[string]$Stage) {
+  $zipFile=[IO.Path]::GetFullPath($Zip)
+  CheckedZip $zipFile
+  $sidecar="$zipFile.sha256"
+  Assert (Test-Path -LiteralPath $sidecar -PathType Leaf) "Delta ZIP hash sidecar missing: $sidecar"
+  $expected=((Get-Content -LiteralPath $sidecar -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+  Assert ($expected -match '^[0-9a-f]{64}$') 'Malformed delta checksum.'
+  Assert ((HashFile $zipFile) -eq $expected) 'Delta archive SHA-256 mismatch.'
+  $unpacked=Join-Path $work 'delta-unpacked'
+  if (Test-Path -LiteralPath $unpacked) { Remove-Item -LiteralPath $unpacked -Recurse -Force }
+  Expand-Archive -LiteralPath $zipFile -DestinationPath $unpacked
+  $manifestPath=Join-Path $unpacked 'manifest.json'
+  Assert (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'Delta manifest missing.'
+  $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  Assert ($manifest.schema -eq 1) 'Unsupported delta manifest schema.'
+  Assert ([string]$manifest.target_artifact_id -eq $artifactId) 'Delta target artifact differs from the requested unified candidate.'
+  Assert ([string]$manifest.target_commit -eq $artifactSha) 'Delta commit differs from the pinned unified candidate.'
+  Assert ([string]$manifest.base_artifact_id -eq '13578236484') 'Unexpected CPU runtime base.'
+  Assert (@($manifest.base).Count -gt 100 -and @($manifest.target).Count -gt 100) 'Delta manifest has an incomplete runtime inventory.'
+  foreach ($entry in @($manifest.base) + @($manifest.target)) {
+    [void](SafeRelative ([string]$entry.relative) $unpacked)
+    Assert ([string]$entry.sha256 -match '^[a-f0-9]{64}$') 'Malformed runtime file hash.'
+  }
+  $base=$null
+  foreach ($candidate in @(Get-DeltaCandidates)) {
+    if (Test-DeltaBase $candidate $manifest) { $base=$candidate; break }
+  }
+  Assert (-not [string]::IsNullOrWhiteSpace($base)) 'No exact compatible CPU QA runtime found on G:. No full package was downloaded. Keep previous QA installs until a compatible base is located.'
+  Write-Host "Reusing exact CPU QA runtime from $base (no model/engine re-download)."
+  $script:deltaBase=$base
+  if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path $Stage | Out-Null
+  $index=@{}
+  foreach ($entry in @($manifest.base)) { $index[[string]$entry.relative]=$entry }
+  $reuse=[long]0; $patchBytes=[long]0; $linked=0; $copiedPatch=0
+  foreach ($entry in @($manifest.target)) {
+    $rel=[string]$entry.relative
+    $dst=SafeRelative $rel $Stage
+    $oldEntry=$index[$rel]
+    $canReuse=($null -ne $oldEntry -and [string]$oldEntry.sha256 -eq [string]$entry.sha256 -and [long]$oldEntry.size -eq [long]$entry.size)
+    $source = if ($canReuse) { SafeRelative $rel $base } else { SafeRelative $rel (Join-Path $unpacked 'files') }
+    Assert (Test-Path -LiteralPath $source -PathType Leaf) "Delta missing required runtime file: $rel"
+    Assert ((Get-Item -LiteralPath $source).Length -eq [long]$entry.size) "Delta size mismatch: $rel"
+    Assert ((HashFile $source) -eq [string]$entry.sha256) "Delta source hash mismatch: $rel"
+    New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+    $hardlinked=$false
+    if ($canReuse -and $rel.StartsWith('_internal\models\',[StringComparison]::OrdinalIgnoreCase)) {
+      try {
+        New-Item -ItemType HardLink -Path $dst -Target $source -ErrorAction Stop | Out-Null
+        $hardlinked=$true
+        $linked++
+      } catch { $hardlinked=$false }
+    }
+    if (-not $hardlinked) { Copy-Item -LiteralPath $source -Destination $dst }
+    Assert ((HashFile $dst) -eq [string]$entry.sha256) "Staged runtime hash mismatch: $rel"
+    if ($canReuse) { $reuse += [long]$entry.size } else { $patchBytes += [long]$entry.size; $copiedPatch++ }
+  }
+  $script:deltaReuseBytes=$reuse
+  $script:deltaPatchBytes=$patchBytes
+  $script:deltaModelsHardlinked=$linked
+  $script:deltaPatchedFiles=$copiedPatch
+  Write-Host "DirectML delta complete: patched $copiedPatch files; reused $([math]::Round($reuse/1MB,1)) MiB locally, including $linked model hardlinks."
+}
+
 $script:copied = 0
 $script:equal = 0
 $script:conflicts = [collections.generic.list[string]]::new()
@@ -181,6 +282,10 @@ $report = [ordered]@{
   conflicts=@()
   old_cache_json_files=@(Get-OldDataFiles $old).Count
   run_device='Auto (DirectML preferred if available; CPU fallback permitted)'
+  delta_base=''
+  delta_reused_bytes=0
+  delta_patch_bytes=0
+  delta_models_hardlinked=0
   error=$null
 }
 try {
@@ -193,6 +298,40 @@ try {
     $report.mode = 'cached-existing-app'
   } else {
     Assert (-not (Test-Path -LiteralPath $dest)) 'Existing QA app not managed by this launcher; refusing overwrite.'
+    if ($DeltaArtifactId -or $LocalDeltaZip) {
+      # Strict delta-only path: NEVER fall back to the full 438 MB Portable.
+      $delta = $LocalDeltaZip
+      if (-not $delta) {
+        Assert ($DeltaArtifactId -match '^\d+$') 'No immutable delta artifact ID was supplied.'
+        $hasCandidate = @(Get-DeltaCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Container }).Count -gt 0
+        Assert $hasCandidate 'No old QA runtime found on G:. Refusing a full download.'
+        $outerArchive=Join-Path $work 'delta-artifact.zip'
+        if (-not (Test-Path -LiteralPath $outerArchive)) {
+          Write-Host 'Downloading only the DirectML delta, not a full Portable.'
+          FetchPackage "https://nightly.link/JInghoeg/face-lora-dataset-selector/actions/artifacts/$DeltaArtifactId.zip" $outerArchive
+        }
+        $outerDir=Join-Path $work 'delta-outer'
+        if (Test-Path -LiteralPath $outerDir) { Remove-Item -LiteralPath $outerDir -Recurse -Force }
+        Expand-Archive -LiteralPath $outerArchive -DestinationPath $outerDir
+        $deltaFile=Get-ChildItem -LiteralPath $outerDir -File -Filter 'v04-unified-directml-from-cpu.zip' | Select-Object -First 1
+        Assert ($null -ne $deltaFile) 'Delta ZIP missing from GitHub artifact.'
+        $delta=$deltaFile.FullName
+      }
+      $stage=Join-Path $work 'stage-app'
+      Build-DeltaStage $delta $stage
+      $exe=VerifyApp $stage
+      Migrate-OldState $old $stage
+      $probe=Start-Process -FilePath $exe -ArgumentList '--self-test' -WorkingDirectory $stage -PassThru -Wait
+      Assert ($probe.ExitCode -eq 0) "Incremental DirectML EXE self-test failed: $($probe.ExitCode)"
+      Set-Content -LiteralPath (Join-Path $stage '.unified-qa-artifact-id') -Value $artifactId -Encoding UTF8
+      Move-Item -LiteralPath $stage -Destination $dest
+      $exe=VerifyApp $dest
+      $report.mode='verified-incremental-directml'
+      $report.delta_base=$script:deltaBase
+      $report.delta_reused_bytes=$script:deltaReuseBytes
+      $report.delta_patch_bytes=$script:deltaPatchBytes
+      $report.delta_models_hardlinked=$script:deltaModelsHardlinked
+    } else {
     $package = $LocalPackageZip
     if (-not $package) {
       Assert ($artifactId -match '^\d+$') 'Pinned unified artifact is not ready yet.'
@@ -232,6 +371,7 @@ try {
     Move-Item -LiteralPath $stage -Destination $dest
     $exe = VerifyApp $dest
     $report.mode = 'verified-full-directml'
+    }
   }
   $report.migrated_files = $script:copied
   $report.already_equal = $script:equal
@@ -241,7 +381,7 @@ try {
   $cacheFiles = @(Get-ChildItem -LiteralPath $cacheDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
   Assert ($cacheFiles.Count -gt 0) 'Old analysis/review cache did not reach the new app.'
   $report['new_cache_json_files'] = $cacheFiles.Count
-  foreach ($chunk in @('artifact.zip','outer','unpack')) {
+  foreach ($chunk in @('artifact.zip','outer','unpack','delta-artifact.zip','delta-outer','delta-unpacked')) {
     $file = Join-Path $work $chunk
     if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Recurse -Force }
   }
