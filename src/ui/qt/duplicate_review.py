@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt, QSize
-from PySide6.QtGui import QColor, QIcon, QImageReader, QPixmap
+from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt, QSize, QRect
+from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizeGrip,
     QSizePolicy,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -108,12 +110,63 @@ class DuplicateGroupList(QListWidget):
         return hint
 
 
+class DuplicateMemberDelegate(QStyledItemDelegate):
+    """Paint a large, always-visible decision marker above each image card.
+
+    Qt's native check indicator is tiny and can sit beside/under the image in
+    IconMode. Keep CheckStateRole as the source of truth, but render the human
+    decision AFTER the image, with an accessible border and an opaque badge.
+    """
+
+    STATUS_ROLE = Qt.UserRole + 2
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        option.features &= ~QStyleOptionViewItem.HasCheckIndicator
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        status = index.data(self.STATUS_ROLE) or "备选"
+        dark = self.parent().property("darkMode") is True
+        palette = {
+            "推荐": ("#1f9154", "#d9f4df", "#164c31"),
+            "备选": ("#af7b19", "#fff2bf", "#674608"),
+            "淘汰": ("#bf4c4c", "#ffd9d9", "#7f2323"),
+        }
+        border, background, foreground = palette.get(status, palette["备选"])
+        caption = {
+            "推荐": "✓ " + QCoreApplication.translate("DuplicateReviewDialog", "保留"),
+            "备选": QCoreApplication.translate("DuplicateReviewDialog", "待确认"),
+            "淘汰": "× " + QCoreApplication.translate("DuplicateReviewDialog", "淘汰"),
+        }.get(status, status)
+        # A visible 34-px opaque badge: never let the source photo obscure it.
+        card = option.rect.adjusted(5, 5, -5, -5)
+        badge = QRect(card.left() + 13, card.top() + 12, 112, 36)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(QPen(QColor(border), 3 if status == "推荐" else 2))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(card, 9, 9)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(background))
+        painter.drawRoundedRect(badge, 8, 8)
+        painter.setPen(QColor(foreground))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(max(10, font.pointSize()))
+        painter.setFont(font)
+        painter.drawText(badge, Qt.AlignCenter, caption)
+        painter.restore()
+
+
 class DuplicateCompareGrid(QListWidget):
     """Responsive duplicate-member grid; images keep their aspect ratio."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DuplicateCompareGrid")
+        self.setProperty("darkMode", False)
+        self.setItemDelegate(DuplicateMemberDelegate(self))
         self.setViewMode(QListView.IconMode)
         self.setFlow(QListView.LeftToRight)
         self.setWrapping(True)
@@ -302,6 +355,7 @@ class DuplicateReviewDialog(QDialog):
 
         self.members = DuplicateCompareGrid()
         self.members.itemChanged.connect(self.member_check_changed)
+        self.members.itemClicked.connect(self.toggle_member_on_click)
         self.members.itemDoubleClicked.connect(self.open_member)
         work_layout.addWidget(self.members, 1)
 
@@ -552,7 +606,7 @@ class DuplicateReviewDialog(QDialog):
             self._tr("完成本组：勾选推荐 / 未勾淘汰")
         )
         self.selected_button.setToolTip(
-            self._tr("完成本组后自动切到下一未完成组")
+            self._tr("完成后跳到下一组，优先未完成组")
         )
         self.all_groups_button.setText(self._tr("完成全部组"))
         self.all_keep_button.setText(self._tr("全部保留"))
@@ -692,6 +746,19 @@ class DuplicateReviewDialog(QDialog):
                 "background:rgba(0,120,212,110); }"
             )
 
+    def _member_decision_color(self, checked, done):
+        # An unchecked *unfinished* image is still a draft, not a saved reject.
+        # Amber means pending confirmation; red is reserved for persisted rejects.
+        return "推荐" if checked else ("淘汰" if done else "备选")
+
+    def toggle_member_on_click(self, item):
+        # The entire image tile is the touch target. Native tiny checkboxes are
+        # disabled only in Fluent mode, preserving the plain Qt fallback.
+        if not self._fluent:
+            return
+        checked = item.checkState() == Qt.Checked
+        item.setCheckState(Qt.Unchecked if checked else Qt.Checked)
+
     def remember_checks(self):
         for index in range(self.members.count()):
             item = self.members.item(index)
@@ -704,9 +771,16 @@ class DuplicateReviewDialog(QDialog):
     def member_check_changed(self, item):
         record_index = item.data(Qt.UserRole)
         if isinstance(record_index, int) and 0 <= record_index < len(self.records):
-            self.draft_checks[self.records[record_index].sample_id] = (
-                item.checkState() == Qt.Checked
-            )
+            checked = item.checkState() == Qt.Checked
+            self.draft_checks[self.records[record_index].sample_id] = checked
+            if self._fluent:
+                done = self.backend.duplicate_group_reviewed(
+                    self.records, self.current_group
+                )
+                item.setData(
+                    Qt.UserRole + 2,
+                    self._member_decision_color(checked, done),
+                )
 
     def open_member(self, item):
         record_index = item.data(Qt.UserRole)
@@ -919,8 +993,21 @@ class DuplicateReviewDialog(QDialog):
                 text,
             )
             list_item.setData(Qt.UserRole, record_index)
-            list_item.setFlags(list_item.flags() | Qt.ItemIsUserCheckable)
+            if self._fluent:
+                # Keep CheckStateRole for persistence but no small system-drawn box.
+                list_item.setFlags(
+                    list_item.flags() & ~Qt.ItemIsUserCheckable
+                )
+            else:
+                list_item.setFlags(
+                    list_item.flags() | Qt.ItemIsUserCheckable
+                )
             list_item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            if self._fluent:
+                list_item.setData(
+                    Qt.UserRole + 2,
+                    self._member_decision_color(checked, done),
+                )
             list_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignTop)
             list_item.setToolTip(
                 f"{record.sample_id}\n"
@@ -995,38 +1082,53 @@ class DuplicateReviewDialog(QDialog):
             self.changed(self.current_group)
 
     def _advance_to_next_unfinished(self, completed_group):
+        """Advance even when all groups were already reviewed.
+
+        First choose the next unfinished group, wrapping around the navigator.
+        If every group is complete, continue to the next group for re-review;
+        the previous implementation stopped in place, precisely the case when
+        users bring an already-reviewed dataset into the unified QA build.
+        """
         if completed_group in (
             None,
             self.backend.duplicate_ignored_group_id,
         ):
             return False
-
-        current_row = -1
-        for row in range(self.group_list.count()):
-            if self.group_list.item(row).data(Qt.UserRole) == completed_group:
-                current_row = row
-                break
-
-        if current_row < 0:
+        rows = [
+            row
+            for row in range(self.group_list.count())
+            if self.group_list.item(row).data(Qt.UserRole)
+            != self.backend.duplicate_ignored_group_id
+        ]
+        if not rows:
             return False
-
-        for row in range(current_row + 1, self.group_list.count()):
-            item = self.group_list.item(row)
-            group_id = item.data(Qt.UserRole)
-            if group_id == self.backend.duplicate_ignored_group_id:
-                continue
-            if self.backend.duplicate_group_reviewed(self.records, group_id):
-                continue
-
-            self.group_list.setCurrentRow(row)
-            self.group_list.scrollToItem(
-                item,
-                QAbstractItemView.PositionAtCenter,
-            )
-            if not self._fluent:
-                self.show_group(item)
-            return True
+        current_row = next(
+            (row for row in rows
+             if self.group_list.item(row).data(Qt.UserRole) == completed_group),
+            None,
+        )
+        if current_row is None:
+            return False
+        current_index = rows.index(current_row)
+        ordered = rows[current_index + 1:] + rows[:current_index]
+        for row in ordered:
+            group_id = self.group_list.item(row).data(Qt.UserRole)
+            if not self.backend.duplicate_group_reviewed(self.records, group_id):
+                return self._navigate_to_row(row)
+        # No unfinished groups left: do not trap the user on group 1/6.
+        if ordered:
+            return self._navigate_to_row(ordered[0])
         return False
+
+    def _navigate_to_row(self, row):
+        item = self.group_list.item(row)
+        self.group_list.setCurrentRow(row)
+        self.group_list.scrollToItem(
+            item, QAbstractItemView.PositionAtCenter
+        )
+        if not self._fluent:
+            self.show_group(item)
+        return True
 
     def keep_checked(self):
         members = self.current_records()
