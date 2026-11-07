@@ -9,14 +9,16 @@ param(
   [string]$Root = 'G:\FaceLoRA-v04-Unified-QA',
   [string]$OldRoot = '',
   [string]$LocalPackageZip = '',
+  [string]$ArtifactId = '',
+  [string]$ArtifactCommit = '',
   [switch]$PrepareOnly,
   [switch]$CiFixture
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$artifactId = '__UNIFIED_ARTIFACT_ID__'
-$artifactSha = '__UNIFIED_HEAD_SHA__'
+$artifactId = $ArtifactId
+$artifactSha = $ArtifactCommit
 $modelSha = '7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb'
 $packageUrl = "https://nightly.link/JInghoeg/face-lora-dataset-selector/actions/artifacts/$artifactId.zip"
 function Assert([bool]$Ok,[string]$Message) { if (-not $Ok) { throw $Message } }
