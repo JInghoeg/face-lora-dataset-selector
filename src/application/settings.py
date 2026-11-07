@@ -16,6 +16,7 @@ class AppSettings:
     inference_device: str = "auto"
     theme: str = "system"
     background_enrichment: bool = True
+    stable_auto_update: bool = True
 
     @classmethod
     def from_dict(cls, value: Any) -> "AppSettings":
@@ -33,6 +34,7 @@ class AppSettings:
             inference_device=inference_device,
             theme=theme,
             background_enrichment=bool(data.get("background_enrichment", True)),
+            stable_auto_update=bool(data.get("stable_auto_update", True)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -59,6 +61,7 @@ class SettingsService:
             "inference_device",
             "theme",
             "background_enrichment",
+            "stable_auto_update",
         }
         if unknown:
             raise KeyError(
