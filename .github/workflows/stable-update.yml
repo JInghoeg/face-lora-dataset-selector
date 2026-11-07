@@ -106,7 +106,7 @@ jobs:
           print("Official release delta schema, zero repeated model files and safety: PASS")
           '@ | python - $zip
 
-      - name: Offline native Windows updater integration: install, restart, preserve cache/models
+      - name: "Offline native Windows updater integration: install, restart, preserve cache/models"
         shell: pwsh
         run: |
           $base=Join-Path $env:RUNNER_TEMP 'v040'
