@@ -13,6 +13,7 @@ on:
       - "tools/build_portable.ps1"
       - "tests/stable_update_smoke.py"
       - "tests/settings_update_ui_smoke.py"
+      - "tests/settings_preferences_smoke.py"
       - "src/ui/qt/settings_page.py"
       - "src/ui/qt/__init__.py"
       - ".github/workflows/stable-update.yml"
@@ -41,6 +42,7 @@ jobs:
         run: |
           python -m py_compile src/application/stable_update.py tests/stable_update_smoke.py
           python tests/stable_update_smoke.py
+          python tests/settings_preferences_smoke.py
       - name: Verify Settings UI requires explicit user click before downloading
         if: matrix.python-version == '3.12'
         shell: pwsh
