@@ -277,6 +277,8 @@ jobs:
           } | Select-Object -First 3)
           $deltas = [collections.generic.list[object]]::new()
           foreach ($release in $bases) {
+            $required=($release -eq $bases[0])
+            try {
             $oldTag=[string]$release.tagName
             $sourceDir=Join-Path "previous-releases" $oldTag
             New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
@@ -308,6 +310,13 @@ jobs:
               sha256=$deltaSha
             })
             Write-Host "Stable delta $oldTag -> $tag: $([math]::Round((Get-Item $deltaZip).Length / 1MB,1)) MiB"
+            } catch {
+              # The immediately preceding stable release must provide a delta.
+              # Older legacy releases may lack a compatible Portable/checksum;
+              # do not block current release publishing on ancient packaging.
+              if ($required) { throw }
+              Write-Warning "Skipping unsupported older release delta $oldTag : $($_.Exception.Message)"
+            }
           }
           @{schema=1;release_version=$tag;deltas=@($deltas)} | ConvertTo-Json -Depth 7 |
             Set-Content "FaceLoRA-Incremental-v1.json" -Encoding utf8
