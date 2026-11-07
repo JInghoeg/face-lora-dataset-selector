@@ -17,7 +17,11 @@ spec.loader.exec_module(module)
 
 def test():
     app = QApplication.instance() or QApplication([])
-    page = module.SettingsPage(auto_check=True, version="v0.4.0")
+    page = module.SettingsPage(
+        auto_check=True, version="v0.4.0",
+        inference_device="gpu", background_enrichment=False, theme="dark",
+    )
+    page.resize(900, 650)
     page.show()
     app.processEvents()
     signals = []
@@ -26,6 +30,32 @@ def test():
     page.updates.auto_check_changed.connect(lambda value: signals.append(f"auto:{value}"))
     assert page.updates.auto_check.isChecked()
     assert not page.updates.install_button.isEnabled()
+    assert page.navigation.count() == 3
+    assert page.device_combo.currentData() == "gpu"
+    assert not page.background_check.isChecked()
+    assert page.theme_combo.currentData() == "dark"
+    settings_events = []
+    page.inference_device_changed.connect(lambda mode: settings_events.append(("device",mode)))
+    page.background_enrichment_changed.connect(lambda enabled: settings_events.append(("scan",enabled)))
+    page.theme_changed.connect(lambda value: settings_events.append(("theme",value)))
+    page.navigation.setCurrentRow(1)
+    assert page.pages.currentIndex() == 1
+    page.device_combo.setCurrentIndex(page.device_combo.findData("cpu"))
+    page.background_check.setChecked(True)
+    page.navigation.setCurrentRow(0)
+    page.theme_combo.setCurrentIndex(page.theme_combo.findData("system"))
+    assert settings_events == [
+        ("device", "cpu"), ("scan", True), ("theme", "system")
+    ], settings_events
+    page.set_preferences(
+        inference_device="auto", background_enrichment=False, theme="light"
+    )
+    assert page.device_combo.currentData() == "auto"
+    assert page.theme_combo.currentData() == "light"
+    assert not page.background_check.isChecked()
+    assert len(settings_events) == 3, "Programmatic load reconfigured runtime"
+    page.show_updates()
+    assert page.pages.currentIndex() == 2
     # Initial check is not a download permission.
     page.updates.check_button.click()
     assert signals == ["check"], signals
@@ -48,7 +78,7 @@ def test():
     assert signals[-1] == "auto:False"
     page.close()
     app.processEvents()
-    print("Settings > Software Updates: metadata-only check, one-click explicit install, no-delta safety PASS")
+    print("Settings: appearance, inference, background scan and explicit delta update PASS")
 
 
 if __name__ == "__main__":
