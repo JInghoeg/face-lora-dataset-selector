@@ -527,6 +527,12 @@ Application-controlled analysis cache, Text Cleanup state, thumbnails, runtime l
 
 ---
 
+### v0.4 Settings screen (in development)
+
+Use the top-level **Settings** tab for **General** (language, default review-window theme), **Performance & Analysis** (Auto / Prefer GPU / CPU Only inference and optional background Composite/Auto Crop pre-scans), and **Software Updates**. The live language selector is now in Settings rather than the crowded dataset toolbar. Inference changes affect new sessions and retain CPU fallback. Disabling background pre-scanning leaves existing review decisions, analysis data, and manual review untouched.
+
+The appearance preference applies to the scoped Auto Crop, Composite Split and Duplicate Review dialogs. The remaining main-shell visual redesign is a separate future UI task.
+
 ### v0.4 stable incremental updates (in development)
 
 Use **Settings → Software Updates** to manage stable-release checks and updates. Official builds **check automatically** for new published stable GitHub Releases, but **never download, install or restart automatically**. When a compatible update exists, the Settings panel shows the version and exact delta size. Only **One-Click Incremental Update and Restart** starts download, SHA-256 verification and safe installation. Active analysis/export/file-moving tasks are not forcibly interrupted.
