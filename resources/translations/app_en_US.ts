@@ -76,18 +76,21 @@
     <message><source>状态：{status} · 判定：{eligibility}</source><translation>Status: {status} · Eligibility: {eligibility}</translation></message>
     <message><source>未勾选图片</source><translation>No Images Checked</translation></message>
     <message><source>请先勾选需要调整重复分组的图片。</source><translation>Check the images whose duplicate grouping you want to change first.</translation></message>
-  <message><source>同组多图直接比较 · 勾选保留项 · 完成本组</source><translation>Compare Group · Check Items to Keep · Finish Group</translation></message>
-<message><source>双击图片打开原图 · 勾选状态切组后保留</source><translation>Double-click to open original · Checks persist when switching groups</translation></message>
-<message><source>重复组导航</source><translation>Duplicate Group Navigator</translation></message>
-<message><source>缩略图定位 · 上拖展开更多组</source><translation>Locate by thumbnail · Drag upward to reveal more groups</translation></message>
-<message><source>完成本组后自动切到下一未完成组</source><translation>After finishing this group, advance to the next unfinished group</translation></message>
-<message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
-<message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
-<message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
-<message><source>未完成</source><translation>Incomplete</translation></message>
-<message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
-<message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
-<message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
+    <message><source>同组多图直接比较 · 勾选保留项 · 完成本组</source><translation>Compare Group · Check Items to Keep · Finish Group</translation></message>
+    <message><source>双击图片打开原图 · 勾选状态切组后保留</source><translation>Double-click to open original · Checks persist when switching groups</translation></message>
+    <message><source>重复组导航</source><translation>Duplicate Group Navigator</translation></message>
+    <message><source>缩略图定位 · 上拖展开更多组</source><translation>Locate by thumbnail · Drag upward to reveal more groups</translation></message>
+    <message><source>完成本组后自动切到下一未完成组</source><translation>After finishing this group, advance to the next unfinished group</translation></message>
+    <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
+    <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
+    <message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
+    <message><source>未完成</source><translation>Incomplete</translation></message>
+    <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
+    <message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
+    <message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
+      <message><source>保留</source><translation>Keep</translation></message>
+    <message><source>待确认</source><translation>Pending</translation></message>
+    <message><source>完成后跳到下一组，优先未完成组</source><translation>After finishing, advance to the next group (prioritizing unfinished groups)</translation></message>
 </context>
   <context>
     <name>CompositeSplitReviewDialog</name>
@@ -111,35 +114,6 @@
     <message><source>推荐</source><translation>Recommended</translation></message>
     <message><source>淘汰</source><translation>Rejected</translation></message>
     <message><source>输出 {index}</source><translation>Output {index}</translation></message>
-    <message><source>检查原图、调整拆分框、选择保留输出并确认当前候选</source><translation>Inspect the source, adjust split boxes, choose outputs, and confirm the current candidate</translation></message>
-    <message><source>原图</source><translation>Source</translation></message>
-    <message><source>蓝框 = 当前框 · 空白处拖拽可新建</source><translation>Blue = current box · Drag empty space to create</translation></message>
-    <message><source>点击左侧框或右侧输出切换当前框；当前蓝框可拖动 / 缩放；原图空白处直接拖拽可新建拆分框。</source><translation>Click a source box or output card to select it; drag/resize the current blue box; drag empty source space to create a new split box.</translation></message>
-    <message><source>输出预览</source><translation>Output Preview</translation></message>
-    <message><source>勾选保留 · 点击选择</source><translation>Check to keep · Click to select</translation></message>
-    <message><source>取消勾选后，该输出会在接受拆分时进入淘汰；点击输出卡片会选择左侧对应拆分框。</source><translation>Unchecked outputs are sent to Rejected when the split is accepted; clicking an output card selects the matching source box.</translation></message>
-    <message><source>候选</source><translation>Candidates</translation></message>
-    <message><source>上拖展开</source><translation>Drag up to expand</translation></message>
-    <message><source>向上拖动分隔条可展开更多候选缩略图</source><translation>Drag the divider upward to reveal more candidate thumbnails</translation></message>
-    <message><source>重新检测当前图</source><translation>Re-detect Current Image</translation></message>
-    <message><source>重置当前框</source><translation>Reset Current Box</translation></message>
-    <message><source>删除当前框</source><translation>Delete Current Box</translation></message>
-    <message><source>接受当前拆分</source><translation>Accept Current Split</translation></message>
-    <message><source>接受后：勾选输出进入推荐，未勾选输出进入淘汰；原图移入组合图隔离目录。</source><translation>After acceptance, checked outputs become Recommended and unchecked outputs become Rejected; the source image is moved to the Composite archive.</translation></message>
-    <message><source>拒绝拆分</source><translation>Reject Split</translation></message>
-    <message><source>群组</source><translation>Group</translation></message>
-    <message><source>{index:02d} · {mode} · {count} 输出</source><translation>{index:02d} · {mode} · {count} outputs</translation></message>
-    <message><source>候选 {index:02d} · {state}</source><translation>Candidate {index:02d} · {state}</translation></message>
-    <message><source>待定 {pending} · 接受 {accepted} · 拒绝 {rejected}</source><translation>Pending {pending} · Accepted {accepted} · Rejected {rejected}</translation></message>
-    <message><source>手动</source><translation>Manual</translation></message>
-    <message><source>自动</source><translation>Auto</translation></message>
-    <message><source>{current:02d} / {total} · {state}</source><translation>{current:02d} / {total} · {state}</translation></message>
-    <message><source>{source} · {count} 输出</source><translation>{source} · {count} outputs</translation></message>
-    <message><source>{name} · 当前框 {current} / {count}</source><translation>{name} · Box {current} / {count}</translation></message>
-    <message><source>{name} · 暂无拆分框</source><translation>{name} · No split boxes</translation></message>
-    <message><source>保留 {kept}/{total} · 当前 {current}</source><translation>Keep {kept}/{total} · Current {current}</translation></message>
-    <message><source>暂无输出</source><translation>No outputs</translation></message>
-    <message><source>输出 {index} · {state}</source><translation>Output {index} · {state}</translation></message>
   </context>
   <context>
     <name>MainWindow</name>
@@ -166,12 +140,6 @@
     <message><source>组合图拆分隔离目录 _CompositeSplit_Originals 不会被触碰；不会修改任何图片像素；不会删除空目录。</source><translation>The Composite Split archive _CompositeSplit_Originals will not be touched; image pixels will not be modified; empty directories will not be deleted.</translation></message>
     <message><source>执行采用 journal + 事务回滚，失败或下次启动会恢复未完成事务。</source><translation>Execution uses a journal and transactional rollback; failed or interrupted operations are recovered on the next launch.</translation></message>
     <message><source>…另有 {count} 项</source><translation>…and {count} more items</translation></message>
-    <message><source>手动组合图拆分…</source><translation>Manual Composite Split…</translation></message>
-    <message><source>仅重新检测当前选中图片，并在同一组合图拆分复核界面中编辑；不会重扫整个数据集。</source><translation>Re-detect only the currently selected image and edit it in the same Composite Split Review; the whole dataset is not rescanned.</translation></message>
-    <message><source>没有选中图片</source><translation>No Image Selected</translation></message>
-    <message><source>请先在数据集中选择一张图片。</source><translation>Select an image in the dataset first.</translation></message>
-    <message><source>重新检测当前图：{name}</source><translation>Re-detecting current image: {name}</translation></message>
-    <message><source>重新检测当前图失败</source><translation>Re-detect Current Image Failed</translation></message>
     <message><source>组合图拆分 复核…</source><translation>Composite Split Review…</translation></message>
     <message><source>组合图拆分 复核… ({total} / 待定 {pending})</source><translation>Composite Split Review… ({total} / Pending {pending})</translation></message>
     <message><source>请先完成组合图拆分</source><translation>Complete Composite Split First</translation></message>
@@ -217,16 +185,6 @@ Source images were not modified.</translation></message>
     <message><source>自动裁剪 {current}/{total}：{name}</source><translation>Auto Crop {current}/{total}: {name}</translation></message>
     <message><source>自动裁剪扫描完成：新扫 {scanned} · 候选 {candidates} · 无需裁 {no_candidate} · 已缓存 {cached}</source><translation>Auto Crop scan complete: Scanned {scanned} · Candidates {candidates} · No crop needed {no_candidate} · Cached {cached}</translation></message>
     <message><source>自动裁剪扫描失败</source><translation>Auto Crop Scan Failed</translation></message>
-    <message><source>后台预扫已启动：Composite {composite} · Auto Crop {auto_crop}</source><translation>Background pre-scan started: Composite {composite} · Auto Crop {auto_crop}</translation></message>
-    <message><source>后台预扫 Composite {current}/{total}：{name}</source><translation>Background Composite {current}/{total}: {name}</translation></message>
-    <message><source>后台预扫 Auto Crop {current}/{total}：{name}</source><translation>Background Auto Crop {current}/{total}: {name}</translation></message>
-    <message><source>后台预扫完成：Composite {composite} · Auto Crop {auto_crop} · 错误 {errors}</source><translation>Background pre-scan complete: Composite {composite} · Auto Crop {auto_crop} · Errors {errors}</translation></message>
-    <message><source>后台预扫失败；已保留已完成结果</source><translation>Background pre-scan failed; completed results were preserved</translation></message>
-    <message><source>后台 Composite 预扫仍在进行；候选完成后即可复核</source><translation>Background Composite pre-scan is still running; completed candidates can be reviewed as soon as they appear</translation></message>
-    <message><source>后台 Auto Crop 预扫仍在进行；候选完成后即可复核</source><translation>Background Auto Crop pre-scan is still running; completed candidates can be reviewed as soon as they appear</translation></message>
-    <message><source>裁剪候选</source><translation>Crop Candidate</translation></message>
-    <message><source>将裁剪</source><translation>Will Crop</translation></message>
-    <message><source>自动裁剪：{state}</source><translation>Auto Crop: {state}</translation></message>
     <message><source>还有自动裁剪未扫描</source><translation>Auto Crop Scan Incomplete</translation></message>
     <message><source>推荐图片中还有 {count} 张未完成自动裁剪扫描。
 
