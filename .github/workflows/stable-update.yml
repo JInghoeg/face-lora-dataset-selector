@@ -88,8 +88,13 @@ jobs:
           import sys
           from pathlib import Path
           from zipfile import ZipFile
-          sys.path.insert(0, str(Path.cwd() / "src"))
-          from application.stable_update import validate_delta_file
+          import importlib.util
+          module = Path.cwd() / "src" / "application" / "stable_update.py"
+          spec = importlib.util.spec_from_file_location("stable_update_fixture", module)
+          updater = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = updater
+          spec.loader.exec_module(updater)
+          validate_delta_file = updater.validate_delta_file
           path = Path(sys.argv[1])
           manifest = validate_delta_file(path, "v0.4.0", "v0.4.1")
           assert len(manifest["changed"]) == 2
