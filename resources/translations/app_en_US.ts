@@ -626,5 +626,8 @@ Source images were not modified.</translation></message>
     <message><source>仅 CPU</source><translation>CPU Only</translation></message>
     <message><source>后台预扫描</source><translation>Background Pre-scan</translation></message>
     <message><source>完成数据集分析后，自动预扫描组合图拆分和裁剪候选；关闭不影响手动复核。</source><translation>After dataset analysis, pre-scan composite split and auto-crop candidates in the background. Manual review remains available when disabled.</translation></message>
+    <message><source>外观与语言</source><translation>Appearance & Language</translation></message>
+    <message><source>界面语言</source><translation>Interface Language</translation></message>
+    <message><source>所有复核窗口与主界面的语言立即同步。</source><translation>Language changes apply immediately to the main window and all review dialogs.</translation></message>
 </context>
 </TS>
