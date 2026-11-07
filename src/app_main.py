@@ -22,10 +22,10 @@ try:
     from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QInputDialog, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QProgressBar, QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
     import pyqtgraph as pg
     from application import SelectorApplication, SourceOrganizerBlocked, OperationCancelled
-    from application.stable_update import check_and_prepare, launch_pending_update
+    from application.stable_update import check_stable_release, check_and_prepare, app_version, launch_pending_update
     from core.models import AnalysisFinding, FaceDetection, AISuggestion, ViewSpec, Photo, TextPhoto, view_field_value, photo_matches_filters, derive_eligibility
     from features.ranking import SCALES, YAWS, rank, recommendation_blockers, recommendation_qualified
-    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SubtitleTab, ThumbnailWorker
+    from ui.qt import AutoCropROIWidget, AutoCropReviewDialog, BackgroundEnrichmentWorker, CompositeSplitReviewDialog, DatasetListModel, DatasetListView, DatasetViewRow, DuplicateReviewDialog, ImagePreview, SettingsPage, SubtitleTab, ThumbnailWorker
     from ui.i18n import SUPPORTED_LANGUAGES, get_language_manager, initialize_i18n
     from infrastructure.filesystem import IMAGE_EXTENSIONS as EXT
 except ImportError as exc:
@@ -439,7 +439,7 @@ class LegacyCompositeSplitReviewDialog(QDialog):
         r.composite_proposal.decision=value;self.changed();next_index=min(self.current+1,len(self.records)-1);self.reload(next_index)
 
 class Window(QMainWindow):
-    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self._update_queue=queue.Queue();self._update_thread=None;self.resize(1400,880);self.ui();self.retranslate_shell()
+    def __init__(self):super().__init__();self.records=[];self.folder=None;self.thread=None;self.worker=None;self.composite_thread=None;self.composite_worker=None;self.auto_crop_thread=None;self.auto_crop_worker=None;self.background_enrichment_thread=None;self.background_enrichment_worker=None;self.background_enrichment_generation=0;self.background_enrichment_dirty=0;self.background_refresh_scheduled=False;self.background_enrichment_restart_pending=False;self.background_incremental_deferred=False;self.organizer_thread=None;self.organizer_worker=None;self.incremental_thread=None;self.incremental_worker=None;self.export_thread=None;self.export_worker=None;self.pending_composite_outputs={};self.page=0;self.target=60;self.target_mode='preset';self.quick_mode='';self.saved_views=[];self.exported_bundle_ids=[];self.pending_last_view=None;self.thumb_memory=OrderedDict();self.thumb_generation=0;self.thumb_threads=[];self._update_queue=queue.Queue();self._update_thread=None;self._update_install_on_exit=False;self.resize(1400,880);self.ui();self.retranslate_shell()
     @staticmethod
     def _tr_main(source):
         return QCoreApplication.translate('MainWindow',source)
@@ -514,14 +514,14 @@ class Window(QMainWindow):
         combo.blockSignals(False)
     def retranslate_shell(self):
         self.setWindowTitle(self._tr_main('LoRA 数据集筛选与字幕清理'))
-        if hasattr(self,'stable_update_menu'):
-            self.stable_update_menu.setTitle(self._tr_main('帮助'))
-            self.check_updates_action.setText(self._tr_main('检查稳定版更新'))
-            self.auto_updates_action.setText(self._tr_main('自动检查并增量更新稳定版'))
+        if hasattr(self,'settings_page'):
+            self.settings_page.retranslate()
         if hasattr(self,'tabs'):
             self.tabs.setTabText(self.dataset_tab_index,self._tr_main('LoRA 数据集筛选'))
             if self.text_cleanup_tab_index>=0:
                 self.tabs.setTabText(self.text_cleanup_tab_index,self._tr_main('批量去字幕 / 水印'))
+            if hasattr(self,'settings_tab_index'):
+                self.tabs.setTabText(self.settings_tab_index,self._tr_main('设置'))
         if hasattr(self,'language_combo'):
             manager=ui_language_manager();index=self.language_combo.findData(manager.language)
             if index>=0 and index!=self.language_combo.currentIndex():
@@ -625,75 +625,110 @@ class Window(QMainWindow):
     def changeEvent(self,event):
         if event.type()==QEvent.LanguageChange:self.retranslate_shell()
         super().changeEvent(event)
-    def toggle_stable_auto_update(self, enabled):
-        BACKEND.update_app_settings(stable_auto_update=bool(enabled))
+    def toggle_stable_auto_check(self, enabled):
+        BACKEND.update_app_settings(stable_auto_check=bool(enabled))
         self.statusBar().showMessage(
-            self._tr_main('稳定版自动增量更新已开启' if enabled else '稳定版自动增量更新已关闭'), 5000
+            self._tr_main('稳定版自动检查已开启' if enabled else '稳定版自动检查已关闭'), 5000
         )
         if enabled:
             self.start_stable_update_check()
 
-    def start_stable_update_check(self, force=False):
+    def _update_has_active_jobs(self):
+        # Never restart while a dataset analysis, export, source-move or
+        # background crop/composite task is still changing application state.
+        return any(
+            thread is not None and thread.isRunning()
+            for thread in (
+                self.thread, self.organizer_thread, self.export_thread,
+                self.incremental_thread, self.composite_thread,
+                self.auto_crop_thread, self.background_enrichment_thread,
+            )
+        )
+
+    def start_stable_update_check(self, force=False, download=False):
         if not getattr(sys, 'frozen', False):
-            if force:self.statusBar().showMessage(self._tr_main('开发版不接收稳定版自动更新'), 6000)
+            self.settings_page.updates.set_status('development')
             return
-        if not force and not BACKEND.app_settings.stable_auto_update:
+        if not (force or download) and not BACKEND.app_settings.stable_auto_check:
             return
         if self._update_thread is not None and self._update_thread.is_alive():
             return
-        if force:self.statusBar().showMessage(self._tr_main('正在检查稳定版更新…'), 10000)
+        self.settings_page.updates.set_status('downloading' if download else 'checking')
         def _worker():
             try:
-                self._update_queue.put(('result', check_and_prepare(APP_DIR,force=force)))
+                if download:
+                    result=check_and_prepare(APP_DIR,force=True)
+                else:
+                    result=check_stable_release(APP_DIR,force=force)
+                self._update_queue.put(('result',result,download))
             except Exception as exc:
-                self._update_queue.put(('error', str(exc)))
-        self._update_thread=threading.Thread(target=_worker,name='stable-incremental-update',daemon=True)
+                self._update_queue.put(('error',str(exc),download))
+        self._update_thread=threading.Thread(
+            target=_worker,name='stable-incremental-update',daemon=True
+        )
         self._update_thread.start()
         QTimer.singleShot(400,self._poll_stable_update)
 
     def _poll_stable_update(self):
         try:
-            kind, value=self._update_queue.get_nowait()
+            kind,value,download=self._update_queue.get_nowait()
         except queue.Empty:
             if self._update_thread is not None and self._update_thread.is_alive():
                 QTimer.singleShot(500,self._poll_stable_update)
             return
         if kind=='error':
             runtime_event('stable_update_check_error',reason=str(value))
-            # Network and release/CDN failures never block the dataset workspace.
-            if hasattr(self,'check_updates_action') and not BACKEND.app_settings.stable_auto_update:
-                self.statusBar().showMessage(self._tr_main('更新检查失败，请稍后重试'),8000)
+            self.settings_page.updates.set_status('error',detail=str(value))
             return
         result=value
-        if result.status=='staged':
-            self.statusBar().showMessage(
-                self._tr_main('稳定版 {version} 的增量更新已准备好，关闭程序后自动安装').format(version=result.latest),
-                0
+        if result.status=='staged' and download:
+            self._update_install_on_exit=True
+            self.settings_page.updates.set_status('prepared',latest=result.latest)
+            if not self._update_has_active_jobs():
+                # The user already explicitly clicked "one-click update and
+                # restart". closeEvent saves record state before installer runs.
+                QTimer.singleShot(300,self.close)
+            else:
+                self.statusBar().showMessage(
+                    self._tr_main('增量包已校验，当前任务结束后关闭软件即可完成安装'),
+                    0,
+                )
+        elif result.status=='staged':
+            # A staged archive left by a previous session is not permission to
+            # auto-install; only an explicit click in THIS process authorizes it.
+            self.settings_page.updates.set_status('available',latest=result.latest)
+        else:
+            self.settings_page.updates.set_status(
+                result.status,latest=result.latest,
+                download_bytes=getattr(result,'download_bytes',None),
             )
-        elif result.status=='no_delta':
-            self.statusBar().showMessage(
-                self._tr_main('发现稳定版 {version}，但没有兼容的增量包；不会自动下载完整安装包').format(version=result.latest),
-                14000
-            )
-        elif result.status=='current':
-            self.statusBar().showMessage(self._tr_main('已是最新稳定版'),5000)
-        elif result.status=='development':
-            self.statusBar().showMessage(self._tr_main('开发测试版不接收稳定版更新'),5000)
+            if result.status=='available':
+                self.statusBar().showMessage(
+                    self._tr_main('发现稳定版 {version}，可在设置中一键增量更新').format(
+                        version=result.latest
+                    ),12000
+                )
+
 
     def ui(self):
-        # Native menu avoids adding one more control to the crowded dataset toolbar.
-        self.stable_update_menu=self.menuBar().addMenu('')
-        self.check_updates_action=self.stable_update_menu.addAction('')
-        self.check_updates_action.triggered.connect(lambda _=False:self.start_stable_update_check(force=True))
-        self.auto_updates_action=self.stable_update_menu.addAction('')
-        self.auto_updates_action.setCheckable(True)
-        self.auto_updates_action.setChecked(BACKEND.app_settings.stable_auto_update)
-        self.auto_updates_action.toggled.connect(self.toggle_stable_auto_update)
         self.tabs=QTabWidget();self.setCentralWidget(self.tabs)
         w=QWidget();self.dataset_tab_index=self.tabs.addTab(w,'')
         self.sub=SubtitleTab(BACKEND,APP_DIR,THUMB_CACHE,cancellation_exception=OperationCancelled) if BACKEND.feature_available('text_cleanup') else None
         self.text_cleanup_tab_index=-1
         if self.sub is not None:self.text_cleanup_tab_index=self.tabs.addTab(self.sub,'')
+        self.settings_page=SettingsPage(
+            BACKEND.app_settings.stable_auto_check,app_version(APP_DIR)
+        )
+        self.settings_tab_index=self.tabs.addTab(self.settings_page,'')
+        self.settings_page.updates.check_requested.connect(
+            lambda:self.start_stable_update_check(force=True)
+        )
+        self.settings_page.updates.install_requested.connect(
+            lambda:self.start_stable_update_check(force=True,download=True)
+        )
+        self.settings_page.updates.auto_check_changed.connect(
+            self.toggle_stable_auto_check
+        )
         l=QVBoxLayout(w)
 
         t=QHBoxLayout()
@@ -2164,7 +2199,7 @@ def main():
     QTimer.singleShot(1400,w.start_stable_update_check)
     runtime_event('qt_event_loop_start',log=log_path)
     exit_code=a.exec()
-    if BACKEND.app_settings.stable_auto_update:
+    if w._update_install_on_exit:
         try:
             if launch_pending_update(APP_DIR,RESOURCE_ROOT):
                 runtime_event('stable_update_installer_launched')
