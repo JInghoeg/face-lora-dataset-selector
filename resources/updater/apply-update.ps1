@@ -163,8 +163,14 @@ try {
         $source=SafePath $staging ([string]$rel)
         $destination=SafePath $app ([string]$rel)
         New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-        Copy-Item -LiteralPath $source -Destination $destination -Force
+        # Remove the destination's directory entry first. Some QA builds use
+        # hardlinked unchanged model files; overwriting the link in place could
+        # mutate a different installed version's model weights.
         $applied.Add([string]$rel)
+        if (Test-Path -LiteralPath $destination -PathType Leaf) {
+            Remove-Item -LiteralPath $destination -Force
+        }
+        Copy-Item -LiteralPath $source -Destination $destination
     }
     foreach ($rel in @($manifest.removed)) {
         $destination=SafePath $app ([string]$rel)
@@ -191,10 +197,12 @@ try {
         foreach ($rel in $applied) {
             $destination=SafePath $app $rel
             $saved=SafePath $backup $rel
-            if (Test-Path -LiteralPath $saved -PathType Leaf) {
-                Copy-Item -LiteralPath $saved -Destination $destination -Force
-            } elseif (Test-Path -LiteralPath $destination -PathType Leaf) {
+            if (Test-Path -LiteralPath $destination -PathType Leaf) {
                 Remove-Item -LiteralPath $destination -Force
+            }
+            if (Test-Path -LiteralPath $saved -PathType Leaf) {
+                New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+                Copy-Item -LiteralPath $saved -Destination $destination
             }
         }
         $report['rollback']='attempted'
