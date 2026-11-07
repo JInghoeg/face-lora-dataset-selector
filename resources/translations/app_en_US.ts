@@ -459,6 +459,9 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>导出准备中：0/{total}</source><translation>Preparing export: 0/{total}</translation></message>
     <message><source>导出 {current}/{total}：{name}</source><translation>Exporting {current}/{total}: {name}</translation></message>
     <message><source>导出完成：{count} 张</source><translation>Export complete: {count} images</translation></message>
+    <message><source>裁剪候选</source><translation>Crop Candidate</translation></message>
+    <message><source>将裁剪</source><translation>Will Crop</translation></message>
+    <message><source>自动裁剪：{state}</source><translation>Auto Crop: {state}</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
