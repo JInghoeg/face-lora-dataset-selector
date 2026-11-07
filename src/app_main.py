@@ -532,7 +532,7 @@ class Window(QMainWindow):
         self.rescan.setToolTip(self._tr_main('重新扫描当前文件夹：只分析新增/修改图片，删除的从列表移除，未变化图片读取缓存。'))
         if not self.folder:self.folder_label.setText(self._tr_main('尚未选择文件夹'))
         if not self.records and not (self.thread and self.thread.isRunning()):self.progress.setText(self._tr_main('准备就绪'))
-        self.language_label.setText(self._tr_main('语言 / Language'))
+        # SettingsPage owns the Language label's live translation.
         self.cancel_analysis_btn.setText(self._tr_main('取消'))
         self.auto_target_label.setText(self._tr_main('自动推荐目标：'))
         self.custom_mode.setText(self._tr_main('自定义'))
