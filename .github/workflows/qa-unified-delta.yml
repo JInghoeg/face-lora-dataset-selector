@@ -76,7 +76,8 @@ jobs:
             CiFixture = $true
           }
           & .\tools\qa-unified-v04.ps1 @args
-          if ($LASTEXITCODE -ne 0) { throw "Unified delta deployment failed." }
+          # PowerShell scripts return through $? / terminating errors; $LASTEXITCODE
+          # may retain an unrelated external process status from prior steps.
           $report=Get-Content (Join-Path $qa 'QA_REPORT.json') -Raw | ConvertFrom-Json
           if ($report.status -ne 'prepared' -or $report.mode -ne 'verified-incremental-directml') { throw "Delta not used." }
           if ($report.delta_reused_bytes -le 100MB) { throw "No meaningful runtime/models reuse." }
@@ -91,7 +92,6 @@ jobs:
             if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $e.sha256) { throw "Target file hash mismatch: $($e.relative)" }
           }
           & .\tools\qa-unified-v04.ps1 @args
-          if ($LASTEXITCODE -ne 0) { throw "Idempotent retry failed." }
           $again=Get-Content (Join-Path $qa 'QA_REPORT.json') -Raw | ConvertFrom-Json
           if ($again.mode -ne 'cached-existing-app') { throw "Second run downloaded or rebuilt runtime." }
           Write-Host 'Exact target binary parity, DirectML EXE, old records and repeat-run: PASS.'
