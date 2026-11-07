@@ -10,6 +10,7 @@ fallback instead of failing application startup.
 from __future__ import annotations
 
 import os
+import time
 
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt, QSize, QRect
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
@@ -244,6 +245,9 @@ class DuplicateReviewDialog(QDialog):
         self.regroup_needed = False
         self._window_drag_offset = None
         self._cleaned = False
+        self._last_clicked_member = None
+        self._last_clicked_original_check = None
+        self._last_clicked_at = 0.0
 
         self._fluent = _load_fluent()
         self._initial_global_dark = (
@@ -757,6 +761,9 @@ class DuplicateReviewDialog(QDialog):
         if not self._fluent:
             return
         checked = item.checkState() == Qt.Checked
+        self._last_clicked_member = item
+        self._last_clicked_original_check = item.checkState()
+        self._last_clicked_at = time.monotonic()
         item.setCheckState(Qt.Unchecked if checked else Qt.Checked)
 
     def remember_checks(self):
@@ -783,6 +790,15 @@ class DuplicateReviewDialog(QDialog):
                 )
 
     def open_member(self, item):
+        # Qt emits a regular click before itemDoubleClicked. Revert that
+        # provisional toggle: opening a full-size source is not a review vote.
+        if (
+            self._fluent
+            and item is self._last_clicked_member
+            and time.monotonic() - self._last_clicked_at < 0.9
+        ):
+            item.setCheckState(self._last_clicked_original_check)
+        self._last_clicked_member = None
         record_index = item.data(Qt.UserRole)
         if isinstance(record_index, int) and 0 <= record_index < len(self.records):
             try:
@@ -902,6 +918,7 @@ class DuplicateReviewDialog(QDialog):
             return
 
         self.remember_checks()
+        self._last_clicked_member = None
         group_id = item.data(Qt.UserRole)
         self.current_group = group_id
         members = self.grouped(group_id)
