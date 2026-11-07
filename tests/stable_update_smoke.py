@@ -94,13 +94,31 @@ def check_main():
         )
         catalog = {"schema": 1, "release_version": "v0.4.1",
                    "deltas": [{"from_version": "v0.4.0", "to_version": "v0.4.1",
-                               "asset": "delta.zip", "sha256": delta_sha}]}
+                               "asset": "delta.zip", "sha256": delta_sha,
+                               "size_bytes": delta.stat().st_size}]}
         downloads = []
 
         def mock_download(url, destination, expected):
             assert expected == delta_sha and url.endswith("delta.zip")
             downloads.append(url)
             shutil.copy2(delta, destination)
+
+        # Startup auto-check reads metadata only, never starts the download.
+        with patch.object(updater, 'latest_release', return_value=release), \
+             patch.object(updater, '_read_json_response', return_value=catalog), \
+             patch.object(updater, '_download', side_effect=AssertionError('background download forbidden')):
+            offered = updater.check_stable_release(app, force=True, now=1770999900)
+        assert offered.status == 'available'
+        assert offered.latest == 'v0.4.1'
+        assert offered.download_bytes == delta.stat().st_size
+        assert not downloads
+        assert not (root / '.face-lora-updates' / 'pending.json').exists()
+        assert updater._hash_file(saved) == saved_sha
+        # Background interval returns the known offer without new network calls.
+        with patch.object(updater, 'latest_release', side_effect=AssertionError('redundant metadata poll')):
+            reused_offer = updater.check_stable_release(app, now=1770999900+100)
+        assert reused_offer.status == 'available'
+        assert reused_offer.download_bytes == delta.stat().st_size
 
         with patch.object(updater, 'latest_release', return_value=release), \
              patch.object(updater, '_read_json_response', return_value=catalog), \
