@@ -261,6 +261,57 @@ jobs:
           path: qa-overlay/
           if-no-files-found: error
 
+      - name: Prepare stable-release file deltas (up to 3 prior stable bases)
+        if: "${{ steps.release_gate.outputs.should_release == 'true' }}"
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = "JInghoeg/face-lora-dataset-selector"
+          $tag = "${{ steps.release_gate.outputs.tag }}"
+          $history = @(gh release list --repo $repo --limit 12 --json tagName,isDraft,isPrerelease,publishedAt | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw "Unable to list earlier stable Releases." }
+          $bases = @($history | Where-Object {
+            -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $tag -and
+            $_.tagName -match '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          } | Select-Object -First 3)
+          $deltas = [collections.generic.list[object]]::new()
+          foreach ($release in $bases) {
+            $oldTag=[string]$release.tagName
+            $sourceDir=Join-Path "previous-releases" $oldTag
+            New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
+            gh release download $oldTag --repo $repo --pattern "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip*" --dir $sourceDir
+            if ($LASTEXITCODE -ne 0) { throw "Previous stable Portable missing: $oldTag" }
+            $baseZip=Join-Path $sourceDir "Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
+            $checksum="$baseZip.sha256"
+            if (-not (Test-Path $baseZip) -or -not (Test-Path $checksum)) {
+              throw "Previous stable Portable checksum missing: $oldTag"
+            }
+            $expected=((Get-Content $checksum -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+            if ((Get-FileHash $baseZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+              throw "Previous release ZIP checksum mismatch: $oldTag"
+            }
+            $unpacked=Join-Path $sourceDir "extracted"
+            Expand-Archive -LiteralPath $baseZip -DestinationPath $unpacked
+            $oldExe=Get-ChildItem -LiteralPath $unpacked -File -Recurse -Filter "Face LoRA Dataset Selector.exe" | Select-Object -First 1
+            if ($null -eq $oldExe) { throw "Previous stable executable missing: $oldTag" }
+            $deltaDir=Join-Path "incremental-releases" $oldTag
+            .\tools\build-release-delta.ps1 -BaseRoot $oldExe.Directory.FullName -TargetRoot ".\dist\Face-LoRA-Dataset-Selector" -OutputRoot $deltaDir -FromVersion $oldTag -ToVersion $tag
+            $deltaZip=('FaceLoRA-Delta-' + $oldTag + '-to-' + $tag + '.zip')
+            Compress-Archive -LiteralPath (Join-Path $deltaDir "manifest.json"), (Join-Path $deltaDir "files") -DestinationPath $deltaZip -CompressionLevel Optimal
+            $deltaSha=(Get-FileHash $deltaZip -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$deltaSha  $deltaZip" | Set-Content "$deltaZip.sha256" -Encoding ascii
+            $deltas.Add([ordered]@{
+              from_version=$oldTag
+              to_version=$tag
+              asset=$deltaZip
+              sha256=$deltaSha
+            })
+            Write-Host "Stable delta $oldTag -> $tag: $([math]::Round((Get-Item $deltaZip).Length / 1MB,1)) MiB"
+          }
+          @{schema=1;release_version=$tag;deltas=@($deltas)} | ConvertTo-Json -Depth 7 |
+            Set-Content "FaceLoRA-Incremental-v1.json" -Encoding utf8
+
       - name: Attach approved portable build to GitHub Release
         if: "${{ steps.release_gate.outputs.should_release == 'true' }}"
         shell: pwsh
@@ -278,7 +329,11 @@ jobs:
             exit 0
           }
 
-          gh release create $tag $zip $sum --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+          $assets=@($zip,$sum,"FaceLoRA-Incremental-v1.json")
+          $assets+=@(Get-ChildItem -File -Filter "FaceLoRA-Delta-*.zip" | ForEach-Object { $_.FullName })
+          $assets+=@(Get-ChildItem -File -Filter "FaceLoRA-Delta-*.zip.sha256" | ForEach-Object { $_.FullName })
+          & gh release create $tag @assets --target "${{ github.sha }}" --title "Face LoRA Dataset Selector $tag" --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw "Stable release publishing failed." }
 
   merge-gate:
     name: Merge Gate
