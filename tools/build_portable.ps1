@@ -73,6 +73,20 @@ Copy-Item "LICENSE" $portable -Force
 Copy-Item "THIRD_PARTY_NOTICES.md" $portable -Force
 Copy-Item "THIRD_PARTY_MODEL_LICENSES.md" $portable -Force
 
+# Version comes ONLY from an explicitly approved human-QA release gate.
+# Ordinary development/QA builds are never advertised as stable.
+$version = 'v0.4.0-dev'
+$gateFile = Join-Path $RepoRoot '.project\release_gate.json'
+if (Test-Path -LiteralPath $gateFile) {
+    $gate = Get-Content -LiteralPath $gateFile -Raw | ConvertFrom-Json
+    if ($gate.status -eq 'APPROVED' -and $gate.human_qa -eq 'PASS' -and
+        [string]$gate.version -match '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+        $version = [string]$gate.version
+    }
+}
+"$version" | Set-Content (Join-Path $portable 'VERSION.txt') -Encoding UTF8
+Write-Host "Portable update identity: $version"
+
 python tools/prepare_bundled_models.py --root (Join-Path $portable "_internal\models") --verify-only
 if ($LASTEXITCODE -ne 0) {
     throw "Packaged bundled-model verification failed."
