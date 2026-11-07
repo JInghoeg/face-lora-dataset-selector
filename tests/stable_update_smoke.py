@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import importlib.util
 import json
 from pathlib import Path
@@ -65,6 +66,9 @@ def make_zip(path: Path, manifest, old, new):
 
 
 def check_main():
+    # CI may itself run on the Windows system drive. Simulate a user data drive
+    # for test fixtures without weakening the production system-drive guard.
+    os.environ['SystemDrive'] = 'Z:'
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         app = root / "app"
