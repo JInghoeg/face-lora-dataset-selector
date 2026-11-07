@@ -19,6 +19,11 @@ class Item:
 
 ITEMS = (
     Item(
+        "ediffiqa_t.onnx",
+        "https://github.com/yakhyo/face-image-quality-assessment/releases/download/weights/ediffiqa_t.onnx",
+        "7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb",
+    ),
+    Item(
         "composite_split_cache/person_detect_v1.3_s/model.onnx",
         "https://huggingface.co/deepghs/anime_person_detection/resolve/main/person_detect_v1.3_s/model.onnx?download=true",
         "6da88929438cd442e31e45ff4f934dd2d7eb9cf7a423c22885d650ee52550f90",

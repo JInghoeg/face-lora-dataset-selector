@@ -64,25 +64,33 @@ Historical repository note:
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
 - Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
-- Issue #55 is reopened. Two real RTX 5080 target runs hung in the DirectML path, but that evidence does not prove GPU acceleration is unsuitable. The previous closure was premature because the checkpoint did not isolate adapter selection, DirectML session creation, first inference, or the specific model that blocks.
+- Issue #55 remains the optional acceleration research tracker. Its original RTX 5080 DirectML hang was isolated to the legacy eDifFIQA-T export and **resolved** by the SHA-pinned official re-export in PR #106; other model acceleration research and full-workflow throughput are separate, non-blocking topics.
 - The self-contained CPU-vs-DirectML target-performance checkpoint from PR #99/#100/#101 is retained as research tooling, but its diagnostics are now known to be insufficient for root cause: it emitted “provider setup finished” before creating any DirectML session, and it did not distinguish session creation from first Run for individual models.
-- PR #105 completes the repository-side DirectML root-cause probe: per-model/per-phase subprocess isolation, raw ORT vs shared-runtime comparisons, targeted metacommand/graph-optimization retries, explicit adapter trials only when the small sanity model fails, and a dual-session Ranking scenario that keeps eDifFIQA alive while creating/running 3DDFA. The diagnostic build/feed/drop-in automation is green. Actual RTX 5080 behavior remains HUMAN UNVERIFIED until the bounded probe is run once on the target workstation.
-- Background Composite → Auto Crop enrichment is now the active next implementation slice. The full Settings UI follows after that workflow is stable.
+- PR #105 completes the repository-side DirectML root-cause probe: per-model/per-phase subprocess isolation, raw ORT vs shared-runtime comparisons, targeted metacommand/graph-optimization retries, explicit adapter trials only when the small sanity model fails, and a dual-session Ranking scenario that keeps eDifFIQA alive while creating/running 3DDFA. The diagnostic build/feed/drop-in automation passed and the first target-machine root-cause run was completed; results are recorded immediately below.
+- The first target root-cause report is now available: YuNet, 3DDFA, Composite person/head, OCR, ISNetIS and MI-GAN all create and run through DirectML successfully on the RTX 5080; only eDifFIQA-T fails on first `session.run()`. The native error signature is `MLOperatorAuthorImpl.cpp(2853)` / HRESULT `0x80070057 (E_INVALIDARG)` and Python mis-decodes the provider error as `UnicodeDecodeError`. SessionOptions `batch=1` is not a fix: it causes DirectML initialization to fail and ONNX Runtime to rebuild CPU-only unless fallback is explicitly disabled.
+- **PR #106 — completed eDifFIQA-T DirectML production repair, expected merged state**: the legacy `view(input.size(0), -1)`/ONNX `Reshape[-1,512]` export was replaced by the official 2026 eDifFIQA-T `Flatten` export at `resources/models/ediffiqa_t.onnx`, SHA-256 `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`. The shared v0.4 provider policy and modular feature implementations remain unchanged; CPU parity on 106 deterministic test tensors, pinned model provenance/licenses, source and packaged model checks, and Portable/DirectML regression all pass. The real target RTX 5080 profile proves DirectML executes 147 Conv and 9 Gemm kernel events across three inference runs, while CPU executes three `Gelu` nodes. A separate benchmark measured 30 warmed inference calls/provider: CPU 2.51120 ms versus mixed DML 1.25995 ms median (`1.9931×` ratio), max output difference `1.1920928955078125e-07`. **The eDifFIQA GPU compatibility and bounded model-level performance gates are met.** PR #106 may merge without whole-dataset throughput testing; no app-wide acceleration or full v0.4 human UX acceptance is implied. Research scripts remain in `tools/`, product model/runtime assets in `resources/`, not scattered into app modules. Any later end-to-end performance study is non-blocking optional research under Issue #55.
+
+- Background Composite → Auto Crop enrichment remains merged. The DirectML eDifFIQA blocker is resolved by PR #106; full Settings UI and other v0.4 surface decisions remain deferred until the user explicitly selects that slice, rather than blocked by another eDifFIQA performance gate.
 - PR #103 completes the repository-side background enrichment slice: application-owned Composite → Auto Crop planning, a low-priority streaming Qt worker, GUI-thread state application, review-while-scanning behavior, deterministic background restart/shutdown handling, deferred Composite-output incremental analysis to avoid CPU contention, and lightweight Dataset Review crop-state labels. Python 3.9/3.12 UI regression, architecture, feature boundaries and Portable automation are green. The behavior remains HUMAN UNVERIFIED for the later coherent v0.4 checkpoint.
+
+- **Historical second target-probe instrument error (2026-11-06)**: the official-model DML session completed three `session.run()` calls and wrote an ORT profile, then the probe's `append_event(progress, "profile_saved", path=...)` logger bug produced a misleading `strict_directml_fail`. The logger was fixed and the already-written profile recovered without another GPU run. This failure was not a model/runtime inference failure; the recovered DML Conv/Gemm proof is recorded immediately below.
+
+- **Verified RTX 5080 DML core execution from the uploaded saved ORT profile (2026-11-07; source workflow run `42235496927`, commit `9dd48e94`, official model pinned SHA `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`)**: three complete model inferences; 315 executed DmlExecutionProvider kernel events, including 147 Conv and 9 Gemm (**156 DML core compute events**); 3 CPUExecutionProvider `Gelu` events (one per inference). This rules out CPU-only inference and demonstrates real GPU computation; it **does not** establish a fully GPU-only graph, wall-time benefit, or product-level end-to-end acceleration. The old recovery result `profile_does_not_prove_gpu_compute` was a false negative caused by conflating DML core proof with a blanket no-CPU-arithmetic gate. On Draft PR #106, keep two separate conditions: `gpu_compute_verified` from executed DML math, and a bounded `production_mixed_execution_accepted` gate allowing only the observed CPU Gelu pattern for this exact pinned model; reject CPU-only and unexpected CPU arithmetic. Full product performance, ranking integration and release still HUMAN UNVERIFIED. Issue #55 records the evidence and the correction.
+
+- **2026-11-07 real target performance PASS (RTX 5080)**: one-command benchmark returned from exact-head probe workflow `42256456795` (commit `10be0fd2`, pinned official eDifFIQA-T model SHA `7a83be63e6583ec5800fa0762e219b65b4b9f1721c4d210bfe2f16c0478832bb`). Five warmups + 30 timed CPU-only vs DirectML-mixed `session.run` calls per provider on identical model/inputs: CPU median **2.51120 ms**, DML median **1.25995 ms**, **1.9931×** median inference speed ratio; P90 CPU 9.84775 ms vs DML 1.95573 ms; CPU session creation 27.394 ms vs DML 57.893 ms. Maximum CPU–DML output absolute difference **1.1920928955078125e-07** (allowed 0.001). DML preflight profiled 105 DML kernels (49 Conv / 3 Gemm) plus one real CPU Gelu. Real DML compute and this bounded **model-level** latency improvement are VERIFIED on target; **full application/data-scan throughput, startup trade-off, and UX are NOT VERIFIED**. Multiple timing outliers affect means. One-command wrapper had contradictory default top-level GPU flags even with `benchmark_pass`; nested preflight was correct and the wrapper has been repaired in Draft PR #106 to project the evidence correctly. Do not ask for a repeat GPU compatibility or benchmark run simply to fix metadata; keep target report as historical proof. Issue #55 records sample details.
 
 ## Current objective
 
-1. identify the actual DirectML target-machine failure layer before making any GPU product decision;
-2. replace the whole-workflow checkpoint as the primary diagnostic with a DirectML-only microprobe that isolates adapter index, model, session creation, and first Run in separate watchdog-bounded subprocesses;
-3. verify adapter selection explicitly; ONNX Runtime DirectML 1.24.4 defaults to DXCore high-performance GPU selection when no device_id is supplied, so do not assume either adapter 0 or iGPU mis-selection without evidence;
-4. only after root cause is identified, decide whether to repair DirectML integration or choose another GPU runtime path;
-5. keep merged background-enrichment work intact, but pause Settings UI as the active next slice until the GPU runtime question is actually resolved.
+1. **eDifFIQA-T DirectML model-export blocker is completed via PR #106**: production ONNX is the SHA-pinned 2026 official export, and source/packaged runtime checks plus real RTX 5080 DirectML execution and model-level latency have been verified.
+2. Preserve the stable modular feature architecture, shared Auto / GPU / CPU provider policy, and CPU fallback without reopening eDifFIQA-specific runtime investigations.
+3. Maintain v0.4 accepted feature directions under Issue #60 and the focused trackers. The next product work slice is **not yet selected in this conversation**; do not infer authorization for a broad UI rewrite or a mandatory whole-dataset GPU benchmark.
+4. Treat integrated application human QA, future v0.4 release acceptance and optional end-to-end performance work as distinct checkpoints, not unresolved blockers for the merged model-export fix.
 
 ## Accepted future directions
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
-- **ACTIVE PRODUCTION UI:** whole-product UI/UX modernization (#75) is currently on Composite Split production PR #93, following HUMAN PASS of prototype #91. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
+- **ACCEPTED PRODUCTION UI:** Composite Split production PR #93 has been merged after HUMAN PASS of prototype #91; its integrated build still has deferred human QA. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
 - **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
@@ -94,7 +102,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
-- Accelerator research under Issue #55 is active again. Do not infer that DirectML itself failed merely because the previous integrated checkpoint hung; first isolate adapter/model/phase and distinguish our integration defects from runtime defects.
+- The shipped legacy eDifFIQA-T DirectML incompatibility is resolved by PR #106 and actual RTX DirectML kernel profiling. Optional broader GPU performance tuning under Issue #55 remains non-blocking; the measured single-model 1.99× inference ratio does not establish whole-product speedup.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
@@ -107,7 +115,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
 - Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
-- Issue #55 accelerator research is active. The next target-machine interaction must be a bounded DirectML-only root-cause probe, not another long CPU-vs-GPU benchmark.
+- eDifFIQA-T GPU compatibility: **target RTX core math / bounded model performance REAL-DEVICE PASS (2026-11-07)**, including disclosed single CPU `Gelu` per inference; historical first-check strict CPU-helper rejection was a test policy error. The integrated v0.4 app experience remains **HUMAN UNVERIFIED** until a coherent product checkpoint. No need to rerun this standalone GPU probe.
 - PR #103 background enrichment is HUMAN UNVERIFIED. Non-destructive automated coverage should land first; do not interrupt the user for per-fix QA unless automation exposes a blocker.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
 - Destructive/data-loss/startup/release blockers still require prompt human verification when automation is insufficient.
@@ -115,11 +123,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. run the CI-validated PR #105 root-cause probe once on the RTX 5080 and inspect `directml-root-cause.json`;
-2. probe DirectML device_id candidates in separate processes and identify the adapter that actually executes on the RTX 5080;
-3. for each bundled ONNX model, record session-create start/end and first-Run start/end with short watchdogs so a native hang produces exact evidence;
-4. use that result to repair the GPU path, then return to Settings UI;
-5. keep PR #103 background enrichment as merged/HUMAN UNVERIFIED work; it is not rolled back by reopening GPU research.
+1. Confirm `main` contains PR #106's SHA-pinned official eDifFIQA model and corresponding provenance/build/Portable checks; GitHub PR #106 and its merge history are the authoritative completion record.
+2. Keep Issue #55 as an **optional future accelerator optimization** tracker, with the specific legacy eDifFIQA-T GPU incompatibility marked completed; whole-dataset benchmarking is not a prerequisite to this completed fix.
+3. Preserve the HUMAN UNVERIFIED debt of the integrated v0.4 app and next release without misreporting it as failure of the real RTX eDifFIQA checkpoint.
+4. Await the user's selection of the next bounded v0.4 product slice, using Issues #60, #59, #75 and deferred Draft #90 as the accepted context. No broad rewrite or additional machine test is automatically authorized.
 
 ## Do not repeat
 
@@ -146,7 +153,7 @@ Current:
 - #75 — whole-product UI/UX modernization
 - #59 — UX/quality backlog from accepted v0.3 QA
 - #56 — Text Cleanup review sorting
-- #55 — optional GPU acceleration research / current DirectML profile evaluation
+- #55 — optional further GPU acceleration research; **eDifFIQA DirectML fix is complete in PR #106, no longer a blocker**
 - #57 — README screenshots
 - #72 — HUMAN UNVERIFIED src-layout migration interactive checkpoint
 
@@ -160,8 +167,8 @@ Accepted visual reference / pending production QA:
 Accepted Composite visual reference:
 - PR #91 — HUMAN PASS visual prototype; closed unmerged as reference evidence
 
-Active Composite production work:
-- Draft PR #93 — Composite Split production implementation; HUMAN UNVERIFIED pending production checkpoint
+Merged Composite production work:
+- PR #93 — Composite Split production implementation merged to main; integrated experience remains HUMAN UNVERIFIED pending the v0.4 production checkpoint
 
 Rejected / corrective history:
 - #83 / PR #84 — rejected Dataset Review UI candidate

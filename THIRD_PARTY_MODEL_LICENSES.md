@@ -3,6 +3,12 @@
 This file accompanies the redistributed model weights in the Windows Portable build.
 See THIRD_PARTY_NOTICES.md for exact model names, sources and SHA-256 values.
 
+### eDifFIQA-T re-export attribution
+
+Copyright (c) 2026 Yakhyokhuja Valikhujaev
+
+The eDifFIQA-T ONNX re-export is distributed under the MIT License below.
+
 ## MIT License
 
 Copyright (c) the respective upstream copyright holders.
