@@ -76,7 +76,23 @@
     <message><source>状态：{status} · 判定：{eligibility}</source><translation>Status: {status} · Eligibility: {eligibility}</translation></message>
     <message><source>未勾选图片</source><translation>No Images Checked</translation></message>
     <message><source>请先勾选需要调整重复分组的图片。</source><translation>Check the images whose duplicate grouping you want to change first.</translation></message>
-  </context>
+  
+    <message><source>同组多图直接比较 · 勾选保留项 · 完成本组</source><translation>Compare Group · Check Items to Keep · Finish Group</translation></message>
+    <message><source>双击图片打开原图 · 勾选状态切组后保留</source><translation>Double-click to open original · Checks persist when switching groups</translation></message>
+    <message><source>重复组导航</source><translation>Duplicate Group Navigator</translation></message>
+    <message><source>缩略图定位 · 上拖展开更多组</source><translation>Locate by thumbnail · Drag upward to reveal more groups</translation></message>
+    <message><source>完成本组后自动切到下一未完成组</source><translation>After finishing this group, advance to the next unfinished group</translation></message>
+    <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
+    <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
+    <message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
+    <message><source>未完成</source><translation>Incomplete</translation></message>
+    <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
+    <message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
+    <message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
+    <message><source>保留</source><translation>Keep</translation></message>
+    <message><source>待确认</source><translation>Pending</translation></message>
+    <message><source>完成后跳到下一组，优先未完成组</source><translation>After finishing, advance to the next group (prioritizing unfinished groups)</translation></message>
+</context>
   <context>
     <name>CompositeSplitReviewDialog</name>
     <message><source>组合图拆分复核</source><translation>Composite Split Review</translation></message>
@@ -585,11 +601,28 @@ Source images were not modified.</translation></message>
     <message><source>取消批量处理</source><translation>Cancel Batch Processing</translation></message>
     <message><source>正在取消批量处理…</source><translation>Cancelling batch processing…</translation></message>
     <message><source>批量处理已取消</source><translation>Batch processing cancelled</translation></message>
+
+    <message><source>排序</source><translation>Sort</translation></message>
+    <message><source>优先待处理</source><translation>Review Priority</translation></message>
+    <message><source>原始顺序</source><translation>Original Order</translation></message>
+    <message><source>有效检测数量：多→少</source><translation>Eligible Detections: Most First</translation></message>
+    <message><source>最高置信度：高→低</source><translation>Highest Confidence: High to Low</translation></message>
+    <message><source>文件名：A→Z</source><translation>Filename: A to Z</translation></message>
+    <message><source>开启后在右侧大图上拖动鼠标绘制修复框；再次点击退出绘制。</source><translation>Click to enable, then drag on the large preview to draw a repair box. Click again to stop drawing.</translation></message>
+    <message><source>灰色＝有效检测；绿色＝已选修复；橙色＝人工修改。勾选仅控制修复。</source><translation>Gray: eligible detection; green: selected for repair; orange: manual change. Checkboxes only control repair.</translation></message>
+    <message><source>手动补框：开启</source><translation>Manual Box: On</translation></message>
+    <message><source>手动补框</source><translation>Draw Manual Box</translation></message>
+    <message><source>第 {page}/{pages} 页 · 第 {start}–{end} / {total} 张</source><translation>Page {page}/{pages} · Images {start}–{end} of {total}</translation></message>
+    <message><source>第 0/0 页 · 第 0–0 / 0 张</source><translation>Page 0/0 · Images 0–0 of 0</translation></message>
+    <message><source>有效检测 {detected} · 已选 {selected}{manual}</source><translation>Eligible {detected} · Selected {selected}{manual}</translation></message>
+    <message><source>有效检测：{detected} · 已选修复：{selected} · 人工修改：{manual}</source><translation>Eligible Detections: {detected} · Selected for Repair: {selected} · Manually Modified: {manual}</translation></message>
 </context>
   <context>
     <name>ImagePreview</name>
     <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
-  </context>
+  
+    <message><source>拖拽绘制修复区域</source><translation>Drag to Draw a Repair Area</translation></message>
+</context>
   <context>
     <name>SettingsPage</name>
     <message><source>设置</source><translation>Settings</translation></message>
