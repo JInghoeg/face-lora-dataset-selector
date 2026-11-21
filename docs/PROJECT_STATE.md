@@ -83,15 +83,16 @@ Historical repository note:
 
 ## Current objective
 
-**2026-11-08 user-selected slice: formal Settings UI, continuing PR #110.** This is a **v0.4 development step, not final integration/release.**
+**2026-11-21 active checkpoint: integrate the individually developed v0.4 modules into one Draft, non-destructive Windows QA candidate (#113). This is not v0.4 completion, a user HUMAN PASS, or permission to merge.**
 
-1. Reuse existing `AppSettings` + `JsonSettingsStore`, and the previously confirmed **Settings → Software Updates** destination. Build one cohesive Settings tab with compact sidebar navigation for General, Performance & Analysis, and Software Updates; do not return to an unrelated Help menu or crowd the dataset workspace with options.
-2. Move existing global live Language selection from the dataset toolbar to Settings → General while preserving the same `language_combo` and i18n manager. Provide a saved *review-window* theme preference (System/Light/Dark) and apply it to the existing scoped Auto Crop, Composite Split and Duplicate Review dialogs. **Do not claim the rejected main-shell/global dark redesign is completed.**
-3. Put ONNX Auto/Prefer GPU/CPU and optional background Composite/Auto Crop pre-scan in Settings → Performance. Persist via `SelectorApplication.update_app_settings`; device changes affect **new sessions**, are deferred while running jobs, and permit verified CPU fallback. Wire `background_enrichment` into the real scheduler: disabled means no automatic pre-scan and a graceful cancel of an in-progress optional scan; all manual review actions remain available.
-4. Keep the prior user-approved update UX: automatic **metadata-only** checks of official stable GitHub Releases; user must explicitly click **One-Click Incremental Update and Restart** before any delta download or install. Strict SHA verification, no duplicate bundled models, no full Portable fallback, no forced interruption of active tasks. Stable update service remains independently testable and Qt-free.
-5. Scope to Draft PR #110 `feat/v04-stable-incremental-updater` with new `src/ui/qt/settings_page.py`, normal i18n, persistence tests, and Windows actual Portable CI. Avoid new model downloads or fresh QA installers for the user. Remain HUMAN UNVERIFIED until a coherent existing-G:-runtime incremental checkpoint. PR #109 is **interim** unified human-QA evidence, not the v0.4 release gate.
+1. The integration branch `integration/v04-settings-text-duplicate-qa` begins with #110's checked Settings / stable delta-only updater (commit `120ea3d`), layers in #111 Text Cleanup review navigation/manual ROI/priority-sorting regression (`248b523`), and layers in #109's Duplicate Review production Qt UI, regression and unified QA script (`f670699`). Keep each feature's underlying architectural boundary intact.
+2. Combine English i18n catalog entries from all modules; do not replace the Settings catalog with a stale pre-Settings translation file. This is a file-level integration, not an automatic merge or closure of existing Drafts #90/#109/#110/#111.
+3. Verify combined Qt/Windows builds, settings persistence and stable update, Text Cleanup and Duplicate Review behavior, DirectML Portable and v0.3.1 user-state migration in the existing bounded QA workflow. Reuse existing verified full Portable/model assets; never force another large user download.
+4. Old #109's CI delta workflow was tied to an immutable *historical* target artifact. On this branch it is explicitly gated to a successful current target workflow run and exact commit (manual input), so an obsolete ZIP cannot masquerade as a new integrated delta.
+5. High-priority crash report #112: user reports frequent unexpected exits in a previously deployed QA Portable. Treat as unresolved and unknown build/root cause until historical logs/build SHA or real Windows evidence proves otherwise; release-blocking if reproduced. Do not make speculative fixes or infer earlier crash repairs cover this.
+6. Real GUI acceptance and any release remain HUMAN UNVERIFIED. No original image, old stable install, cache, models or settings may be overwritten during preparation.
 
-**v0.4 scope still open:** #60 umbrella includes additional Text Cleanup UX, Dataset Review main shell redesign (previous candidate rejected), Source Organizer UI consistency, dataset-level recommendation quality/research and other explicitly tracked/deferred items. Do not treat PR #109/#110 as completing the entire v0.4 scope.
+**v0.4 scope still open:** #60 umbrella includes broader Text Cleanup quality/existing-box editing, Dataset Review modernization, Source Organizer UI consistency, dataset-level recommendation explainability/coverage and other explicitly tracked backlog. A unified QA candidate is not completion of all features.
 
 ## Accepted future directions
 
@@ -109,6 +110,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
+- Frequent unexpected exits from a deployed QA Portable are reported but not reproduced or localized; #112 stays an unresolved high-priority stability check.
 - The shipped legacy eDifFIQA-T DirectML incompatibility is resolved by PR #106 and actual RTX DirectML kernel profiling. Optional broader GPU performance tuning under Issue #55 remains non-blocking; the measured single-model 1.99× inference ratio does not establish whole-product speedup.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
@@ -132,10 +134,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Run Python 3.9/3.12 `tests/settings_preferences_smoke.py` + Qt offscreen `tests/settings_update_ui_smoke.py`. Verify navigation, language relocation, preference persistence, device/backend connection, background-scan enable/disable and explicit update authorization.
-2. Pass Windows `Stable Incremental Updates`, `I18n Foundation`, Architecture Boundaries and **Build Windows Portable** workflows on PR #110. Do not substitute script-only tests for packaged application behavior.
-3. If regression exposed, repair in the scoped branch, rerun checks, update PR state. Real visual/review use remains HUMAN UNVERIFIED and the proposed main-shell theme restyle is explicitly outside this slice.
-4. Then resume the user's next selected v0.4 module (likely #59 Text Cleanup UX), not a premature all-v0.4 final acceptance or another 438 MB test package.
+1. Finish all PR #113 Windows CI checks; fix real integrated failures on the Draft integration branch, not by overwriting previously accepted feature implementations. Preserve source state and i18n catalogs.
+2. Audit the bundled DirectML QA ZIP and user-state migration against the CURRENT #113 commit. Build the optional delta only from the successful same-commit QA artifact, never from stale prior targets.
+3. Inspect existing G:-scoped QA runtime logs and Windows failure evidence for #112 before attributing the crash; real-machine stability remains a release blocker if reproducible. Do not ask for unnecessary repeat model downloads.
+4. Batch real human verification of the integrated UI later, keeping individual feature branches Draft and HUMAN UNVERIFIED; then continue the remaining bounded #59/#60/#75 product scope.
 
 ## Do not repeat
 
