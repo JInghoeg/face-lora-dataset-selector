@@ -4,6 +4,7 @@ from .composite_split_review import CompositeSplitReviewDialog
 from .dataset_view import DatasetListModel, DatasetListView, DatasetViewRow
 from .duplicate_review import DuplicateReviewDialog
 from .image_preview import ImagePreview
+from .settings_page import SettingsPage
 from .text_cleanup import SubtitleTab
 from .thumbnail import ThumbnailWorker
 
@@ -17,6 +18,7 @@ __all__ = [
     "DatasetViewRow",
     "DuplicateReviewDialog",
     "ImagePreview",
+    "SettingsPage",
     "SubtitleTab",
     "ThumbnailWorker",
 ]
