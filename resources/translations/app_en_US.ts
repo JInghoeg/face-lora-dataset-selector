@@ -563,9 +563,24 @@ Source images were not modified.</translation></message>
     <message><source>取消批量处理</source><translation>Cancel Batch Processing</translation></message>
     <message><source>正在取消批量处理…</source><translation>Cancelling batch processing…</translation></message>
     <message><source>批量处理已取消</source><translation>Batch processing cancelled</translation></message>
+    <message><source>排序</source><translation>Sort</translation></message>
+    <message><source>优先待处理</source><translation>Review Priority</translation></message>
+    <message><source>原始顺序</source><translation>Original Order</translation></message>
+    <message><source>有效检测数量：多→少</source><translation>Eligible Detections: Most First</translation></message>
+    <message><source>最高置信度：高→低</source><translation>Highest Confidence: High to Low</translation></message>
+    <message><source>文件名：A→Z</source><translation>Filename: A to Z</translation></message>
+    <message><source>开启后在右侧大图上拖动鼠标绘制修复框；再次点击退出绘制。</source><translation>Click to enable, then drag on the large preview to draw a repair box. Click again to stop drawing.</translation></message>
+    <message><source>灰色＝有效检测；绿色＝已选修复；橙色＝人工修改。勾选仅控制修复。</source><translation>Gray: eligible detection; green: selected for repair; orange: manual change. Checkboxes only control repair.</translation></message>
+    <message><source>手动补框：开启</source><translation>Manual Box: On</translation></message>
+    <message><source>手动补框</source><translation>Draw Manual Box</translation></message>
+    <message><source>第 {page}/{pages} 页 · 第 {start}–{end} / {total} 张</source><translation>Page {page}/{pages} · Images {start}–{end} of {total}</translation></message>
+    <message><source>第 0/0 页 · 第 0–0 / 0 张</source><translation>Page 0/0 · Images 0–0 of 0</translation></message>
+    <message><source>有效检测 {detected} · 已选 {selected}{manual}</source><translation>Eligible {detected} · Selected {selected}{manual}</translation></message>
+    <message><source>有效检测：{detected} · 已选修复：{selected} · 人工修改：{manual}</source><translation>Eligible Detections: {detected} · Selected for Repair: {selected} · Manually Modified: {manual}</translation></message>
 </context>
   <context>
     <name>ImagePreview</name>
     <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
-  </context>
+      <message><source>拖拽绘制修复区域</source><translation>Drag to Draw a Repair Area</translation></message>
+</context>
 </TS>
