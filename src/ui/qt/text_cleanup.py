@@ -626,12 +626,22 @@ class SubtitleTab(QWidget):
         self.next_page.setEnabled(self.page + 1 < pages)
         self.update_summary()
         self.start_thumbnails(token, shown)
-        if preserve and old in self.item_by_record:
+        if old in self.item_by_record:
             self.list.setCurrentItem(self.item_by_record[old])
-            QTimer.singleShot(
-                0,
-                lambda: self.list.verticalScrollBar().setValue(scroll),
-            )
+            if preserve:
+                QTimer.singleShot(
+                    0,
+                    lambda: self.list.verticalScrollBar().setValue(scroll),
+                )
+        elif old >= 0:
+            # The right preview must never keep editing a record that is no
+            # longer on the displayed page/filter. It made page navigation
+            # misleading and allowed selected-region actions on a hidden image.
+            self.current = -1
+            self.preview.set_data(None, [], [], [])
+            self.boxes.blockSignals(True)
+            self.boxes.clear()
+            self.boxes.blockSignals(False)
 
     def filter_changed(self, *_):
         self.page = 0
