@@ -1,0 +1,106 @@
+name: v0.4 Unified QA Incremental DirectML Delta
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["tools/qa-unified-v04.ps1", "tools/build-qa-delta.ps1", ".github/workflows/qa-unified-delta.yml", "docs/PROJECT_STATE.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows-delta:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch immutable CPU base and complete DirectML target (runner only)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path base-artifact,target-artifact | Out-Null
+          gh run download 42382490831 --repo JInghoeg/face-lora-dataset-selector --name Face-LoRA-Dataset-Selector-Windows-x64-Portable --dir base-artifact
+          if ($LASTEXITCODE -ne 0) { throw "Pinned CPU artifact download failed." }
+          gh run download 42394492280 --repo JInghoeg/face-lora-dataset-selector --name face-lora-v04-unified-directml --dir target-artifact
+          if ($LASTEXITCODE -ne 0) { throw "Pinned DirectML artifact download failed." }
+          $base="base-artifact\Face-LoRA-Dataset-Selector-Windows-x64-Portable.zip"
+          $target="target-artifact\Face-LoRA-v04-Unified-DirectML-Portable.zip"
+          foreach ($zip in @($base,$target)) {
+            if (-not (Test-Path -LiteralPath $zip)) { throw "Pinned ZIP absent: $zip" }
+            $sidecar="$zip.sha256"
+            if (-not (Test-Path -LiteralPath $sidecar)) { throw "Checksum absent: $zip" }
+            $expected=((Get-Content $sidecar -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+            if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw "Source ZIP checksum mismatch: $zip" }
+          }
+          Expand-Archive -LiteralPath $base -DestinationPath base
+          Expand-Archive -LiteralPath $target -DestinationPath target
+
+      - name: Build SHA-pinned file-level delta
+        shell: pwsh
+        run: |
+          .\tools\build-qa-delta.ps1 -BaseRoot "base\Face-LoRA-Dataset-Selector" -TargetRoot "target\Face-LoRA-Dataset-Selector" -OutputRoot qa-directml-delta
+          $name="v04-unified-directml-from-cpu.zip"
+          Compress-Archive -Path "qa-directml-delta\*" -DestinationPath $name -CompressionLevel Optimal
+          $sha=(Get-FileHash $name -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $name" | Set-Content "$name.sha256" -Encoding ascii
+          $meta=Get-Content "qa-directml-delta\manifest.json" -Raw | ConvertFrom-Json
+          if ($meta.unchanged_count -lt 100) { throw "No meaningful files shared between builds." }
+          $mb=[math]::Round((Get-Item $name).Length/1MB,1)
+          Write-Host "Delta to user: $mb MiB; full Portable would have been ~438 MB."
+          $modelChanged=@($meta.changed | Where-Object { $_ -like '_internal\models\*' })
+          Write-Host "Changed bundled model files: $($modelChanged.Count)"
+
+      - name: Windows delta-install and old records smoke
+        shell: pwsh
+        run: |
+          $test=Join-Path $env:RUNNER_TEMP 'UnifiedDeltaFixture'
+          $old=Join-Path $test 'Face-LoRA-Dataset-Selector-v0.3.1'
+          $cache=Join-Path $old '_userdata\cache'
+          $qa=Join-Path $test 'QA'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          $base='base\Face-LoRA-Dataset-Selector'
+          Copy-Item -LiteralPath (Join-Path $base 'Face LoRA Dataset Selector.exe') -Destination (Join-Path $old 'Face LoRA Dataset Selector.exe')
+          '{"version":3,"analysis_version":4,"records":[{"path":"G:\\dataset\\Luna.jpg","manual_status":"推荐","status":"推荐"}]}' | Set-Content -LiteralPath (Join-Path $cache 'test.json') -Encoding utf8
+          $args = @{
+            Root = $qa
+            OldRoot = $old
+            BaseAppRoot = $base
+            LocalDeltaZip = 'v04-unified-directml-from-cpu.zip'
+            ArtifactId = '13582688113'
+            ArtifactCommit = 'ecca7d52f4ff1bb02b61aeee6f999d2893dce72e'
+            PrepareOnly = $true
+            CiFixture = $true
+          }
+          & .\tools\qa-unified-v04.ps1 @args
+          # PowerShell scripts return through $? / terminating errors; $LASTEXITCODE
+          # may retain an unrelated external process status from prior steps.
+          $report=Get-Content (Join-Path $qa 'QA_REPORT.json') -Raw | ConvertFrom-Json
+          if ($report.status -ne 'prepared' -or $report.mode -ne 'verified-incremental-directml') { throw "Delta not used." }
+          if ($report.delta_reused_bytes -le 100MB) { throw "No meaningful runtime/models reuse." }
+          $copy=Join-Path $qa 'app\_userdata\cache\test.json'
+          if (-not (Test-Path $copy)) { throw "Old review state missing." }
+          if ((Get-FileHash $copy).Hash -ne (Get-FileHash (Join-Path $cache 'test.json')).Hash) { throw "Old state changed." }
+          $manifest=Get-Content 'qa-directml-delta\manifest.json' -Raw | ConvertFrom-Json
+          foreach ($e in @($manifest.target)) {
+            $file=Join-Path (Join-Path $qa 'app') $e.relative
+            if (-not (Test-Path -LiteralPath $file)) { throw "Target file missing: $($e.relative)" }
+            if ((Get-Item $file).Length -ne [long]$e.size) { throw "Target file size mismatch: $($e.relative)" }
+            if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $e.sha256) { throw "Target file hash mismatch: $($e.relative)" }
+          }
+          & .\tools\qa-unified-v04.ps1 @args
+          $again=Get-Content (Join-Path $qa 'QA_REPORT.json') -Raw | ConvertFrom-Json
+          if ($again.mode -ne 'cached-existing-app') { throw "Second run downloaded or rebuilt runtime." }
+          Write-Host 'Exact target binary parity, DirectML EXE, old records and repeat-run: PASS.'
+
+      - name: Publish small DirectML update
+        uses: actions/upload-artifact@v4
+        with:
+          name: face-lora-v04-unified-directml-delta
+          path: |
+            v04-unified-directml-from-cpu.zip
+            v04-unified-directml-from-cpu.zip.sha256
+          if-no-files-found: error
