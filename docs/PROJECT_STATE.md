@@ -59,10 +59,15 @@ Historical repository note:
 ## In progress
 
 - v0.4 scope is tracked under Issue #60.
+- **2026-11-21 state recovery:** repository reality is newer than the previous Current objective. PR #110 (Settings + stable incremental updater) and PR #111 (Text Cleanup review UX) are active Drafts with green automated coverage; both remain HUMAN UNVERIFIED for visual/product acceptance.
+- Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED. Its visual direction was accepted in prototype #88, but the current production render still requires explicit review. The latest production branch also contains the later full-group auto-advance and large three-state image-card selection fix recorded on 2026-11-08.
+- Composite Split production PR #93 is **merged and HUMAN PASS**; prototype #91 remains the accepted visual reference. Do not regress its reduced text-density / ROI interaction language.
+- Issue #112 records a current report of frequent unexpected exits in a deployed v0.4 QA Portable. Exact build/root cause is still unknown; if reproduced it is a release blocker.
+- Draft PR #113 is an **internal integration-development branch only** combining current Settings/Text Cleanup/Duplicate QA work. It is not a user QA handoff, release candidate, visual approval, or evidence that v0.4 is complete.
 - Composite Split production PR #93 received explicit HUMAN PASS and was merged to `main` at `472cbb1b81c549ac6fa04d987bd9a2d1f564b386`.
 - Incorrect Dataset Review v2 prototype PR #94 was closed unmerged and is non-canonical; production `src/` was not changed by it.
 - Duplicate Review production PR #90 remains Draft / HUMAN UNVERIFIED and intentionally unmerged until the user explicitly returns to that checkpoint.
-- Draft PR #74 remains frozen/non-canonical unless the user explicitly adopts that Text Cleanup implementation.
+- Draft PR #74 is historical/non-canonical and is superseded for current Text Cleanup UX work by Draft PR #111; do not revive #74 as the active implementation.
 - Draft PR #97 (Windows ML / NvTensorRtRtx research) is closed unmerged. Target-workstation evidence confirmed NVIDIA catalog discovery on Windows build 26200, but Python framework-dependent deployment plus system-managed EP acquisition was too fragile for the current true-Portable goal.
 - Issue #55 remains the optional acceleration research tracker. Its original RTX 5080 DirectML hang was isolated to the legacy eDifFIQA-T export and **resolved** by the SHA-pinned official re-export in PR #106; other model acceleration research and full-workflow throughput are separate, non-blocking topics.
 - The self-contained CPU-vs-DirectML target-performance checkpoint from PR #99/#100/#101 is retained as research tooling, but its diagnostics are now known to be insufficient for root cause: it emitted “provider setup finished” before creating any DirectML session, and it did not distinguish session creation from first Run for individual models.
@@ -83,10 +88,17 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+**2026-11-21 user-selected phase: resume the repository's real UI/UX process before any unified human QA. v0.4 is not complete.**
+
+1. Repair canonical project state first, because repository reality has moved beyond the old Luna Composite standalone-QA objective.
+2. Resume the accepted **small-module UI sequence** from #75. Do **not** restart the rejected broad Dataset Review shell redesign (#83/#84, reverted by #87).
+3. Use existing accepted real-Qt references rather than inventing a new visual system:
+   - Auto Crop Fluent/Filmstrip interaction and scoped theme;
+   - Duplicate Review prototype #88 as its accepted layout baseline;
+   - Composite Split prototype #91 / production #93 as HUMAN PASS reference, including reduced visible text density, clear action hierarchy, Filmstrip navigation and reused ROI interaction.
+4. First concrete visual checkpoint: regenerate and inspect the **real current production Duplicate Review dark render from PR #90**, including the later three-state large overlay/card selection and fixed group-advance behavior. This is a render/review task, not a request for the user to install a Portable.
+5. After Duplicate Review production visual review, prepare equivalent **real Qt renders** for Settings (#110) and Text Cleanup (#111) from their actual widgets before treating those UI-bearing slices as visually complete. Do not substitute AI-generated concept art.
+6. Only after the bounded UI surfaces are visually accepted should remaining v0.4 implementation, integration, #112 stability work and eventual coherent human QA proceed.
 
 ## Accepted future directions
 
@@ -116,7 +128,7 @@ Execution ordering among these directions is intentionally **not inferred here**
 - #80 carry-forward behavior is **HUMAN UNVERIFIED on the v0.4/src-layout build** until the next coherent v0.4 checkpoint. v0.3.1 itself was real-use verified; do not infer that verification automatically covers the newly ported src-layout build.
 - Duplicate Review production PR #90 is **HUMAN UNVERIFIED** despite green automation; the user explicitly deferred that HUMAN PASS while continuing the UI project.
 - Composite Split prototype #91 is HUMAN PASS and closed unmerged as visual reference evidence.
-- Composite Split production PR #93 is HUMAN UNVERIFIED until the production checkpoint is explicitly accepted.
+- Composite Split production PR #93 received explicit production HUMAN PASS and is merged; later integrated v0.4 behavior remains separately HUMAN UNVERIFIED.
 - eDifFIQA-T GPU compatibility: **target RTX core math / bounded model performance REAL-DEVICE PASS (2026-11-07)**, including disclosed single CPU `Gelu` per inference; historical first-check strict CPU-helper rejection was a test policy error. The integrated v0.4 app experience remains **HUMAN UNVERIFIED** until a coherent product checkpoint. No need to rerun this standalone GPU probe.
 - PR #103 background enrichment is HUMAN UNVERIFIED. Non-destructive automated coverage should land first; do not interrupt the user for per-fix QA unless automation exposes a blocker.
 - New v0.4 behavior must track HUMAN UNVERIFIED items in GitHub until a checkpoint.
@@ -125,10 +137,11 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Regenerate the latest **real production Duplicate Review** screenshot from PR #90's actual Qt widget/workflow, not a synthetic redesign. Preserve the accepted #88/#91 visual language and current branch behavior.
+2. Review that render against #75's hard UI rules: task hierarchy, image-first focus, one clear primary group action, secondary/weak action separation, group navigator state visibility, resize behavior and the three-state selection indicator. Record explicit visual acceptance/revision before merge.
+3. Add equivalent screenshot-render checkpoints for Settings #110 and Text Cleanup #111 using their real Qt implementations; no AI concept board and no broad main-shell redesign.
+4. Keep #113 as internal integration development only. Continue automated integration while UI renders are reviewed, but do not hand the user a unified Portable yet.
+5. Investigate #112 from existing G:-scoped QA logs/build identity before release; do not guess a crash root cause or trigger repeated model/full-Package downloads.
 
 ## Do not repeat
 
@@ -160,7 +173,7 @@ Current:
 - #72 — HUMAN UNVERIFIED src-layout migration interactive checkpoint
 
 Non-canonical existing work:
-- Draft PR #74 — unauthorized Text Cleanup navigation/sorting implementation; frozen pending explicit user decision
+- Draft PR #74 — historical Text Cleanup implementation; superseded by current Draft #111, do not revive as active work
 
 Accepted visual reference / pending production QA:
 - Draft PR #88 — Duplicate Review visual prototype/reference evidence
