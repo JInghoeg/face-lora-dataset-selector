@@ -193,6 +193,7 @@ class SubtitleTab(QWidget):
         self.cancel_scan_btn.setText(self._tr("取消扫描"))
         self.cancel_batch_btn.setText(self._tr("取消批量处理"))
         self.update_add_button_text()
+        self.add.setToolTip(self._tr("开启后在右侧大图上拖动鼠标绘制修复框；再次点击退出绘制。"))
         self.delete_btn.setText(self._tr("删除选中区域"))
         self.method_label.setText(self._tr("方式"))
         self._retranslate_combo(
@@ -219,12 +220,24 @@ class SubtitleTab(QWidget):
             ],
             "全部图片",
         )
+        self.sort_label.setText(self._tr("排序"))
+        self._retranslate_combo(
+            self.sort,
+            [
+                ("优先待处理", "优先待处理"),
+                ("原始顺序", "原始顺序"),
+                ("有效检测数量：多→少", "有效检测数量：多→少"),
+                ("最高置信度：高→低", "最高置信度：高→低"),
+                ("文件名：A→Z", "文件名：A→Z"),
+            ],
+            "优先待处理",
+        )
         self.select_suggested_btn.setText(self._tr("全选建议修复"))
         self.clear_page_btn.setText(self._tr("取消当前页全部"))
         self.min_height.setPrefix(self._tr("最小高 "))
         self.min_area.setPrefix(self._tr("最小面积 "))
         self.min_conf.setPrefix(self._tr("最低置信度 "))
-        self.legend.setText(self._tr("灰色＝检测到文字；绿色＝建议/已选修复；橙色＝人工修改。勾选仅控制修复。"))
+        self.legend.setText(self._tr("灰色＝有效检测；绿色＝已选修复；橙色＝人工修改。勾选仅控制修复。"))
         self.prev_image.setText(self._tr("上一张"))
         self.next_image.setText(self._tr("下一张"))
         self.prev_page.setText(self._tr("上一页"))
@@ -232,7 +245,7 @@ class SubtitleTab(QWidget):
         if self.records:
             self.refresh(False)
         else:
-            self.page_label.setText(self._tr("第 0/0 页"))
+            self.page_label.setText(self._tr("第 0/0 页 · 第 0–0 / 0 张"))
             self.update_summary()
 
     def changeEvent(self, event):
@@ -241,7 +254,10 @@ class SubtitleTab(QWidget):
         super().changeEvent(event)
 
     def update_add_button_text(self):
-        self.add.setText(self._tr("添加区域：开") if self.add.isChecked() else self._tr("添加区域：关"))
+        self.add.setText(
+            self._tr("手动补框：开启") if self.add.isChecked()
+            else self._tr("手动补框")
+        )
 
     def ui(self):
         layout = QVBoxLayout(self)
@@ -265,13 +281,14 @@ class SubtitleTab(QWidget):
         self.cancel_scan_btn.clicked.connect(self.cancel_scan)
         self.cancel_scan_btn.hide()
         self.add = QPushButton()
+        self.add.setObjectName("TextCleanupManualDraw")
         self.add.setCheckable(True)
-        self.add.toggled.connect(
-            lambda enabled: (
-                self.preview.__setattr__("add", enabled),
-                self.update_add_button_text(),
-            )
+        self.add.setStyleSheet(
+            "QPushButton#TextCleanupManualDraw:checked { "
+            "background:#245b40; color:#ffffff; border:2px solid #32b678; "
+            "padding:5px 10px; }"
         )
+        self.add.toggled.connect(self.change_manual_draw_mode)
         self.delete_btn = QPushButton()
         self.delete_btn.clicked.connect(self.delete)
         self.method = QComboBox()
@@ -308,6 +325,8 @@ class SubtitleTab(QWidget):
         filters = QHBoxLayout()
         self.view = QComboBox()
         self.view.currentIndexChanged.connect(self.filter_changed)
+        self.sort = QComboBox()
+        self.sort.currentIndexChanged.connect(self.filter_changed)
         self.select_suggested_btn = QPushButton()
         self.select_suggested_btn.clicked.connect(self.select_suggested)
         self.clear_page_btn = QPushButton()
@@ -323,6 +342,7 @@ class SubtitleTab(QWidget):
         self.min_conf.setSingleStep(0.05)
         self.min_conf.setValue(0.0)
         self.view_label = QLabel()
+        self.sort_label = QLabel()
         for widget in (
             self.view_label,
             self.view,
@@ -341,6 +361,20 @@ class SubtitleTab(QWidget):
         layout.addLayout(filters)
         self.bar = QProgressBar()
         layout.addWidget(self.bar)
+
+        review_nav = QHBoxLayout()
+        review_nav.addWidget(self.sort_label)
+        review_nav.addWidget(self.sort)
+        review_nav.addStretch(1)
+        self.prev_page = QPushButton()
+        self.prev_page.clicked.connect(lambda: self.change_page(-1))
+        self.page_label = QLabel()
+        self.next_page = QPushButton()
+        self.next_page.clicked.connect(lambda: self.change_page(1))
+        review_nav.addWidget(self.prev_page)
+        review_nav.addWidget(self.page_label)
+        review_nav.addWidget(self.next_page)
+        layout.addLayout(review_nav)
 
         splitter = QSplitter(Qt.Horizontal)
         self.list = QListWidget()
@@ -374,19 +408,11 @@ class SubtitleTab(QWidget):
         splitter.setSizes([500, 800])
         layout.addWidget(splitter, 1)
 
-        page_nav = QHBoxLayout()
-        self.prev_page = QPushButton()
-        self.prev_page.clicked.connect(lambda: self.change_page(-1))
-        self.page_label = QLabel()
-        self.next_page = QPushButton()
-        self.next_page.clicked.connect(lambda: self.change_page(1))
-        page_nav.addStretch(1)
-        page_nav.addWidget(self.prev_page)
-        page_nav.addWidget(self.page_label)
-        page_nav.addWidget(self.next_page)
-        page_nav.addStretch(1)
-        layout.addLayout(page_nav)
         self.retranslate()
+
+    def change_manual_draw_mode(self, enabled):
+        self.preview.set_draw_mode(bool(enabled))
+        self.update_add_button_text()
 
     def pick_input(self):
         value = QFileDialog.getExistingDirectory(
@@ -507,27 +533,57 @@ class SubtitleTab(QWidget):
 
     def filtered(self):
         mode = _combo_value(self.view)
+        sort_mode = _combo_value(self.sort)
         output = []
+        metrics = {}
         for index, record in enumerate(self.records):
             good = self.eligible(record)
-            if mode == "仅显示需要修复" and not any(
-                record.selected[item] for item in good
-            ):
+            selected = sum(
+                bool(record.selected[item])
+                for item in good
+                if item < len(record.selected)
+            )
+            confidence = max(
+                (
+                    float(record.scores[item])
+                    if item < len(record.scores)
+                    else 1.0
+                )
+                for item in good
+            ) if good else 0.0
+            if mode == "仅显示需要修复" and not selected:
                 continue
             if mode == "仅显示有文字" and not good:
                 continue
             if mode == "仅显示人工修改" and not any(record.manual):
                 continue
             output.append(index)
-        return output
+            metrics[index] = (len(good), selected, confidence)
+
+        if sort_mode == "原始顺序":
+            return output
+
+        def sort_key(index):
+            detected, selected, confidence = metrics[index]
+            record = self.records[index]
+            if sort_mode == "有效检测数量：多→少":
+                return (-detected, -selected, -confidence, index)
+            if sort_mode == "最高置信度：高→低":
+                return (-confidence, -detected, -selected, index)
+            if sort_mode == "文件名：A→Z":
+                return (record.path.name.casefold(), index)
+            priority = 0 if selected else (1 if detected else 2)
+            return (priority, -selected, -detected, -confidence, index)
+
+        return sorted(output, key=sort_key)
 
     def status_text(self, record):
         good = self.eligible(record)
         return (
             f"{record.path.name}\n"
-            + self._tr("检测 {detected} · 建议 {suggested}{manual}").format(
+            + self._tr("有效检测 {detected} · 已选 {selected}{manual}").format(
                 detected=len(good),
-                suggested=sum(record.selected[index] for index in good),
+                selected=sum(record.selected[index] for index in good),
                 manual=self._tr(" · 人工") if any(record.manual) else "",
             )
         )
@@ -558,12 +614,12 @@ class SubtitleTab(QWidget):
             item.setData(Qt.UserRole, index)
             self.list.addItem(item)
             self.item_by_record[index] = item
+        start = self.page * self.PAGE_SIZE + 1 if shown else 0
+        end = start + len(shown) - 1 if shown else 0
         self.page_label.setText(
-            self._tr("第 {page}/{pages} 页 · 显示 {shown} / {total} 张").format(
-                page=self.page + 1,
-                pages=pages,
-                shown=len(shown),
-                total=len(self.visible),
+            self._tr("第 {page}/{pages} 页 · 第 {start}–{end} / {total} 张").format(
+                page=self.page + 1, pages=pages,
+                start=start, end=end, total=len(self.visible),
             )
         )
         self.prev_page.setEnabled(self.page > 0)
@@ -797,7 +853,7 @@ class SubtitleTab(QWidget):
         )
         manual = sum(any(record.manual) for record in self.records)
         self.summary.setText(
-            self._tr("检测到文字：{detected} · 建议修复：{selected} · 人工修改：{manual}").format(
+            self._tr("有效检测：{detected} · 已选修复：{selected} · 人工修改：{manual}").format(
                 detected=detected, selected=selected, manual=manual
             )
         )
