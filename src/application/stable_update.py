@@ -350,13 +350,33 @@ def check_and_prepare(app_root: Path, *, force: bool = False, now: Optional[floa
     state_file = app_root / "_userdata" / "update_check.json"
     pending = storage / "pending.json"
     if pending.is_file():
+        # Never trust a stale pending receipt just because a ZIP happens to
+        # exist. Revalidate its binding, checksum, archive inventory and the
+        # installed base before offering a second "staged" installation.
         try:
             saved = json.loads(pending.read_text(encoding="utf-8"))
-            if (saved.get("from_version") == current and
-                (storage / str(saved.get("archive_name", ""))).is_file()):
-                return CheckResult("staged", current, str(saved["to_version"]), str(saved.get("release_url", "")))
-        except (ValueError, OSError, TypeError, KeyError):
-            pass
+            if not isinstance(saved, dict) or saved.get("schema") != 1:
+                raise UpdateError("Pending update receipt is invalid.")
+            if saved.get("app_root") != str(app_root) or saved.get("from_version") != current:
+                raise UpdateError("Pending update does not belong to this Portable version.")
+            target_version = saved.get("to_version")
+            if not isinstance(target_version, str) or not is_newer(target_version, current):
+                raise UpdateError("Pending update target is not newer than this Portable.")
+            archive_name = saved.get("archive_name")
+            if not isinstance(archive_name, str) or not re.fullmatch(
+                r"v?\\d+\\.\\d+\\.\\d+-to-v?\\d+\\.\\d+\\.\\d+\\.zip",
+                archive_name,
+            ) or archive_name != f"{current}-to-{target_version}.zip":
+                raise UpdateError("Pending archive name is invalid.")
+            archive = storage / archive_name
+            checksum = _require_hash(saved.get("archive_sha256", ""))
+            if not archive.is_file() or _hash_file(archive) != checksum:
+                raise UpdateError("Staged update archive is missing or its checksum differs.")
+            manifest = validate_delta_file(archive, current, target_version)
+            _verify_local_base(app_root, manifest)
+            return CheckResult("staged", current, target_version, str(saved.get("release_url", "")))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise UpdateError("Pending update receipt could not be validated.") from exc
     timestamp = time.time() if now is None else now
     try:
         previous = json.loads(state_file.read_text(encoding="utf-8"))
