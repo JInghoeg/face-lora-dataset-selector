@@ -643,6 +643,19 @@ class SubtitleTab(QWidget):
             self.boxes.clear()
             self.boxes.blockSignals(False)
 
+    def sync_review_priority(self, follow_current=False):
+        """Refresh a changed queue without restarting thumbnails for static order.
+
+        For edits to a single image, follow that image to its new page.
+        Page-wide actions instead retain the page selected at click time.
+        """
+        updated = self.filtered()
+        if updated == self.visible:
+            return
+        if follow_current and self.current in updated:
+            self.page = updated.index(self.current) // self.PAGE_SIZE
+        self.refresh(False)
+
     def filter_changed(self, *_):
         self.page = 0
         self.refresh(False)
@@ -764,6 +777,7 @@ class SubtitleTab(QWidget):
         )
         self.update_item(self.current)
         self.update_summary()
+        self.sync_review_priority(follow_current=True)
         self.schedule_save()
 
     def new_box(self, box):
@@ -784,6 +798,7 @@ class SubtitleTab(QWidget):
         self.refresh_boxes()
         self.update_item(self.current)
         self.update_summary()
+        self.sync_review_priority(follow_current=True)
         self.schedule_save()
 
     def delete(self):
@@ -811,12 +826,14 @@ class SubtitleTab(QWidget):
         self.refresh_boxes()
         self.update_item(self.current)
         self.update_summary()
+        self.sync_review_priority(follow_current=True)
         self.schedule_save()
 
     def select_suggested(self):
-        for index in self.visible[
+        page_indices = list(self.visible[
             self.page * self.PAGE_SIZE : (self.page + 1) * self.PAGE_SIZE
-        ]:
+        ])
+        for index in page_indices:
             record = self.records[index]
             for box_index, suggested in enumerate(record.suggested):
                 if suggested:
@@ -833,12 +850,14 @@ class SubtitleTab(QWidget):
             )
             self.refresh_boxes()
         self.update_summary()
+        self.sync_review_priority()
         self.schedule_save()
 
     def clear_page(self):
-        for index in self.visible[
+        page_indices = list(self.visible[
             self.page * self.PAGE_SIZE : (self.page + 1) * self.PAGE_SIZE
-        ]:
+        ])
+        for index in page_indices:
             record = self.records[index]
             record.selected = [False] * len(record.selected)
             record.manual = [True] * len(record.manual)
@@ -853,6 +872,7 @@ class SubtitleTab(QWidget):
             )
             self.refresh_boxes()
         self.update_summary()
+        self.sync_review_priority()
         self.schedule_save()
 
     def update_summary(self):
