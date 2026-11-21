@@ -1,0 +1,60 @@
+name: Text Cleanup Visual Render
+
+on:
+  push:
+    branches:
+      - feat/v04-text-cleanup-review-ux
+    paths:
+      - "src/ui/qt/text_cleanup.py"
+      - "src/ui/qt/image_preview.py"
+      - "tests/text_cleanup_visual_render.py"
+      - ".github/workflows/text-cleanup-visual-render.yml"
+  pull_request:
+    paths:
+      - "src/ui/qt/text_cleanup.py"
+      - "src/ui/qt/image_preview.py"
+      - "tests/text_cleanup_visual_render.py"
+      - ".github/workflows/text-cleanup-visual-render.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: "offscreen"
+
+jobs:
+  render:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Text Cleanup render runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir "PySide6-Essentials>=6.6,<6.9" "Pillow>=10,<12" "numpy>=1.26,<3" "opencv-python-headless>=4.9,<5"
+
+      - name: Download CJK font for deterministic render
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP "NotoSansCJKsc-Regular.otf"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" -OutFile $font
+          "TEXT_CLEANUP_VISUAL_FONT=$font" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Render actual Text Cleanup widget
+        shell: pwsh
+        run: |
+          python tests/text_cleanup_visual_render.py --out text-cleanup-render
+
+      - name: Upload Text Cleanup renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: text-cleanup-v04-real-qt-renders
+          path: text-cleanup-render/*.png
+          if-no-files-found: error
+          retention-days: 14
