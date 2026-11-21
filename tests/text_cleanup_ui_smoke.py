@@ -86,6 +86,74 @@ def main():
     assert "有效检测" in tab.status_text(tab.records[2])
     assert "已选" in tab.status_text(tab.records[2])
 
+    # Repair selection changes must update the priority queue without a
+    # separate filter/page click, while the active edit stays on the same image.
+    import numpy as np
+    from PySide6.QtCore import Qt
+    tab.schedule_save = lambda: None  # No persistent test-state writes.
+    tab.sort.setCurrentIndex(tab.sort.findData("优先待处理"))
+    tab.records = [
+        review_record("zero.png"),
+        review_record("edit.png", detections=3, selected=0, confidence=0.7),
+        review_record("selected.png", detections=2, selected=1, confidence=0.9),
+    ]
+    tab.current = 1
+    tab.refresh(False)
+    assert tab.visible == [2, 1, 0]
+    tab.preview.set_data(np.zeros((200, 300, 3), dtype=np.uint8),
+                         tab.records[1].boxes, tab.records[1].selected,
+                         tab.records[1].manual)
+    tab.refresh_boxes()
+    tab.boxes.item(0).setCheckState(Qt.Checked)
+    assert tab.visible == [1, 2, 0], tab.visible
+    assert tab.current == 1 and tab.item_by_record[1] is tab.list.currentItem()
+    tab.boxes.item(0).setCheckState(Qt.Unchecked)
+    assert tab.visible == [2, 1, 0], tab.visible
+    assert tab.current == 1
+
+    # Manual creation/deletion also changes eligibility and repair priority.
+    before = len(tab.records[1].boxes)
+    tab.new_box([[30, 30], [60, 30], [60, 50], [30, 50]])
+    assert len(tab.records[1].boxes) == before + 1
+    assert tab.visible.index(1) < tab.visible.index(0)
+    tab.boxes.item(before).setSelected(True)
+    tab.delete()
+    assert len(tab.records[1].boxes) == before
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    # Page-wide actions operate on the original displayed-page snapshot, even
+    # when their edits change the priority permutation across page boundaries.
+    tab.PAGE_SIZE = 2
+    tab.records = [
+        review_record("first.png", detections=2, selected=1, confidence=0.9),
+        review_record("second.png", detections=1, selected=1, confidence=0.8),
+        review_record("third.png", detections=1, selected=0, confidence=0.7),
+    ]
+    tab.current = -1
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [0, 1, 2]
+    tab.clear_page()
+    assert not any(tab.records[0].selected)
+    assert not any(tab.records[1].selected)
+    assert not any(tab.records[2].selected)
+    assert tab.visible == [0, 1, 2]
+    tab.records[0].selected = [False, False]
+    tab.records[0].suggested = [True, True]
+    tab.records[1].selected = [False]
+    tab.records[1].suggested = [True]
+    tab.records[2].selected = [True]
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [2, 0, 1]
+    tab.select_suggested()
+    assert all(tab.records[0].selected)
+    assert tab.records[2].selected == [True]
+    assert tab.records[1].selected == [False], "Bulk action followed shifting page"
+    assert tab.visible == [0, 2, 1], tab.visible
+    tab.PAGE_SIZE = 80
+    tab.current = -1
+
     # A real-size manual draw target, clear checked state and a bounds-safe
     # overlay: dragging from the photo into the letterbox must never produce
     # negative or out-of-image repair coordinates.
