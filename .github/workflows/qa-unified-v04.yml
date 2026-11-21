@@ -45,13 +45,16 @@ jobs:
           print("DirectML and CPU execution providers: PASS")
           '@ | python -
 
-      - name: Verify integrated Duplicate + Composite Qt UI and shared provider policy
+      - name: Verify combined Text Cleanup, Settings, Duplicate and Composite Qt UI
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           python tests/duplicate_review_ui_smoke.py
           python tests/composite_review_ui_smoke.py
+          python tests/text_cleanup_ui_smoke.py
+          python tests/settings_update_ui_smoke.py
+          python tests/settings_preferences_smoke.py
           python tests/settings_inference_runtime_smoke.py
 
       - name: Prepare pinned production bundled models
