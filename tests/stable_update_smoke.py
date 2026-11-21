@@ -135,6 +135,34 @@ def check_main():
         with patch.object(updater, "latest_release", side_effect=AssertionError("unexpected network")):
             again = updater.check_and_prepare(app, force=False)
         assert again.status == "staged"
+        # A cached pending receipt is not proof of a trustworthy delta.
+        # Reject tampering without silently fetching another full Portable.
+        staged_path = root / ".face-lora-updates" / "pending.json"
+        with patch.object(updater, "latest_release", side_effect=AssertionError("unexpected network")):
+            with staged_path.open(encoding="utf-8") as handle:
+                staged_receipt = json.load(handle)
+            staged_receipt["archive_sha256"] = "0" * 64
+            staged_path.write_text(json.dumps(staged_receipt), encoding="utf-8")
+            try:
+                updater.check_and_prepare(app, force=False)
+            except updater.UpdateError:
+                pass
+            else:
+                raise AssertionError("Tampered staged delta receipt was accepted")
+            staged_receipt["archive_sha256"] = delta_sha
+            staged_receipt["app_root"] = str(root / "another-installation")
+            staged_path.write_text(json.dumps(staged_receipt), encoding="utf-8")
+            try:
+                updater.check_and_prepare(app, force=False)
+            except updater.UpdateError:
+                pass
+            else:
+                raise AssertionError("Staged delta for another installation was accepted")
+            staged_receipt["app_root"] = str(app)
+            staged_path.write_text(json.dumps(staged_receipt), encoding="utf-8")
+            assert updater.check_and_prepare(app, force=False).status == "staged"
+        assert updater._hash_file(saved) == saved_sha
+
         # Missing per-version delta: do not fall back to full portable.
         (root / ".face-lora-updates" / "pending.json").unlink()
         no_delta = {"schema": 1, "release_version": "v0.4.1", "deltas": []}
