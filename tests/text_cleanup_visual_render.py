@@ -142,7 +142,7 @@ def render(out_dir: Path):
         tab.records=make_records(root)
         tab.page=0
         tab.resize(1220,780)
-        tab.show()
+        tab.setVisible(True)
         tab.refresh(False)
         pump(app,20)
 
