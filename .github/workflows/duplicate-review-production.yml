@@ -1,4 +1,5 @@
 name: Duplicate Review Production UI
+# 2026-11-21 visual-review refresh: render the current production widget unchanged.
 
 on:
   push:
@@ -89,4 +90,4 @@ jobs:
           name: duplicate-review-production-dark-screenshot
           path: production-render/*.png
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
