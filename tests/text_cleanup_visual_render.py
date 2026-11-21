@@ -164,6 +164,14 @@ def render(out_dir: Path):
         print(manual)
 
         tab.close()
+        # SubtitleTab normally lives under the main Window, whose closeEvent
+        # drains Text Cleanup scan/thumbnail QThreads. This isolated render
+        # harness must mirror that owner cleanup before QApplication teardown.
+        for thread in list(tab.thumb_threads):
+            if thread.isRunning():
+                thread.requestInterruption()
+                thread.quit()
+                thread.wait(3000)
         pump(app)
 
 
