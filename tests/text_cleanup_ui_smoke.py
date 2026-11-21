@@ -127,7 +127,14 @@ def main():
     assert tab.next_page.isEnabled()
     assert "1/2" in tab.page_label.text(), tab.page_label.text()
     assert "1–80 / 81" in tab.page_label.text(), tab.page_label.text()
+    tab.current = 0
+    tab.preview.set_data(
+        np.zeros((100, 100, 3), dtype=np.uint8), [], [], []
+    )
     tab.change_page(1)
+    # A page change must not leave the previous page's image in the editor.
+    assert tab.current == -1
+    assert tab.preview.img is None
     assert tab.page == 1
     assert tab.list.count() == 1
     assert not tab.next_page.isEnabled()
