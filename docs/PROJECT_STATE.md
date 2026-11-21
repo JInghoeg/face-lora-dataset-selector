@@ -83,17 +83,19 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+1. **User-selected 2026-11-21 active v0.4 slice — Text Cleanup review UX:** improve the established one-module Text Cleanup surface without touching OCR inference, repair backends, original images, or independent features. The existing draft #74 has an unadopted review-order/navigation proposal; this bounded implementation on `feat/v04-text-cleanup-review-ux` reuses only grounded parts of its design/testing, not its obsolete project-state or a blind merge.
+2. Move review sort + actual page range above the thumbnail list. Default ordering prioritizes selected eligible repairs, other eligible detections and finally zero-eligible entries; the latter **must remain available** through “All Images”/original order for manual recovery. Keep record data and source order unchanged; sorting only changes presentation. Preserve page actions on the displayed page.
+3. Improve manual repair-box discoverability: an explicit checked “Draw Manual Box” control, crosshair, legible in-preview drag hint, and coordinate clipping to actual image pixels (clicking black letterbox must not create boxes). Reuse the existing `ImagePreview`, never create a second ROI editor for this task.
+4. Fix misleading Text Cleanup labels: “detected” is **eligible after height/area/confidence filtering**, and “suggested” displayed the **currently selected** count, not all OCR detections. Use accurate *eligible detections / selected for repair* labels without changing calculation semantics.
+5. New scoped Draft PR, Windows offscreen UI tests and i18n parity. **HUMAN UNVERIFIED until user's visual/review approval; no final v0.4 release/merge claims.** Other v0.4 modules, including settings/official incremental updater Draft #110 and independent unified QA Draft #109, continue separately; never require a redundant full Portable/model download.
+6. Existing-box move/resize and model-level false-positive/false-negative tuning remain **evaluate / evidence-led work**, not secretly implemented as part of this UX slice.
 
 ## Accepted future directions
 
 This section is the compact recovery index for user-confirmed work that is **not the current authorized implementation slice**. Detailed scope remains in the linked Issues.
 
 - **ACCEPTED PRODUCTION UI:** Composite Split production PR #93 has been merged after HUMAN PASS of prototype #91; its integrated build still has deferred human QA. Duplicate Review production PR #90 remains Draft/HUMAN UNVERIFIED by explicit user choice. The rejected #83/#84 main-shell candidate remains fully reverted by #87, and the broad main Dataset Review redesign remains paused.
-- **ACCEPTED — NOT SCHEDULED:** remaining real-use Text Cleanup UX/quality backlog (#59), including review navigation/wording/manual-box discoverability/existing-box editing/real-example detection-quality work. #56 is a focused sorting item, but Draft #74 is not adopted merely because it exists.
+- **ACTIVE bounded slice / remainder DEFERRED:** Text Cleanup review navigation, sorting (#56), eligible/selected wording and manual-box discoverability are now under the current user-selected Draft implementation (not automatic adoption of old Draft #74). Existing-box move/resize and real-example detection quality remain deferred/evaluation work tracked under #59; UI visual approval remains required.
 - **ACCEPTED — NOT SCHEDULED:** Valby v0.2 vs v0.3 benchmark, frozen Benchmark v1, dataset-level coverage/redundancy/marginal-value/disentanglement-value/per-sample explanation work carried by #60; validate dataset-level logic before making it default.
 - **CONDITIONAL RESEARCH — NOT SCHEDULED:** semantic-similarity review only if it adds value beyond Duplicate Review; model upgrades only against confirmed selector failure modes with license/redistribution review (#60). If a model is required for the default product path and redistribution is permitted, do not drop it merely to reduce Portable size when that would reduce quality.
 - **EVALUATE ONLY — IMPLEMENTATION NOT AUTHORIZED:** optional user-selected/manual Auto Crop entry point for missed crop-worthy images (#59). The user explicitly said to assess cost and not implement it yet.
@@ -125,10 +127,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Run `tests/text_cleanup_ui_smoke.py` on Windows/PySide6, covering 81-item pagination, useful-first sorting, zero-result access, actual eligible/selected labels, in-image manual draw and bounded repair-box coordinates.
+2. Run Text Cleanup Boundary/Model/View/Architecture, i18n catalog+live switch and the existing Portable build/self-test. Repair actual failures in this branch before asking for a human test.
+3. Review the new Text Cleanup screen visually in a single future coherent v0.4 QA checkpoint; **HUMAN UNVERIFIED**, and do not disturb the stable v0.3.1 workflow/data.
+4. Continue the remaining #59 UX item(s) after choosing each bounded slice, starting with evaluating existing detected-box move/resize and representative false-positive/negative examples. Do not infer that #56/#59/#60 or whole-product modernization is complete.
 
 ## Do not repeat
 
