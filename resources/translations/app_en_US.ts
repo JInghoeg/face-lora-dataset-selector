@@ -76,7 +76,23 @@
     <message><source>状态：{status} · 判定：{eligibility}</source><translation>Status: {status} · Eligibility: {eligibility}</translation></message>
     <message><source>未勾选图片</source><translation>No Images Checked</translation></message>
     <message><source>请先勾选需要调整重复分组的图片。</source><translation>Check the images whose duplicate grouping you want to change first.</translation></message>
-  </context>
+  
+    <message><source>同组多图直接比较 · 勾选保留项 · 完成本组</source><translation>Compare Group · Check Items to Keep · Finish Group</translation></message>
+    <message><source>双击图片打开原图 · 勾选状态切组后保留</source><translation>Double-click to open original · Checks persist when switching groups</translation></message>
+    <message><source>重复组导航</source><translation>Duplicate Group Navigator</translation></message>
+    <message><source>缩略图定位 · 上拖展开更多组</source><translation>Locate by thumbnail · Drag upward to reveal more groups</translation></message>
+    <message><source>完成本组后自动切到下一未完成组</source><translation>After finishing this group, advance to the next unfinished group</translation></message>
+    <message><source>切换到浅色模式</source><translation>Switch to Light Mode</translation></message>
+    <message><source>切换到深色模式</source><translation>Switch to Dark Mode</translation></message>
+    <message><source>✓ 已完成</source><translation>✓ Complete</translation></message>
+    <message><source>未完成</source><translation>Incomplete</translation></message>
+    <message><source>未完成 {pending} · 已完成 {done}</source><translation>Incomplete {pending} · Complete {done}</translation></message>
+    <message><source>组 {group_id} · {count} 张</source><translation>Group {group_id} · {count} items</translation></message>
+    <message><source>组 {group_id} / {total} · {count} 张 · {state}</source><translation>Group {group_id} / {total} · {count} items · {state}</translation></message>
+    <message><source>保留</source><translation>Keep</translation></message>
+    <message><source>待确认</source><translation>Pending</translation></message>
+    <message><source>完成后跳到下一组，优先未完成组</source><translation>After finishing, advance to the next group (prioritizing unfinished groups)</translation></message>
+</context>
   <context>
     <name>CompositeSplitReviewDialog</name>
     <message><source>组合图拆分复核</source><translation>Composite Split Review</translation></message>
@@ -489,6 +505,28 @@ If this is a previously exported review bundle, it can still be matched safely u
     <message><source>导出准备中：0/{total}</source><translation>Preparing export: 0/{total}</translation></message>
     <message><source>导出 {current}/{total}：{name}</source><translation>Exporting {current}/{total}: {name}</translation></message>
     <message><source>导出完成：{count} 张</source><translation>Export complete: {count} images</translation></message>
+    <message><source>帮助</source><translation>Help</translation></message>
+    <message><source>检查稳定版更新</source><translation>Check for Stable Updates</translation></message>
+    <message><source>自动检查并增量更新稳定版</source><translation>Automatically Check and Install Stable Delta Updates</translation></message>
+    <message><source>稳定版自动增量更新已开启</source><translation>Automatic Stable Updates Enabled</translation></message>
+    <message><source>稳定版自动增量更新已关闭</source><translation>Automatic Stable Updates Disabled</translation></message>
+    <message><source>开发版不接收稳定版自动更新</source><translation>Development Builds Do Not Receive Stable Updates</translation></message>
+    <message><source>正在检查稳定版更新…</source><translation>Checking for Stable Updates…</translation></message>
+    <message><source>更新检查失败，请稍后重试</source><translation>Update Check Failed; Please Try Again Later</translation></message>
+    <message><source>稳定版 {version} 的增量更新已准备好，关闭程序后自动安装</source><translation>Stable Update {version} Is Ready; It Will Install After Exit</translation></message>
+    <message><source>发现稳定版 {version}，但没有兼容的增量包；不会自动下载完整安装包</source><translation>Stable {version} Is Available but No Compatible Delta Was Found; the Full Package Will Not Be Downloaded Automatically</translation></message>
+    <message><source>已是最新稳定版</source><translation>Already on the Latest Stable Version</translation></message>
+    <message><source>开发测试版不接收稳定版更新</source><translation>Development Builds Do Not Receive Stable Updates</translation></message>
+    <message><source>设置</source><translation>Settings</translation></message>
+    <message><source>稳定版自动检查已开启</source><translation>Automatic Stable Update Checks Enabled</translation></message>
+    <message><source>稳定版自动检查已关闭</source><translation>Automatic Stable Update Checks Disabled</translation></message>
+    <message><source>发现稳定版 {version}，可在设置中一键增量更新</source><translation>Stable {version} Available: One-Click Incremental Update in Settings</translation></message>
+    <message><source>增量包已校验，当前任务结束后关闭软件即可完成安装</source><translation>Delta Verified: Close the App After the Current Task to Install</translation></message>
+    <message><source>复核窗口外观已保存；下次打开复核窗口时生效</source><translation>Review Window Appearance Saved; Applies Next Time You Open a Review Window</translation></message>
+    <message><source>请先完成当前分析任务，再切换推理设备</source><translation>Finish the Current Analysis Before Changing Inference Device</translation></message>
+    <message><source>推理设备已保存；新建模型会话将使用此偏好，允许 CPU 回退</source><translation>Inference Preference Saved; New Sessions Will Apply It with CPU Fallback</translation></message>
+    <message><source>后台预扫描已关闭</source><translation>Background Pre-scan Disabled</translation></message>
+    <message><source>后台预扫描已开启</source><translation>Background Pre-scan Enabled</translation></message>
 </context>
   <context>
     <name>TextCleanupTab</name>
@@ -563,9 +601,66 @@ Source images were not modified.</translation></message>
     <message><source>取消批量处理</source><translation>Cancel Batch Processing</translation></message>
     <message><source>正在取消批量处理…</source><translation>Cancelling batch processing…</translation></message>
     <message><source>批量处理已取消</source><translation>Batch processing cancelled</translation></message>
+
+    <message><source>排序</source><translation>Sort</translation></message>
+    <message><source>优先待处理</source><translation>Review Priority</translation></message>
+    <message><source>原始顺序</source><translation>Original Order</translation></message>
+    <message><source>有效检测数量：多→少</source><translation>Eligible Detections: Most First</translation></message>
+    <message><source>最高置信度：高→低</source><translation>Highest Confidence: High to Low</translation></message>
+    <message><source>文件名：A→Z</source><translation>Filename: A to Z</translation></message>
+    <message><source>开启后在右侧大图上拖动鼠标绘制修复框；再次点击退出绘制。</source><translation>Click to enable, then drag on the large preview to draw a repair box. Click again to stop drawing.</translation></message>
+    <message><source>灰色＝有效检测；绿色＝已选修复；橙色＝人工修改。勾选仅控制修复。</source><translation>Gray: eligible detection; green: selected for repair; orange: manual change. Checkboxes only control repair.</translation></message>
+    <message><source>手动补框：开启</source><translation>Manual Box: On</translation></message>
+    <message><source>手动补框</source><translation>Draw Manual Box</translation></message>
+    <message><source>第 {page}/{pages} 页 · 第 {start}–{end} / {total} 张</source><translation>Page {page}/{pages} · Images {start}–{end} of {total}</translation></message>
+    <message><source>第 0/0 页 · 第 0–0 / 0 张</source><translation>Page 0/0 · Images 0–0 of 0</translation></message>
+    <message><source>有效检测 {detected} · 已选 {selected}{manual}</source><translation>Eligible {detected} · Selected {selected}{manual}</translation></message>
+    <message><source>有效检测：{detected} · 已选修复：{selected} · 人工修改：{manual}</source><translation>Eligible Detections: {detected} · Selected for Repair: {selected} · Manually Modified: {manual}</translation></message>
 </context>
   <context>
     <name>ImagePreview</name>
     <message><source>选择缩略图查看文字框</source><translation>Select a thumbnail to view text boxes</translation></message>
-  </context>
+  
+    <message><source>拖拽绘制修复区域</source><translation>Drag to Draw a Repair Area</translation></message>
+</context>
+  <context>
+    <name>SettingsPage</name>
+    <message><source>设置</source><translation>Settings</translation></message>
+    <message><source>软件更新</source><translation>Software Updates</translation></message>
+    <message><source>自动检查正式稳定版；仅在点击按钮后下载并安装增量更新。</source><translation>Automatically Check Official Stable Releases; Only Download and Install a Delta After You Click Update.</translation></message>
+    <message><source>自动检查稳定版更新</source><translation>Automatically Check for Stable Updates</translation></message>
+    <message><source>检查更新</source><translation>Check for Updates</translation></message>
+    <message><source>一键增量更新并重启</source><translation>One-Click Incremental Update and Restart</translation></message>
+    <message><source>当前版本：{version}</source><translation>Current Version: {version}</translation></message>
+    <message><source>尚未检查更新</source><translation>Updates Not Yet Checked</translation></message>
+    <message><source>正在检查最新稳定版…</source><translation>Checking Latest Stable Release…</translation></message>
+    <message><source>正在下载并校验增量包…</source><translation>Downloading and Verifying Delta…</translation></message>
+    <message><source>发现最新稳定版：{version}</source><translation>Latest Stable Release: {version}</translation></message>
+    <message><source>发现稳定版 {version}，但没有兼容的增量包；不会下载完整包</source><translation>Stable {version} Is Available but Has No Compatible Delta; the Full Package Will Not Be Downloaded</translation></message>
+    <message><source>已是最新稳定版</source><translation>Already Up to Date</translation></message>
+    <message><source>开发测试版不参与稳定版自动更新</source><translation>Development Builds Do Not Auto-Update to Stable Releases</translation></message>
+    <message><source>更新已准备好，等待安全退出并安装</source><translation>Update Ready; Waiting for Safe Exit and Installation</translation></message>
+    <message><source>检查更新失败：{reason}</source><translation>Update Check Failed: {reason}</translation></message>
+    <message><source>已按自动检查间隔跳过重复检查</source><translation>Skipped Repeated Check Within Automatic Check Interval</translation></message>
+    <message><source>需要下载 {size}</source><translation>Download: {size}</translation></message>
+      <message><source>常规</source><translation>General</translation></message>
+    <message><source>性能与分析</source><translation>Performance &amp; Analysis</translation></message>
+    <message><source>外观</source><translation>Appearance</translation></message>
+    <message><source>复核窗口主题</source><translation>Review Window Theme</translation></message>
+    <message><source>同步新式复核窗口的默认外观；主界面视觉统一仍在逐模块推进。</source><translation>Set the default appearance for modern review windows; main-window visual modernization remains ongoing.</translation></message>
+    <message><source>跟随系统</source><translation>Follow System</translation></message>
+    <message><source>浅色</source><translation>Light</translation></message>
+    <message><source>深色</source><translation>Dark</translation></message>
+    <message><source>模型运行</source><translation>Model Runtime</translation></message>
+    <message><source>推理设备</source><translation>Inference Device</translation></message>
+    <message><source>自动优先可用 GPU；GPU 模式允许 CPU 回退。修改后仅影响新建推理会话。</source><translation>Auto prefers an available GPU; GPU preference permits CPU fallback. Changes affect new inference sessions only.</translation></message>
+    <message><source>自动</source><translation>Automatic</translation></message>
+    <message><source>优先 GPU</source><translation>Prefer GPU</translation></message>
+    <message><source>仅 CPU</source><translation>CPU Only</translation></message>
+    <message><source>后台预扫描</source><translation>Background Pre-scan</translation></message>
+    <message><source>完成数据集分析后，自动预扫描组合图拆分和裁剪候选；关闭不影响手动复核。</source><translation>After dataset analysis, pre-scan composite split and auto-crop candidates in the background. Manual review remains available when disabled.</translation></message>
+    <message><source>外观与语言</source><translation>Appearance &amp; Language</translation></message>
+    <message><source>界面语言</source><translation>Interface Language</translation></message>
+    <message><source>所有复核窗口与主界面的语言立即同步。</source><translation>Language changes apply immediately to the main window and all review dialogs.</translation></message>
+</context>
 </TS>

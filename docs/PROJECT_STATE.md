@@ -83,10 +83,16 @@ Historical repository note:
 
 ## Current objective
 
-1. Deliver the user's explicitly requested **independent, usable v0.4 QA Portable now**, focused on the already-merged Composite Split Review with manual ROI controls, for the current Luna LoRA dataset workflow.
-2. Reuse the successful, exact-source GitHub Actions Portable rather than rebuilding core product functionality; make download, verification, isolated G: deployment, EXE self-test and GUI start a single PowerShell invocation.
-3. Never overwrite v0.3.1, other QA workspaces, the selected dataset or the original screenshots during deployment; downloads, expansion, temporary/cache/log files remain under `G:\\FaceLoRA-Luna-v04-QA`.
-4. Treat this as **HUMAN UNVERIFIED / not an official release** until the user confirms the standalone UI behavior. Keep the backlog and existing v0.4 HUMAN UNVERIFIED debt separate.
+**2026-11-21 active checkpoint: integrate the individually developed v0.4 modules into one Draft, non-destructive Windows QA candidate (#113). This is not v0.4 completion, a user HUMAN PASS, or permission to merge.**
+
+1. The integration branch `integration/v04-settings-text-duplicate-qa` begins with #110's checked Settings / stable delta-only updater (commit `120ea3d`), layers in #111 Text Cleanup review navigation/manual ROI/priority-sorting regression (`248b523`), and layers in #109's Duplicate Review production Qt UI, regression and unified QA script (`f670699`). Keep each feature's underlying architectural boundary intact.
+2. Combine English i18n catalog entries from all modules; do not replace the Settings catalog with a stale pre-Settings translation file. This is a file-level integration, not an automatic merge or closure of existing Drafts #90/#109/#110/#111.
+3. Verify combined Qt/Windows builds, settings persistence and stable update, Text Cleanup and Duplicate Review behavior, DirectML Portable and v0.3.1 user-state migration in the existing bounded QA workflow. Reuse existing verified full Portable/model assets; never force another large user download.
+4. Old #109's CI delta workflow was tied to an immutable *historical* target artifact. On this branch it is explicitly gated to a successful current target workflow run and exact commit (manual input), so an obsolete ZIP cannot masquerade as a new integrated delta.
+5. High-priority crash report #112: user reports frequent unexpected exits in a previously deployed QA Portable. Treat as unresolved and unknown build/root cause until historical logs/build SHA or real Windows evidence proves otherwise; release-blocking if reproduced. Do not make speculative fixes or infer earlier crash repairs cover this.
+6. Real GUI acceptance and any release remain HUMAN UNVERIFIED. No original image, old stable install, cache, models or settings may be overwritten during preparation.
+
+**v0.4 scope still open:** #60 umbrella includes broader Text Cleanup quality/existing-box editing, Dataset Review modernization, Source Organizer UI consistency, dataset-level recommendation explainability/coverage and other explicitly tracked backlog. A unified QA candidate is not completion of all features.
 
 ## Accepted future directions
 
@@ -104,12 +110,15 @@ Execution ordering among these directions is intentionally **not inferred here**
 ## Blockers / uncertainties
 
 - Text Cleanup false-positive / false-negative behavior needs real-example evaluation before threshold/model changes (#59).
+- Frequent unexpected exits from a deployed QA Portable are reported but not reproduced or localized; #112 stays an unresolved high-priority stability check.
 - The shipped legacy eDifFIQA-T DirectML incompatibility is resolved by PR #106 and actual RTX DirectML kernel profiling. Optional broader GPU performance tuning under Issue #55 remains non-blocking; the measured single-model 1.99× inference ratio does not establish whole-product speedup.
 - Whole-product UI/UX modernization needs bounded surface-by-surface design decisions; #75 does not authorize a broad rewrite.
 - README screenshots remain non-blocking documentation work (#57).
 - The root `text_detector.py` compatibility shim is intentionally retained until a deliberate compatibility/deprecation decision is made.
 
 ## Human QA debt
+
+- **Stable update in v0.4 (2026-11-08):** software-integrated release checking, automatic incremental download and on-exit installer require Windows CI and eventual real user acceptance. Current v0.3.1 is not retroactively self-updating; QA script-only update does not count as this product feature. HUMAN UNVERIFIED.
 
 - **v0.3: none.**
 - Issue #72 — src-layout migration interactive startup/resource checkpoint (HUMAN UNVERIFIED; deferred to the next v0.4 checkpoint unless automation exposes a blocker).
@@ -125,10 +134,10 @@ Execution ordering among these directions is intentionally **not inferred here**
 
 ## Next action
 
-1. Finish `tools/qa-luna-composite.ps1` with an immutable Actions artifact, G:-scoped staging and source/runtime safety; use existing QA Portable manifest/overlay reuse where safe, copied rather than moved.
-2. Pass Windows CI's *actual* Portable build, packaged EXE self-test, full ZIP SHA verification, offline isolated install, and cached idempotent rerun; no extra models or large download requested from the user.
-3. Provide exactly one copy-paste PowerShell invocation that installs and launches at `G:\\FaceLoRA-Luna-v04-QA\\app`; preserve old v0.3.1. State that clicking Accept in Composite Split archives the original composite under `_CompositeSplit_Originals` (not an in-place pixel overwrite).
-4. Record user-facing result and any errors as an explicit HUMAN QA checkpoint, then return to the user's selected v0.4 feature workflow.
+1. Finish all PR #113 Windows CI checks; fix real integrated failures on the Draft integration branch, not by overwriting previously accepted feature implementations. Preserve source state and i18n catalogs.
+2. Audit the bundled DirectML QA ZIP and user-state migration against the CURRENT #113 commit. Build the optional delta only from the successful same-commit QA artifact, never from stale prior targets.
+3. Inspect existing G:-scoped QA runtime logs and Windows failure evidence for #112 before attributing the crash; real-machine stability remains a release blocker if reproducible. Do not ask for unnecessary repeat model downloads.
+4. Batch real human verification of the integrated UI later, keeping individual feature branches Draft and HUMAN UNVERIFIED; then continue the remaining bounded #59/#60/#75 product scope.
 
 ## Do not repeat
 

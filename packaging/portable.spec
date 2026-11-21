@@ -24,6 +24,7 @@ datas = [
     (root_path('resources/models/auto_crop/skytnt_anime_seg_isnetis/isnetis.onnx'), 'models/auto_crop/skytnt_anime_seg_isnetis'),
     (root_path('resources/models/text_cleanup/migan/migan_pipeline_v2.onnx'), 'models/text_cleanup/migan'),
     (root_path('resources/translations/app_en_US.qm'), 'translations'),
+    (root_path('resources/updater/apply-update.ps1'), 'updater'),
 ]
 
 # QFluentWidgets loads packaged QSS/resources at runtime.  The selected Auto

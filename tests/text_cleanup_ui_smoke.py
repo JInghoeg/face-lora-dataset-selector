@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 from application import OperationCancelled, SelectorApplication
+from core.models import TextPhoto
 from ui.qt import SubtitleTab
 
 
@@ -37,6 +38,179 @@ def main():
     assert tab.backend is backend
     assert tab.preview is not None
     assert tab.scan is not None
+    assert tab.sort.currentData() == "优先待处理"
+
+    # Review navigation/sorting: zero-result records stay accessible but no
+    # longer occupy the front of the default review queue.
+    tab.start_thumbnails = lambda *_args, **_kwargs: None
+
+    def review_record(name, detections=0, selected=0, confidence=0.8):
+        boxes = [
+            [[0, 0], [20, 0], [20, 10], [0, 10]]
+            for _ in range(detections)
+        ]
+        return TextPhoto(
+            Path(name),
+            0,
+            0,
+            boxes=boxes,
+            selected=[index < selected for index in range(detections)],
+            manual=[False] * detections,
+            scores=[confidence] * detections,
+            suggested=[index < selected for index in range(detections)],
+            width=1000,
+            height=1000,
+        )
+
+    tab.records = [
+        review_record("00-zero.png"),
+        review_record("01-detected.png", detections=1, selected=0, confidence=0.7),
+        review_record("02-selected.png", detections=2, selected=1, confidence=0.9),
+    ]
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    original_index = tab.sort.findData("原始顺序")
+    assert original_index >= 0
+    tab.sort.setCurrentIndex(original_index)
+    assert tab.visible == [0, 1, 2], tab.visible
+
+    count_index = tab.sort.findData("有效检测数量：多→少")
+    assert count_index >= 0
+    tab.sort.setCurrentIndex(count_index)
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    # Eligibility text must name the effective filtered count and selected
+    # repair count, not imply that all raw OCR boxes are shown.
+    assert "有效检测" in tab.status_text(tab.records[2])
+    assert "已选" in tab.status_text(tab.records[2])
+
+    # Repair selection changes must update the priority queue without a
+    # separate filter/page click, while the active edit stays on the same image.
+    import numpy as np
+    from PySide6.QtCore import Qt
+    tab.schedule_save = lambda: None  # No persistent test-state writes.
+    tab.sort.setCurrentIndex(tab.sort.findData("优先待处理"))
+    tab.records = [
+        review_record("zero.png"),
+        review_record("edit.png", detections=3, selected=0, confidence=0.7),
+        review_record("selected.png", detections=2, selected=1, confidence=0.9),
+    ]
+    tab.current = 1
+    tab.refresh(False)
+    assert tab.visible == [2, 1, 0]
+    tab.preview.set_data(np.zeros((200, 300, 3), dtype=np.uint8),
+                         tab.records[1].boxes, tab.records[1].selected,
+                         tab.records[1].manual)
+    tab.refresh_boxes()
+    tab.boxes.item(0).setCheckState(Qt.Checked)
+    assert tab.visible == [1, 2, 0], tab.visible
+    assert tab.current == 1 and tab.item_by_record[1] is tab.list.currentItem()
+    tab.boxes.item(0).setCheckState(Qt.Unchecked)
+    assert tab.visible == [2, 1, 0], tab.visible
+    assert tab.current == 1
+
+    # Manual creation/deletion also changes eligibility and repair priority.
+    before = len(tab.records[1].boxes)
+    tab.new_box([[30, 30], [60, 30], [60, 50], [30, 50]])
+    assert len(tab.records[1].boxes) == before + 1
+    assert tab.visible.index(1) < tab.visible.index(0)
+    tab.boxes.item(before).setSelected(True)
+    tab.delete()
+    assert len(tab.records[1].boxes) == before
+    assert tab.visible == [2, 1, 0], tab.visible
+
+    # Page-wide actions operate on the original displayed-page snapshot, even
+    # when their edits change the priority permutation across page boundaries.
+    tab.PAGE_SIZE = 2
+    tab.records = [
+        review_record("first.png", detections=2, selected=1, confidence=0.9),
+        review_record("second.png", detections=1, selected=1, confidence=0.8),
+        review_record("third.png", detections=1, selected=0, confidence=0.7),
+    ]
+    tab.current = -1
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [0, 1, 2]
+    tab.clear_page()
+    assert not any(tab.records[0].selected)
+    assert not any(tab.records[1].selected)
+    assert not any(tab.records[2].selected)
+    assert tab.visible == [0, 1, 2]
+    tab.records[0].selected = [False, False]
+    tab.records[0].suggested = [True, True]
+    tab.records[1].selected = [False]
+    tab.records[1].suggested = [True]
+    tab.records[2].selected = [True]
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.visible == [2, 0, 1]
+    tab.select_suggested()
+    assert all(tab.records[0].selected)
+    assert tab.records[2].selected == [True]
+    assert tab.records[1].selected == [False], "Bulk action followed shifting page"
+    assert tab.visible == [0, 2, 1], tab.visible
+    tab.PAGE_SIZE = 80
+    tab.current = -1
+
+    # A real-size manual draw target, clear checked state and a bounds-safe
+    # overlay: dragging from the photo into the letterbox must never produce
+    # negative or out-of-image repair coordinates.
+    import numpy as np
+    from PySide6.QtCore import Qt, QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    from ui.qt.image_preview import ImagePreview
+    preview = ImagePreview()
+    preview.resize(800, 420)
+    preview.set_data(np.zeros((200, 300, 3), dtype=np.uint8), [], [], [])
+    captured = []
+    preview.drawn.connect(captured.append)
+    preview.set_draw_mode(True)
+    assert preview.cursor().shape() == Qt.CrossCursor
+
+    def mouse_event(kind, x, y, button, buttons):
+        return QMouseEvent(kind, QPointF(x, y), button, buttons, Qt.NoModifier)
+
+    preview.mousePressEvent(mouse_event(QEvent.MouseButtonPress, 10, 10, Qt.LeftButton, Qt.LeftButton))
+    preview.mouseReleaseEvent(mouse_event(QEvent.MouseButtonRelease, 40, 40, Qt.LeftButton, Qt.NoButton))
+    assert not captured, "Clicking letterbox background created a box"
+    preview.mousePressEvent(mouse_event(QEvent.MouseButtonPress, 110, 30, Qt.LeftButton, Qt.LeftButton))
+    preview.mouseMoveEvent(mouse_event(QEvent.MouseMove, 900, 600, Qt.NoButton, Qt.LeftButton))
+    preview.mouseReleaseEvent(mouse_event(QEvent.MouseButtonRelease, 900, 600, Qt.LeftButton, Qt.NoButton))
+    assert len(captured) == 1, captured
+    box = captured[0]
+    assert all(0 <= point[0] <= 300 and 0 <= point[1] <= 200 for point in box), box
+    assert box[0][0] < box[1][0] and box[0][1] < box[2][1]
+    preview.set_draw_mode(False)
+    assert preview.cursor().shape() == Qt.ArrowCursor
+    preview.close()
+
+    # Page controls sit above the review list and expose the true queue size.
+    tab.records = [review_record(f"{index:03d}.png") for index in range(81)]
+    tab.sort.setCurrentIndex(original_index)
+    tab.page = 0
+    tab.refresh(False)
+    assert tab.list.count() == 80
+    assert tab.next_page.isEnabled()
+    assert "1/2" in tab.page_label.text(), tab.page_label.text()
+    assert "1–80 / 81" in tab.page_label.text(), tab.page_label.text()
+    tab.current = 0
+    tab.preview.set_data(
+        np.zeros((100, 100, 3), dtype=np.uint8), [], [], []
+    )
+    tab.change_page(1)
+    # A page change must not leave the previous page's image in the editor.
+    assert tab.current == -1
+    assert tab.preview.img is None
+    assert tab.page == 1
+    assert tab.list.count() == 1
+    assert not tab.next_page.isEnabled()
+    assert "81–81 / 81" in tab.page_label.text(), tab.page_label.text()
+
+    tab.records = []
+    tab.page = 0
+    tab.refresh(False)
 
     # Selecting an input folder must start the real QThread scan path, not
     # merely schedule a callback. An empty temporary folder keeps this smoke
